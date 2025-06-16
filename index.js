@@ -122,7 +122,6 @@ app.post("/wardrobe-auto", async (req, res) => {
 // ✅ AI Outfit Suggestion (Moodboard Style)
 app.post("/suggest-outfit", async (req, res) => {
   const { items, occasion = "casual", vibe = "fun", city = "Delhi" } = req.body;
-  const weather = await fetchWeatherFromCity(city);
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).send("No wardrobe items provided.");
