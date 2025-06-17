@@ -116,14 +116,12 @@ app.post("/auto-tag", async (req, res) => {
   try {
     const ximilarRes = await axios.post(
       "https://api.ximilar.com/fashion/v2/tagging/",
-      { records: [{ _url: image_url }],
-      },
+      { records: [{ _url: image_url }] },
       {
         headers: {
           "Authorization": `Token ${process.env.XIMILAR_API_KEY}`,
           "Content-Type": "application/json"
         }
-      }
       }
     );
 
