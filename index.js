@@ -6,6 +6,8 @@ console.log(
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
+const path = require("path");
+const { v4: uuidv4 } = require("uuid");
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
@@ -116,8 +118,6 @@ app.post("/suggest-outfit", async (req, res) => {
 });
 
 // Auto-tag with Ximilar + Cleaned Upload
-const { v4: uuidv4 } = require("uuid"); // add this at the top with your other imports
-const path = require("path");
 
 app.post("/auto-tag", async (req, res) => {
   const { image_url } = req.body;
