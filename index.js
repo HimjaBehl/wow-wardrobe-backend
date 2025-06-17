@@ -1,5 +1,8 @@
 require("dotenv").config();
-console.log("c18c7777bcbd1744dc0e1d7f65841c98ff135c7f", process.env.XIMILAR_API_KEY);
+console.log(
+  "c18c7777bcbd1744dc0e1d7f65841c98ff135c7f",
+  process.env.XIMILAR_API_KEY,
+);
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
@@ -31,7 +34,10 @@ app.get("/wardrobe", async (req, res) => {
   if (!uid) return res.status(400).send("Missing uid");
 
   try {
-    const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
+    const snapshot = await db
+      .collection("wardrobe")
+      .where("uid", "==", uid)
+      .get();
     const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     res.json(items);
   } catch (err) {
@@ -84,7 +90,8 @@ app.post("/suggest-outfit", async (req, res) => {
         messages: [
           {
             role: "system",
-            content: "You are a fashion stylist. Based on occasion, vibe, and weather in a city, return 1–2 complete outfit suggestions using items the user owns. Respond as a JSON object: { style_note: string, outfits: [ { items: [ { name, category, color, image_url } ] } ] }",
+            content:
+              "You are a fashion stylist. Based on occasion, vibe, and weather in a city, return 1–2 complete outfit suggestions using items the user owns. Respond as a JSON object: { style_note: string, outfits: [ { items: [ { name, category, color, image_url } ] } ] }",
           },
           {
             role: "user",
@@ -97,7 +104,7 @@ app.post("/suggest-outfit", async (req, res) => {
         headers: {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
-      }
+      },
     );
 
     const text = openaiRes.data.choices?.[0]?.message?.content;
@@ -108,39 +115,82 @@ app.post("/suggest-outfit", async (req, res) => {
   }
 });
 
-// Auto-tag with Ximilar
+// Auto-tag with Ximilar + Cleaned Upload
+const { v4: uuidv4 } = require("uuid"); // add this at the top with your other imports
+const path = require("path");
+
 app.post("/auto-tag", async (req, res) => {
   const { image_url } = req.body;
   if (!image_url) return res.status(400).send("Missing image_url");
 
   try {
-    const ximilarRes = await axios.post(
-      "https://api.ximilar.com/fashion/v2/tagging/",
+    // Step 1: Background Removal
+    const bgRes = await axios.post(
+      "https://api.ximilar.com/removebg/precise/removebg",
       { records: [{ _url: image_url }] },
       {
         headers: {
-          "Authorization": `Token ${process.env.XIMILAR_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+          Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    const tags = ximilarRes.data?.objects?.[0]?.tags || [];
-    const name = tags.find((t) => t.name === "product")?.value || "Unnamed";
-    const category = tags.find((t) => t.name === "category")?.value || "";
-    const color = tags.find((t) => t.name === "color")?.value || "";
+    const cleanedUrl = bgRes.data?.records?.[0]?.output?._url;
+    if (!cleanedUrl) throw new Error("No cleaned image returned from Ximilar");
 
-    res.json({ name, category, color, tags: tags.map((t) => t.value) });
+    // Step 2: Fetch cleaned image buffer from Ximilar
+    const cleanedImageRes = await axios.get(cleanedUrl, {
+      responseType: "arraybuffer",
+    });
+    const buffer = Buffer.from(cleanedImageRes.data, "binary");
+
+    // Step 3: Upload cleaned image to Firebase Storage
+    const fileName = `cleaned/${uuidv4()}.png`;
+    const file = bucket.file(fileName);
+    await file.save(buffer, {
+      metadata: { contentType: "image/png" },
+    });
+
+    const firebaseImageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+    // Step 4: Send cleaned image to Ximilar tagger
+    const tagRes = await axios.post(
+      "https://api.ximilar.com/tagging/fashion/v2/tags",
+      { records: [{ _url: firebaseImageUrl }] },
+      {
+        headers: {
+          Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const record = tagRes.data?.records?.[0];
+    const tags = record?._tags_simple || [];
+    const name = record?._tags_map?.Subcategory || "Unnamed";
+    const category = record?._tags_map?.Category || "";
+    const color = record?._tags_map?.Color || "";
+
+    // Step 5: Return cleaned Firebase URL + tags
+    res.json({ image_url: firebaseImageUrl, name, category, color, tags });
   } catch (err) {
-    console.error("❌ Ximilar error:", err.message);
-    res.status(500).send("Ximilar tagging failed.");
+    console.error("❌ Auto-tag failed:", err.message);
+    if (err.response?.data) {
+      console.error("❌ Response details:", JSON.stringify(err.response.data, null, 2));
+    }
+    res.status(500).send("Auto-tagging failed");
   }
 });
 
+
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`API running on port ${PORT}`);
-}).on('error', (err) => {
-  console.error('Server failed to start:', err);
-  process.exit(1);
-});
+app
+  .listen(PORT, "0.0.0.0", () => {
+    console.log(`API running on port ${PORT}`);
+  })
+  .on("error", (err) => {
+    console.error("Server failed to start:", err);
+    process.exit(1);
+  });
