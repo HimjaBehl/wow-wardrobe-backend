@@ -119,9 +119,11 @@ app.post("/auto-tag", async (req, res) => {
       { records: [{ _url: image_url }],
       },
       {
-        "Authorization": `Token ${process.env.XIMILAR_API_KEY}`,
+        headers: {
+          "Authorization": `Token ${process.env.XIMILAR_API_KEY}`,
           "Content-Type": "application/json"
-        },
+        }
+      }
       }
     );
 
@@ -138,4 +140,9 @@ app.post("/auto-tag", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`API running on port ${PORT}`);
+}).on('error', (err) => {
+  console.error('Server failed to start:', err);
+  process.exit(1);
+});
