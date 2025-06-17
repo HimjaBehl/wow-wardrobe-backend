@@ -24,8 +24,7 @@ const fetchWeatherFromCity = async (cityName) => {
 
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
-const serviceAccount = require("./serviceAccountKey.json");
-const { getWeatherByCity } = require("./weather"); 
+const serviceAccount = require("./serviceAccountKey.json"); 
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -87,7 +86,7 @@ app.delete("/wardrobe/:id", async (req, res) => {
 // ✅ Auto-tag item using Ximilar
 app.post("/wardrobe-auto", async (req, res) => {
   const { image_url } = req.body;
-  if (!image_url || !name) return res.status(400).send("Missing name or image_url.");
+  if (!image_url) return res.status(400).send("Missing image_url.");
 
   try {
     const ximilarRes = await axios.post(
@@ -126,7 +125,6 @@ app.post("/wardrobe-auto", async (req, res) => {
 // ✅ AI Outfit Suggestion (Moodboard Style)
 app.post("/suggest-outfit", async (req, res) => {
   const { items, occasion = "casual", vibe = "fun", city = "Delhi" } = req.body;
-  const weather = await getWeatherByCity(city);
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).send("No wardrobe items provided.");
   }
@@ -184,6 +182,10 @@ app.post("/suggest-outfit", async (req, res) => {
       console.error("❌ Failed to parse AI response as JSON:", parseError.message);
       res.status(500).send("AI returned invalid outfit format.");
     }
+  } catch (err) {
+    console.error("❌ OpenAI API Error:", err.response?.data || err.message);
+    res.status(500).send("Error generating outfit suggestions.");
+  }
 });
 // ✅ Start server
 app.listen(3000, "0.0.0.0", () => console.log("🚀 Server running on port 3000"));
