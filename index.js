@@ -1,5 +1,6 @@
 require("dotenv").config(); // ✅ Load .env variables first
 const express = require("express");
+const { getWeatherByCity } = require("./weather");
 const cors = require("cors");
 const axios = require("axios");
 // Weather Fetcher Function
@@ -85,7 +86,7 @@ app.delete("/wardrobe/:id", async (req, res) => {
 
 // ✅ Auto-tag item using Ximilar
 app.post("/wardrobe-auto", async (req, res) => {
-  const { name, image_url } = req.body;
+  const { image_url } = req.body;
   if (!image_url || !name) return res.status(400).send("Missing name or image_url.");
 
   try {
@@ -101,6 +102,9 @@ app.post("/wardrobe-auto", async (req, res) => {
     );
 
     const tagsMap = ximilarRes.data?.records?.[0]?._tags_map || {};
+    const primaryCategory = tagsMap.Category || tagsMap["Top Category"] || "Item";
+    const primaryColor = tagsMap.Color || "";
+    const name = `${primaryColor} ${primaryCategory}`.trim();
 
     const newItem = {
       name,
@@ -122,7 +126,7 @@ app.post("/wardrobe-auto", async (req, res) => {
 // ✅ AI Outfit Suggestion (Moodboard Style)
 app.post("/suggest-outfit", async (req, res) => {
   const { items, occasion = "casual", vibe = "fun", city = "Delhi" } = req.body;
-
+  const weather = await getWeatherByCity(city);
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).send("No wardrobe items provided.");
   }
@@ -132,19 +136,19 @@ app.post("/suggest-outfit", async (req, res) => {
 
   // 🧠 AI prompt with weather
   const prompt = `
-  You are a fashion stylist. Based on this wardrobe (each item includes its image URL), suggest 1–2 stylish outfits for a ${occasion} occasion with a ${vibe} vibe.
+  You are a fashion stylist. Based on this wardrobe (each item includes its image URL), suggest 1–2 stylish outfits for a ${occasion} occasion with a ${vibe} vibe, in ${city} weather.
 
-  Ensure that the outfits are suitable for ${weather} weather conditions.
+  Today's weather is: ${weather.description}, temperature ${weather.temperature}°C, humidity ${weather.humidity}%.
 
-  Return a JSON array of outfits like this:
+  Each outfit should include 2–4 items. Format your response as JSON like this:
+
   [
     {
       "items": [
         { "name": "White Shirt", "category": "Topwear", "image_url": "..." },
         { "name": "Denim Skirt", "category": "Bottomwear", "image_url": "..." }
       ]
-    },
-    ...
+    }
   ]
 
   Wardrobe:
@@ -152,6 +156,7 @@ app.post("/suggest-outfit", async (req, res) => {
     `${i + 1}. ${item.name} - ${item.category}, ${item.color}, tags: ${item.tags?.join(", ")}, image: ${item.image_url}`
   ).join("\n")}
   `;
+
 
 
   try {
@@ -171,12 +176,14 @@ app.post("/suggest-outfit", async (req, res) => {
     );
 
     const aiReply = response.data.choices?.[0]?.message?.content;
-    const outfits = JSON.parse(aiReply); // 🪄 Parse structured JSON from AI
-    res.status(200).json({ outfits });
-  } catch (err) {
-    console.error("🧠 OpenAI Error:", err.response?.data || err.message);
-    res.status(500).send("Error generating outfit suggestions.");
-  }
+
+    try {
+      const outfits = JSON.parse(aiReply); // Parse the structured JSON reply
+      res.status(200).json({ outfits });   // Send structured list of outfits
+    } catch (parseError) {
+      console.error("❌ Failed to parse AI response as JSON:", parseError.message);
+      res.status(500).send("AI returned invalid outfit format.");
+    }
 });
 // ✅ Start server
 app.listen(3000, "0.0.0.0", () => console.log("🚀 Server running on port 3000"));
