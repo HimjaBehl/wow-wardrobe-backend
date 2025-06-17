@@ -1,191 +1,141 @@
-require("dotenv").config(); // ✅ Load .env variables first
+require("dotenv").config();
+console.log("c18c7777bcbd1744dc0e1d7f65841c98ff135c7f", process.env.XIMILAR_API_KEY);
 const express = require("express");
-const { getWeatherByCity } = require("./weather");
 const cors = require("cors");
 const axios = require("axios");
-// Weather Fetcher Function
-const fetchWeatherFromCity = async (cityName) => {
-  try {
-    const apiKey = process.env.OPENWEATHER_API_KEY;
-    const url = `https://api.openweathermap.org/data/2.5/weather?q=${cityName}&appid=${apiKey}&units=metric`;
-
-    const res = await axios.get(url);
-    const temp = res.data.main.temp;
-    const condition = res.data.weather[0].main.toLowerCase(); // e.g., "rain", "clear", etc.
-
-    if (temp < 15) return "cold";
-    else if (temp >= 15 && temp <= 28) return "moderate";
-    else return "hot";
-  } catch (err) {
-    console.error("🌦️ Weather API Error:", err.response?.data || err.message);
-    return "moderate"; // fallback
-  }
-};
-
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
-const serviceAccount = require("./serviceAccountKey.json"); 
+const { getStorage } = require("firebase-admin/storage");
+const serviceAccount = require("./serviceAccountKey.json");
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ Firebase init
-initializeApp({ credential: cert(serviceAccount) });
+// Firebase init
+initializeApp({
+  credential: cert(serviceAccount),
+  storageBucket: "wowapp1406.appspot.com",
+});
 const db = getFirestore();
+const bucket = getStorage().bucket();
 
-// ✅ Root route
+// Root
 app.get("/", (req, res) => {
   res.send("Hello from WowWardrobe backend!");
 });
 
-// ✅ Fetch all wardrobe items
+// Get wardrobe items
 app.get("/wardrobe", async (req, res) => {
+  const uid = req.query.uid;
+  if (!uid) return res.status(400).send("Missing uid");
+
   try {
-    const snapshot = await db.collection("wardrobeItems").get();
+    const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
     const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    res.status(200).json(items);
+    res.json(items);
   } catch (err) {
-    console.error("❌ Error fetching items:", err);
-    res.status(500).send("Error fetching items.");
+    console.error("Error fetching wardrobe items:", err);
+    res.status(500).send("Failed to fetch wardrobe");
   }
 });
 
-// ✅ Add item manually
+// Add wardrobe item
 app.post("/wardrobe", async (req, res) => {
+  const { image_url, uid, name, category, color, tags } = req.body;
+  if (!image_url || !uid) return res.status(400).send("Missing fields");
+
   try {
-    await db.collection("wardrobeItems").add(req.body);
-    res.status(200).send("Item added!");
+    const docRef = await db.collection("wardrobe").add({
+      image_url,
+      uid,
+      name: name || "",
+      category: category || "",
+      color: color || "",
+      tags: tags || [],
+    });
+    res.json({ id: docRef.id });
   } catch (err) {
-    console.error("❌ Error adding item:", err);
-    res.status(500).send("Error adding item.");
+    console.error("Error adding wardrobe item:", err);
+    res.status(500).send("Failed to add item");
   }
 });
 
-// ✅ Update item
-app.put("/wardrobe/:id", async (req, res) => {
-  try {
-    await db.collection("wardrobeItems").doc(req.params.id).update(req.body);
-    res.status(200).send("Item updated!");
-  } catch (err) {
-    console.error("❌ Error updating item:", err);
-    res.status(500).send("Error updating item.");
-  }
-});
-
-// ✅ Delete item
+// Delete wardrobe item
 app.delete("/wardrobe/:id", async (req, res) => {
   try {
-    await db.collection("wardrobeItems").doc(req.params.id).delete();
-    res.status(200).send("Item deleted!");
+    await db.collection("wardrobe").doc(req.params.id).delete();
+    res.sendStatus(200);
   } catch (err) {
-    console.error("❌ Error deleting item:", err);
-    res.status(500).send("Error deleting item.");
+    console.error("Error deleting item:", err);
+    res.status(500).send("Failed to delete");
   }
 });
 
-// ✅ Auto-tag item using Ximilar
-app.post("/wardrobe-auto", async (req, res) => {
-  const { image_url } = req.body;
-  if (!image_url) return res.status(400).send("Missing image_url.");
-
-  try {
-    const ximilarRes = await axios.post(
-      "https://api.ximilar.com/tagging/fashion/v2/tags",
-      { records: [{ _url: image_url }] },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Token c18c7777bcbd1744dc0e1d7f65841c98ff135c7f",
-        },
-      }
-    );
-
-    const tagsMap = ximilarRes.data?.records?.[0]?._tags_map || {};
-    const primaryCategory = tagsMap.Category || tagsMap["Top Category"] || "Item";
-    const primaryColor = tagsMap.Color || "";
-    const name = `${primaryColor} ${primaryCategory}`.trim();
-
-    const newItem = {
-      name,
-      image_url,
-      created_at: new Date().toISOString(),
-      category: tagsMap.Category || tagsMap["Top Category"] || "Unknown",
-      color: tagsMap.Color || "Unknown",
-      tags: Object.values(tagsMap),
-    };
-
-    await db.collection("wardrobeItems").add(newItem);
-    res.status(200).send("Item auto-tagged and added!");
-  } catch (err) {
-    console.error("🔥 Ximilar Error:", err.response?.data || err.message);
-    res.status(500).send("Error auto-tagging item.");
-  }
-});
-
-// ✅ AI Outfit Suggestion (Moodboard Style)
+// AI outfit suggestion route
 app.post("/suggest-outfit", async (req, res) => {
-  const { items, occasion = "casual", vibe = "fun", city = "Delhi" } = req.body;
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).send("No wardrobe items provided.");
-  }
-
-  // 🔁 Get live weather
-  const weather = await getWeatherByCity(city);
-
-  // 🧠 AI prompt with weather
-  const prompt = `
-  You are a fashion stylist. Based on this wardrobe (each item includes its image URL), suggest 1–2 stylish outfits for a ${occasion} occasion with a ${vibe} vibe, in ${city} weather.
-
-  Today's weather is: ${weather.description}, temperature ${weather.temperature}°C, humidity ${weather.humidity}%.
-
-  Each outfit should include 2–4 items. Format your response as JSON like this:
-
-  [
-    {
-      "items": [
-        { "name": "White Shirt", "category": "Topwear", "image_url": "..." },
-        { "name": "Denim Skirt", "category": "Bottomwear", "image_url": "..." }
-      ]
-    }
-  ]
-
-  Wardrobe:
-  ${items.map((item, i) => 
-    `${i + 1}. ${item.name} - ${item.category}, ${item.color}, tags: ${item.tags?.join(", ")}, image: ${item.image_url}`
-  ).join("\n")}
-  `;
-
-
+  const { items, occasion, vibe, city } = req.body;
 
   try {
-    const response = await axios.post(
+    const openaiRes = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
         model: "gpt-3.5-turbo",
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          {
+            role: "system",
+            content: "You are a fashion stylist. Based on occasion, vibe, and weather in a city, return 1–2 complete outfit suggestions using items the user owns. Respond as a JSON object: { style_note: string, outfits: [ { items: [ { name, category, color, image_url } ] } ] }",
+          },
+          {
+            role: "user",
+            content: `My wardrobe: ${JSON.stringify(items)}. Occasion: ${occasion}, Vibe: ${vibe}, City: ${city}. Suggest outfits.`,
+          },
+        ],
         temperature: 0.7,
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
         },
       }
     );
 
-    const aiReply = response.data.choices?.[0]?.message?.content;
-
-    try {
-      const outfits = JSON.parse(aiReply); // Parse the structured JSON reply
-      res.status(200).json({ outfits });   // Send structured list of outfits
-    } catch (parseError) {
-      console.error("❌ Failed to parse AI response as JSON:", parseError.message);
-      res.status(500).send("AI returned invalid outfit format.");
-    }
+    const text = openaiRes.data.choices?.[0]?.message?.content;
+    res.send(text);
   } catch (err) {
-    console.error("❌ OpenAI API Error:", err.response?.data || err.message);
-    res.status(500).send("Error generating outfit suggestions.");
+    console.error("❌ OpenAI error:", err.message);
+    res.status(500).send("Outfit suggestion failed");
   }
 });
-// ✅ Start server
-app.listen(3000, "0.0.0.0", () => console.log("🚀 Server running on port 3000"));
+
+// Auto-tag with Ximilar
+app.post("/auto-tag", async (req, res) => {
+  const { image_url } = req.body;
+  if (!image_url) return res.status(400).send("Missing image_url");
+
+  try {
+    const ximilarRes = await axios.post(
+      "https://api.ximilar.com/fashion/v2/tagging/",
+      { records: [{ _url: image_url }],
+      },
+      {
+        "Authorization": `Token ${process.env.XIMILAR_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+      }
+    );
+
+    const tags = ximilarRes.data?.objects?.[0]?.tags || [];
+    const name = tags.find((t) => t.name === "product")?.value || "Unnamed";
+    const category = tags.find((t) => t.name === "category")?.value || "";
+    const color = tags.find((t) => t.name === "color")?.value || "";
+
+    res.json({ name, category, color, tags: tags.map((t) => t.value) });
+  } catch (err) {
+    console.error("❌ Ximilar error:", err.message);
+    res.status(500).send("Ximilar tagging failed.");
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
