@@ -194,6 +194,7 @@ app.use((err, req, res, next) => {
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception:", err);
+  process.exit(1);
 });
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
@@ -203,4 +204,7 @@ process.on("unhandledRejection", (reason, promise) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+}).on('error', (err) => {
+  console.error('❌ Server failed to start:', err.message);
+  process.exit(1);
 });
