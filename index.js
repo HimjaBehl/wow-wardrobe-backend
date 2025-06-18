@@ -7,7 +7,11 @@ console.log(
 const express = require("express");
 const app = express(); // ✅ define app FIRST
 app.get("/", (req, res) => {
-  res.send("🎉 WOW Wardrobe backend is live!");
+  res.status(200).json({ 
+    status: "OK", 
+    message: "🎉 WOW Wardrobe backend is live!",
+    timestamp: new Date().toISOString()
+  });
 });
 const cors = require("cors");
 const axios = require("axios");
@@ -120,17 +124,27 @@ app.post("/auto-tag", async (req, res) => {
         JSON.stringify(err.response.data, null, 2),
       );
     }
-  res.status(500).send("Auto-tagging failed");
-        } // ← this closes the catch block
-      }; // ← this closes the app.post("/auto-tag") route
+    res.status(500).send("Auto-tagging failed");
+  }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Handle process events
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 const PORT = process.env.PORT || 3000;
-app
-  .listen(PORT, "0.0.0.0", () => {
-    console.log(`API running on port ${PORT}`);
-  })
-  .on("error", (err) => {
-    console.error("Server failed to start:", err);
-    process.exit(1);
-    });
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
+});
     });
