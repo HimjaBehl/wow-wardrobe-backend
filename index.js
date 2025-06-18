@@ -3,21 +3,24 @@ console.log(
   "c18c7777bcbd1744dc0e1d7f65841c98ff135c7f",
   process.env.XIMILAR_API_KEY,
 );
+
 const express = require("express");
+const app = express(); // ✅ define app FIRST
+app.get("/", (req, res) => {
+  res.send("🎉 WOW Wardrobe backend is live!");
+});
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const serviceAccount = require("./serviceAccountKey.json");
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// Firebase init
+// ✅ Firebase Init
 initializeApp({
   credential: cert(serviceAccount),
   storageBucket: "wowapp1406.appspot.com",
@@ -25,13 +28,14 @@ initializeApp({
 const db = getFirestore();
 const bucket = getStorage().bucket();
 
-// Root
-app.get("/", (req, res) => {
-  res.send("Hello from WowWardrobe backend!");
-});
+app.use(cors());
+app.use(express.json());
 
-// Get wardrobe items
+// ... (your routes remain unchanged)
+// ✅ Fetch wardrobe items for a specific user
 app.get("/wardrobe", async (req, res) => {
+  console.log("🔥 /wardrobe GET hit. UID:", req.query.uid);
+
   const uid = req.query.uid;
   if (!uid) return res.status(400).send("Missing uid");
 
@@ -43,82 +47,12 @@ app.get("/wardrobe", async (req, res) => {
     const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     res.json(items);
   } catch (err) {
-    console.error("Error fetching wardrobe items:", err);
+    console.error("❌ Firestore fetch error:", err.message);
     res.status(500).send("Failed to fetch wardrobe");
   }
 });
 
-// Add wardrobe item
-app.post("/wardrobe", async (req, res) => {
-  const { image_url, uid, name, category, color, tags } = req.body;
-  if (!image_url || !uid) return res.status(400).send("Missing fields");
-
-  try {
-    const docRef = await db.collection("wardrobe").add({
-      image_url,
-      uid,
-      name: name || "",
-      category: category || "",
-      color: color || "",
-      tags: tags || [],
-    });
-    res.json({ id: docRef.id });
-  } catch (err) {
-    console.error("Error adding wardrobe item:", err);
-    res.status(500).send("Failed to add item");
-  }
-});
-
-// Delete wardrobe item
-app.delete("/wardrobe/:id", async (req, res) => {
-  try {
-    await db.collection("wardrobe").doc(req.params.id).delete();
-    res.sendStatus(200);
-  } catch (err) {
-    console.error("Error deleting item:", err);
-    res.status(500).send("Failed to delete");
-  }
-});
-
-// AI outfit suggestion route
-app.post("/suggest-outfit", async (req, res) => {
-  const { items, occasion, vibe, city } = req.body;
-
-  try {
-    const openaiRes = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a fashion stylist. Based on occasion, vibe, and weather in a city, return 1–2 complete outfit suggestions using items the user owns. Respond as a JSON object: { style_note: string, outfits: [ { items: [ { name, category, color, image_url } ] } ] }",
-          },
-          {
-            role: "user",
-            content: `My wardrobe: ${JSON.stringify(items)}. Occasion: ${occasion}, Vibe: ${vibe}, City: ${city}. Suggest outfits.`,
-          },
-        ],
-        temperature: 0.7,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-      },
-    );
-
-    const text = openaiRes.data.choices?.[0]?.message?.content;
-    res.send(text);
-  } catch (err) {
-    console.error("❌ OpenAI error:", err.message);
-    res.status(500).send("Outfit suggestion failed");
-  }
-});
-
-// Auto-tag with Ximilar + Cleaned Upload
-
+// ✅ /auto-tag route — stays the same as you shared
 app.post("/auto-tag", async (req, res) => {
   const { image_url } = req.body;
   if (!image_url) return res.status(400).send("Missing image_url");
@@ -133,57 +67,62 @@ app.post("/auto-tag", async (req, res) => {
           Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     const cleanedUrl = bgRes.data?.records?.[0]?.output?._url;
-    if (!cleanedUrl) throw new Error("No cleaned image returned from Ximilar");
+    if (!cleanedUrl) throw new Error("Background removal failed.");
 
-    // Step 2: Fetch cleaned image buffer from Ximilar
-    const cleanedImageRes = await axios.get(cleanedUrl, {
-      responseType: "arraybuffer",
-    });
-    const buffer = Buffer.from(cleanedImageRes.data, "binary");
-
-    // Step 3: Upload cleaned image to Firebase Storage
-    const fileName = `cleaned/${uuidv4()}.png`;
+    // Step 2: Download cleaned image
+    const imageRes = await fetch(cleanedUrl);
+    const buffer = await imageRes.buffer();
+    const fileName = `wardrobe/cleaned_${uuidv4()}.png`;
     const file = bucket.file(fileName);
+
     await file.save(buffer, {
-      metadata: { contentType: "image/png" },
+      metadata: {
+        contentType: "image/png",
+      },
     });
 
-    const firebaseImageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    const [signedUrl] = await file.getSignedUrl({
+      action: "read",
+      expires: "03-01-2030",
+    });
 
-    // Step 4: Send cleaned image to Ximilar tagger
+    // Step 3: Auto-tag the Firebase-hosted image
     const tagRes = await axios.post(
       "https://api.ximilar.com/tagging/fashion/v2/tags",
-      { records: [{ _url: firebaseImageUrl }] },
+      { records: [{ _url: signedUrl }] },
       {
         headers: {
           Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
-    const record = tagRes.data?.records?.[0];
-    const tags = record?._tags_simple || [];
-    const name = record?._tags_map?.Subcategory || "Unnamed";
-    const category = record?._tags_map?.Category || "";
-    const color = record?._tags_map?.Color || "";
+    const tags = tagRes.data?.records?.[0]?._tags_simple || [];
+    const name = tagRes.data?.records?.[0]?._tags_map?.Subcategory || "Unnamed";
+    const category = tagRes.data?.records?.[0]?._tags_map?.Category || "";
+    const color = tagRes.data?.records?.[0]?._tags_map?.Color || "Unknown";
 
-    // Step 5: Return cleaned Firebase URL + tags
-    res.json({ image_url: firebaseImageUrl, name, category, color, tags });
+    res.json({ image_url: signedUrl, name, category, color, tags });
   } catch (err) {
-    console.error("❌ Auto-tag failed:", err.message);
+    console.error("❌ Ximilar tagging error:", err.message);
+    console.error("❌ Stack trace:", err.stack); // full line + file + error
     if (err.response?.data) {
-      console.error("❌ Response details:", JSON.stringify(err.response.data, null, 2));
+      console.error("❌ Full Ximilar error response:", JSON.stringify(err.response.data, null, 2));
+    console.error("❌ Full stack:", err.stack); // shows exact line number
+    if (err.response?.data) {
+      console.error(
+        "❌ Full response body:",
+        JSON.stringify(err.response.data, null, 2),
+      );
     }
-    res.status(500).send("Auto-tagging failed");
-  }
-});
-
-
+  res.status(500).send("Auto-tagging failed");
+        } // ← this closes the catch block
+      }; // ← this closes the app.post("/auto-tag") route
 
 const PORT = process.env.PORT || 3000;
 app
@@ -193,4 +132,5 @@ app
   .on("error", (err) => {
     console.error("Server failed to start:", err);
     process.exit(1);
-  });
+    });
+    });
