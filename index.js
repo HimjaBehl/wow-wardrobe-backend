@@ -126,7 +126,7 @@ app.post("/auto-tag", async (req, res) => {
     }
     res.status(500).send("Auto-tagging failed");
   }
-});
+};
 
 // Error handling middleware
 app.use((err, req, res, next) => {
