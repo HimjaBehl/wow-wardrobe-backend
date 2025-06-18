@@ -1,18 +1,6 @@
-require("dotenv").config();
-console.log(
-  "c18c7777bcbd1744dc0e1d7f65841c98ff135c7f",
-  process.env.XIMILAR_API_KEY,
-);
 
+require("dotenv").config();
 const express = require("express");
-const app = express(); // ✅ define app FIRST
-app.get("/", (req, res) => {
-  res.status(200).json({ 
-    status: "OK", 
-    message: "🎉 WOW Wardrobe backend is live!",
-    timestamp: new Date().toISOString()
-  });
-});
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
@@ -23,6 +11,13 @@ const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const serviceAccount = require("./serviceAccountKey.json");
+
+console.log(
+  "c18c7777bcbd1744dc0e1d7f65841c98ff135c7f",
+  process.env.XIMILAR_API_KEY,
+);
+
+const app = express();
 
 // ✅ Firebase Init
 initializeApp({
@@ -35,7 +30,14 @@ const bucket = getStorage().bucket();
 app.use(cors());
 app.use(express.json());
 
-// ... (your routes remain unchanged)
+app.get("/", (req, res) => {
+  res.status(200).json({ 
+    status: "OK", 
+    message: "🎉 WOW Wardrobe backend is live!",
+    timestamp: new Date().toISOString()
+  });
+});
+
 // ✅ Fetch wardrobe items for a specific user
 app.get("/wardrobe", async (req, res) => {
   console.log("🔥 /wardrobe GET hit. UID:", req.query.uid);
@@ -56,7 +58,7 @@ app.get("/wardrobe", async (req, res) => {
   }
 });
 
-// ✅ /auto-tag route — stays the same as you shared
+// ✅ /auto-tag route
 app.post("/auto-tag", async (req, res) => {
   const { image_url } = req.body;
   if (!image_url) return res.status(400).send("Missing image_url");
@@ -114,11 +116,10 @@ app.post("/auto-tag", async (req, res) => {
     res.json({ image_url: signedUrl, name, category, color, tags });
   } catch (err) {
     console.error("❌ Ximilar tagging error:", err.message);
-    console.error("❌ Stack trace:", err.stack); // full line + file + error
+    console.error("❌ Stack trace:", err.stack);
     if (err.response?.data) {
       console.error("❌ Full Ximilar error response:", JSON.stringify(err.response.data, null, 2));
-    console.error("❌ Full stack:", err.stack); // shows exact line number
-    if (err.response?.data) {
+      console.error("❌ Full stack:", err.stack);
       console.error(
         "❌ Full response body:",
         JSON.stringify(err.response.data, null, 2),
@@ -126,7 +127,7 @@ app.post("/auto-tag", async (req, res) => {
     }
     res.status(500).send("Auto-tagging failed");
   }
-};
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -147,4 +148,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
 });
-    });
