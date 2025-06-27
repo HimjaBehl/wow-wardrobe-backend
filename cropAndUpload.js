@@ -5,11 +5,10 @@ const { file }       = require("tmp-promise");
 const { v4: uuidv4 } = require("uuid");
 const { getStorage } = require("firebase-admin/storage");
 
-/* --- Firebase bucket (already initialised in index.js) --- */
-const bucket = getStorage().bucket();
-
 /* bbox = {x_min, y_min, x_max, y_max} – all FRACTIONS 0-1   */
 module.exports = async function cropAndUpload(originalBuffer, bbox) {
+  /* --- Get Firebase bucket (Firebase is already initialised in index.js) --- */
+  const bucket = getStorage().bucket();
   const meta = await sharp(originalBuffer).metadata();
   const W = meta.width, H = meta.height;
 
