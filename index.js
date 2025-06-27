@@ -9,6 +9,7 @@ const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore, doc, getDoc } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const serviceAccount = require("./serviceAccountKey.json");
+const cropAndUpload = require("./cropAndUpload");
 
 // Initialize Firebase first
 initializeApp({
@@ -56,6 +57,8 @@ app.post("/auto-tag", async (req, res) => {
     );
 
     const objects = tagRes.data?.records?.[0]?._objects || [];
+    // ⬇️ download original jpg once – we re-use for every object crop
+    const originalBuffer = await fetch(image_url).then(r => r.buffer());
 
     const detected = objects.map((obj) => {
       const rawTags = obj._tags_simple || [];

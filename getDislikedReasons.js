@@ -1,38 +1,38 @@
 const { getFirestore } = require("firebase-admin/firestore");
+const db = getFirestore();
 
-async function getDislikedReasons(uid, limit = 5) {
-  try {
-    const db = getFirestore();
-    const snapshot = await db
-      .collection("outfitFeedback")
-      .where("uid", "==", uid)
-      .where("liked", "==", false)
-      .orderBy("timestamp", "desc")
-      .limit(limit)
-      .get();
+/**
+ * Returns an array like: ['heels', 'leather jacket', 'too formal']
+ */
+module.exports = async function getDislikedReasons(uid, limit = 30) {
+  if (!uid) return [];
 
-    const allReasons = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      if (Array.isArray(data.reasons)) {
-        allReasons.push(...data.reasons);
-      }
-    });
+  const snapshot = await db
+    .collection("outfitFeedback")
+    .where("uid", "==", uid)
+    .where("liked", "==", false)
+    .orderBy("timestamp", "desc")
+    .limit(limit)
+    .get();
 
-    const counts = {};
-    allReasons.forEach(reason => {
-      counts[reason] = (counts[reason] || 0) + 1;
-    });
+  const avoid = [];
 
-    const sorted = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([reason]) => reason);
+  snapshot.forEach((doc) => {
+    const data = doc.data();
 
-    return sorted;
-  } catch (err) {
-    console.error("🔥 Error fetching dislikes:", err);
-    return [];
-  }
-}
+    // ✅ Add item names
+    if (Array.isArray(data.outfit?.items)) {
+      data.outfit.items.forEach((item) => {
+        if (item?.name) avoid.push(item.name.toLowerCase());
+      });
+    }
 
-module.exports = getDislikedReasons;
+    // ✅ Add free-text reasons
+    if (Array.isArray(data.reasons)) {
+      data.reasons.forEach((r) => avoid.push(r.toLowerCase()));
+    }
+  });
+
+  // ✅ Deduplicate
+  return [...new Set(avoid)];
+};

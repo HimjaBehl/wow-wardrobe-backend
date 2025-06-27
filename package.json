@@ -18,6 +18,8 @@
     "firebase-admin": "^13.4.0",
     "node-fetch": "^3.3.2",
     "react-calendar": "^6.0.0",
+    "sharp": "^0.34.2",
+    "tmp-promise": "^3.0.3",
     "uuid": "^11.1.0"
   }
 }
