@@ -82,30 +82,26 @@ app.post("/auto-tag", async (req, res) => {
     const sharp = require("sharp");
     const uploadedItems = [];
 
-        for (let i = 0; i < items.length; i++) {
-          const obj = items[i];
+    for (let i = 0; i < items.length; i++) {
+      const obj = items[i];
 
-          // ✅ make sure bbox exists
-          if (!obj || !obj.bbox) {
-            console.warn(`⚠️ Skipping invalid object at index ${i}`, obj);
-            continue;
-          }
+      // ✅ make sure bbox exists
+      if (!obj || !obj.bbox) {
+        console.warn(`⚠️ Skipping invalid object at index ${i}`, obj);
+        continue;
+      }
 
-          // 🔄 convert bbox → sharp coords
-          const { x_min, y_min, x_max, y_max } = obj.bbox;
-          const left   = Math.floor(x_min);
-          const top    = Math.floor(y_min);
-          const width  = Math.floor(x_max - x_min);
-          const height = Math.floor(y_max - y_min);
+      // 🔄 convert bbox → sharp coords
+      const { x_min, y_min, x_max, y_max } = obj.bbox;
+      const left   = Math.floor(x_min);
+      const top    = Math.floor(y_min);
+      const width  = Math.floor(x_max - x_min);
+      const height = Math.floor(y_max - y_min);
 
-          const cropped = await sharp(originalImage)
-            .extract({ left, top, width, height })
-            .resize(400, 400, { fit: "contain", background: "#fff" })
-            .toBuffer();
-
-          // … (rest of the upload logic stays the same)
-        }
-
+      const cropped = await sharp(originalImage)
+        .extract({ left, top, width, height })
+        .resize(400, 400, { fit: "contain", background: "#fff" })
+        .toBuffer();
 
       const filename = `cropped_${Date.now()}_${i}.jpg`;
       const fileRef = bucket.file(`wardrobe/${filename}`);
@@ -126,7 +122,7 @@ app.post("/auto-tag", async (req, res) => {
         tags: obj.tags.map(t => t.name),
       });
     }
-  
+
     return res.json({ detected: uploadedItems });
   } catch (err) {
     console.error("Auto-tagging failed:", err);
