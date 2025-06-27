@@ -17,6 +17,7 @@
     "express": "^5.1.0",
     "firebase-admin": "^13.4.0",
     "node-fetch": "^3.3.2",
+    "react-calendar": "^6.0.0",
     "uuid": "^11.1.0"
   }
 }
