@@ -1,8 +1,8 @@
 const { getFirestore } = require("firebase-admin/firestore");
-const db = getFirestore();
 
 async function getDislikedReasons(uid, limit = 5) {
   try {
+    const db = getFirestore();
     const snapshot = await db
       .collection("outfitFeedback")
       .where("uid", "==", uid)

@@ -9,16 +9,19 @@ const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore, doc, getDoc } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const serviceAccount = require("./serviceAccountKey.json");
+
+// Initialize Firebase first
+initializeApp({
+  credential: cert(serviceAccount),
+  storageBucket: "wowapp1406.appspot.com",
+});
+
 const getDislikedReasons = require("./getDislikedReasons");
 
 console.log("🔑 XIMILAR_API_KEY loaded:", !!process.env.XIMILAR_API_KEY);
 console.log("🧠 OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
 
 const app = express();
-initializeApp({
-  credential: cert(serviceAccount),
-  storageBucket: "wowapp1406.appspot.com",
-});
 const db = getFirestore();
 const bucket = getStorage().bucket();
 
@@ -225,7 +228,7 @@ app.post("/suggest-outfit", async (req, res) => {
   let { items, occasion, vibe, city, constraints, uid, weather } = req.body;
   let dislikes = [];
   try {
-    dislikes = await getUserDislikes(uid);
+    dislikes = await getDislikedReasons(uid);
     console.log("🧠 Retrieved dislikes:", dislikes);
   } catch (err) {
     console.error("🚫 Error fetching dislikes:", err.message);
