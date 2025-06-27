@@ -1,5 +1,7 @@
 require("dotenv").config();
 const express = require("express");
+const sharp = require("sharp");
+const fs = require("fs");
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
@@ -10,7 +12,7 @@ const { getFirestore, doc, getDoc } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const serviceAccount = require("./serviceAccountKey.json");
 const cropAndUpload = require("./cropAndUpload");
-
+console.log("🔑 XIMILAR_API_KEY exists:", !!process.env.XIMILAR_API_KEY);
 // Initialize Firebase first
 initializeApp({
   credential: cert(serviceAccount),
@@ -41,53 +43,97 @@ app.get("/", (req, res) => {
 
 // ✅ Auto-tagging
 app.post("/auto-tag", async (req, res) => {
-  const { image_url } = req.body;
-  if (!image_url) return res.status(400).json({ error: "Image URL is required" });
-
   try {
-    const tagRes = await axios.post(
-      "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
-      { records: [{ _url: image_url }] },
-      {
-        headers: {
-          Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const { image_url } = req.body;
 
-    const objects = tagRes.data?.records?.[0]?._objects || [];
-    // ⬇️ download original jpg once – we re-use for every object crop
-    const originalBuffer = await fetch(image_url).then(r => r.buffer());
-
-    const detected = objects.map((obj) => {
-      const rawTags = obj._tags_simple || [];
-
-      const cleanedTags = Array.from(
-        new Set(
-          rawTags
-            .map((tag) => tag.toLowerCase())
-            .map((tag) => tag.replace(/^.*\//, ""))
-        )
-      )
-        .slice(0, 6)
-        .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
-
-      return {
-        image_url,
-        name: obj._tags_map?.Subcategory || obj._tags_map?.Category || "TO_BE_DETERMINED",
-        category: obj._tags_map?.Category || "TO_BE_DETERMINED",
-        color: obj._tags_map?.Color || "TO_BE_DETERMINED",
-        tags: cleanedTags, // ✅ Now safely defined above
-      };
+    // STEP 1: Call Ximilar API for detection
+    const ximilarRes = await fetch("https://api.ximilar.com/tagging/fashion/v2/detect_tags_all", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Token ${process.env.XIMILAR_API_KEY}`,
+      },
+      body: JSON.stringify({ records: [{ _url: image_url }] }),
     });
 
-    res.json({ detected });
+    const ximilarData = await ximilarRes.json();
+    console.log("🧪 Ximilar raw response:", JSON.stringify(ximilarData, null, 2));
+
+    if (!ximilarData.records || ximilarData.records.length === 0) {
+
+      if (croppedItems.length === 0) {
+        return res.status(200).json({
+          detected: [],
+          message: "No items detected. Try uploading a clearer image with distinct clothing items."
+        });
+      }
+
+      return res.status(400).json({ error: "No objects detected." });
+    }
+
+    const items = ximilarData.records?.[0]?.objects || [];
+    console.log("🧠 Full Ximilar response:", JSON.stringify(ximilarData, null, 2));
+    console.log("🎯 Detected objects:", items);
+    const imageResponse = await fetch(image_url);
+    const buffer = await imageResponse.arrayBuffer();
+    const originalImage = Buffer.from(buffer);
+
+    // STEP 2: Use sharp to crop each object
+    const sharp = require("sharp");
+    const uploadedItems = [];
+
+        for (let i = 0; i < items.length; i++) {
+          const obj = items[i];
+
+          // ✅ make sure bbox exists
+          if (!obj || !obj.bbox) {
+            console.warn(`⚠️ Skipping invalid object at index ${i}`, obj);
+            continue;
+          }
+
+          // 🔄 convert bbox → sharp coords
+          const { x_min, y_min, x_max, y_max } = obj.bbox;
+          const left   = Math.floor(x_min);
+          const top    = Math.floor(y_min);
+          const width  = Math.floor(x_max - x_min);
+          const height = Math.floor(y_max - y_min);
+
+          const cropped = await sharp(originalImage)
+            .extract({ left, top, width, height })
+            .resize(400, 400, { fit: "contain", background: "#fff" })
+            .toBuffer();
+
+          // … (rest of the upload logic stays the same)
+        }
+
+
+      const filename = `cropped_${Date.now()}_${i}.jpg`;
+      const fileRef = bucket.file(`wardrobe/${filename}`);
+
+      await fileRef.save(cropped, {
+        contentType: "image/jpeg",
+        public: true,
+      });
+
+      const [metadata] = await fileRef.getMetadata();
+      const publicUrl = metadata.mediaLink || `https://storage.googleapis.com/${bucket.name}/wardrobe/${filename}`;
+
+      uploadedItems.push({
+        name: obj.tags?.[0]?.name || "Item",
+        category: obj.tags?.[1]?.name || "Unknown",
+        color: obj.tags?.[2]?.name || "Unknown",
+        image_url: publicUrl,
+        tags: obj.tags.map(t => t.name),
+      });
+    }
+  
+    return res.json({ detected: uploadedItems });
   } catch (err) {
-    console.error("❌ Auto-tagging error:", err.message);
-    res.status(500).json({ error: "Auto-tagging failed", message: err.message });
+    console.error("Auto-tagging failed:", err);
+    res.status(500).json({ error: "Auto-tagging failed (unexpected)", message: err.message });
   }
 });
+
 
 
 // ✅ Fetch wardrobe by user ID
