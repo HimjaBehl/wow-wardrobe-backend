@@ -147,7 +147,7 @@ app.get("/plan-outfit", async (req, res) => {
   }
 
   try {
-    const docRef = db.collection("outfit_plans").doc(${uid}_${date});
+    const docRef = db.collection("outfit_plans").doc(`${uid}_${date}`);
     const docSnap = await docRef.get();
     if (docSnap.exists) {
       res.json(docSnap.data());
@@ -171,7 +171,7 @@ const callOpenAI = async (prompt) => {
         messages: [
           {
             role: "system",
-            content: You are a smart, creative personal stylist AI. Always respond in clean JSON.
+            content: "You are a smart, creative personal stylist AI. Always respond in clean JSON."
           },
           {
             role: "user",
@@ -181,7 +181,7 @@ const callOpenAI = async (prompt) => {
       },
       {
         headers: {
-          Authorization: Bearer ${process.env.OPENAI_API_KEY},
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type": "application/json"
         }
       }
@@ -229,10 +229,10 @@ function getWeatherType(description = "") {
 
 function generateOutfitPrompt(usableItems, occasion, vibe, city, constraints, weatherType) {
   const itemList = usableItems.map(item => 
-    - ${item.name || "Unnamed"} (${item.category || "Uncategorized"}, ${item.color || "No Color"})
+    `- ${item.name || "Unnamed"} (${item.category || "Uncategorized"}, ${item.color || "No Color"})`
   ).join("\n");
 
-  return 
+  return `
 You are a fashion stylist AI. Based ONLY on the wardrobe provided, create 2 complete outfit suggestions.
 
 🧾 Occasion: ${occasion}
@@ -257,7 +257,7 @@ Guidelines:
     }
   ]
 };
-}
+}`;
 
 // ✅ Suggest Outfit
 app.post("/suggest-outfit", async (req, res) => {
@@ -267,7 +267,7 @@ app.post("/suggest-outfit", async (req, res) => {
   let preferredTags = [];
 
   try {
-    const response = await fetch(https://wttr.in/${city}?format=%C);
+    const response = await fetch(`https://wttr.in/${city}?format=%C`);
     const weatherDescription = await response.text();
     weatherType = getWeatherType(weatherDescription);
     preferredTags = weatherTagMap[weatherType] || [];
@@ -282,7 +282,7 @@ app.post("/suggest-outfit", async (req, res) => {
     let usableItems = filteredItems.length > 0 ? filteredItems : items;
     console.log(
       "👚 Items kept after weather filter:",
-      ${filteredItems.length}/${items.length}
+      `${filteredItems.length}/${items.length}`
     );
     // --------------------------------------
 
@@ -364,7 +364,7 @@ app.post("/plan-outfit", async (req, res) => {
   }
 
   try {
-    const planRef = db.collection("outfit_plans").doc(${uid}_${date});
+    const planRef = db.collection("outfit_plans").doc(`${uid}_${date}`);
     await planRef.set({ uid, date, outfit });
     res.status(200).json({ message: "Outfit plan saved successfully" });
   } catch (err) {
@@ -392,5 +392,5 @@ process.on("unhandledRejection", (reason, promise) => {
 // ✅ Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(🚀 Server running on http://0.0.0.0:${PORT});
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
 });
