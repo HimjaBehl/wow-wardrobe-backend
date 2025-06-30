@@ -309,7 +309,6 @@ app.post("/suggest-outfit", async (req, res) => {
       console.log("⛔ Removed items matching constraints:", blockedTerms);
     }
 
-
   } catch (err) {
     console.warn("⚠️ Failed to fetch weather info:", err.message);
   }
