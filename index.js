@@ -44,7 +44,7 @@ app.post("/auto-tag", async (req, res) => {
       { records: [{ _url: image_url }] },
       {
         headers: {
-          Authorization: Token ${process.env.XIMILAR_API_KEY},
+          Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
           "Content-Type": "application/json",
         },
       }
