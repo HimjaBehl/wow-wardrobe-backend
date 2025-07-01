@@ -90,6 +90,12 @@ app.get("/wardrobe", async (req, res) => {
 
   try {
     const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
+
+    console.log("📦 Docs found:", snapshot.size);
+    snapshot.forEach((doc) => {
+      console.log("➡️ Doc:", doc.id, doc.data());
+    });
+
     const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     res.json(items);
   } catch (err) {
@@ -97,6 +103,7 @@ app.get("/wardrobe", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch wardrobe", message: err.message });
   }
 });
+
 
 
 
@@ -228,58 +235,79 @@ function getWeatherType(description = "") {
 }
 
 function generateOutfitPrompt(usableItems, occasion, vibe, city, constraints, weatherType) {
-  const itemList = usableItems.map(item => 
-    `- ${item.name || "Unnamed"} (${item.category || "Uncategorized"}, ${item.color || "No Color"})`
-  ).join("\n");
+  const itemList = usableItems
+    .map(
+      (item) =>
+        `- ${item.name || "Unnamed"} (${item.category || "Uncategorised"}, ${
+          item.color || "No colour"
+        })`
+    )
+    .join("\n");
 
   return `
-You are a fashion stylist AI. Based ONLY on the wardrobe provided, create 2 complete outfit suggestions.
+You are a fashion-stylist AI. Based **only** on the wardrobe provided, create **2** complete outfits.
 
 🧾 Occasion: ${occasion}
 🎭 Vibe: ${vibe}
 📍 City: ${city}
-☀️ Weather Type: ${weatherType}
+☀️ Weather type: ${weatherType}
 ❌ Constraints: ${constraints || "None"}
 
 Wardrobe:
 ${itemList}
 
-Guidelines:
-- 3–5 items per outfit.
-- Weather-appropriate for ${city}.
-- Use only provided items.
-- Format response like:
+Guidelines
+- Use 3 – 5 items per outfit.
+- Pick weather-appropriate pieces for ${city}.
+- **Only** use items from the wardrobe list.
+- Respond in *clean JSON* exactly like:
+
 {
   "outfits": [
     {
-      "style_note": "...",
-      "items": [ { name, category, color, image_url } ]
+      "style_note": "…",
+      "items": [
+        { "name": "Beige trench coat",
+          "category": "Outerwear",
+          "color": "Beige",
+          "image_url": "…" }
+      ]
     }
   ]
-};
-}`;
+}
+`;
+}
+
 
 // ✅ Suggest Outfit
 app.post("/suggest-outfit", async (req, res) => {
   let { items, occasion, vibe, city, constraints, uid } = req.body;
-
-  let weatherType = "hot"; // default
-  let preferredTags = [];
+  
+  // ----------  variables we’ll mutate ----------
+  let weatherType   = "hot";      // default until we fetch wttr.in
+    let preferredTags = [];         // maps to hot / cold / rainy
+    let usableItems   = items;      // will shrink with filters
 
   try {
+    console.log("🛬 /suggest-outfit called with body:", req.body);
     const response = await fetch(`https://wttr.in/${city}?format=%C`);
     const weatherDescription = await response.text();
     weatherType = getWeatherType(weatherDescription);
     preferredTags = weatherTagMap[weatherType] || [];
     console.log("🌦️ Weather:", weatherDescription, "→", weatherType);
+
+    } catch (err) {
+      console.error("❌ Error in /suggest-outfit:", err);
+      res.status(500).json({ error: err.message || "Internal Server Error" });
+    }
+
     // ----------  WEATHER FILTER  ----------
     const filteredItems = items.filter(it => {
-      const tags = (it.tags || []).map(t => t.toLowerCase());
-      return preferredTags.some(tag => tags.includes(tag));
-    });
-
-    // If nothing matches weather tags, fall back to full wardrobe
-    let usableItems = filteredItems.length > 0 ? filteredItems : items;
+       const tags = (it.tags || []).map(t => t.toLowerCase());
+       return preferredTags.some(tag => tags.includes(tag));
+     });
+    
+       usableItems = filteredItems.length > 0 ? filteredItems : items;
     console.log(
       "👚 Items kept after weather filter:",
       `${filteredItems.length}/${items.length}`
@@ -311,6 +339,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
   } catch (err) {
     console.warn("⚠️ Failed to fetch weather info:", err.message);
+     console.error("❌ OpenAI error payload:", err.response?.data || err.message);
   }
 
 
@@ -332,23 +361,39 @@ app.post("/suggest-outfit", async (req, res) => {
     console.warn("⚠️ Could not fetch user constraints:", err.message);
   }
 
+  // 🚫 HARD LIMIT – only send the first 40 items to keep token count safe
+  if (usableItems.length > 40) {
+    console.warn(`✂️  Trimming wardrobe from ${usableItems.length} to 40 items`);
+    usableItems = usableItems.slice(0, 40);
+  }
+
   const prompt = generateOutfitPrompt(usableItems, occasion, vibe, city, constraints, weatherType);
 
 
   console.log("📨 Final OpenAI Prompt:\n", prompt);
 
   try {
-    console.log("🧠 Payload going into prompt:", { usableItems, occasion, vibe, city, constraints });
-    console.log("📨 Final OpenAI Prompt:\n", prompt);
-    const output = await callOpenAI(prompt);
-    let outfits = [];
-    try {
-      outfits = JSON.parse(output);
-    } catch (e) {
-      console.warn("⚠️ AI response was not clean JSON.");
-    }
-    res.json({ outfits });
-  } catch (err) {
+      console.log("🧠 Payload into prompt:", { usableItems, occasion, vibe, city, constraints });
+      console.log("📨 Prompt text:\n", prompt);
+  
+      // ----------  CALL OPENAI ----------
+      const output = await callOpenAI(prompt);   // <-- real call
+      console.log("🧠 Raw model output:", output);
+  
+      // ----------  PARSE CLEAN JSON ----------
+      let parsed;
+      try {
+        parsed = JSON.parse(output);
+      } catch (err) {
+        console.error("❌ JSON parse failed:", err.message);
+        return res.status(500).json({ error: "Bad JSON from OpenAI", message: err.message });
+      }
+  
+      // Support both {outfits:[…]} or bare […]
+      const outfits = Array.isArray(parsed) ? parsed : parsed.outfits;
+      res.json({ outfits });
+    } catch (err) {
+
     console.error("❌ OpenAI error:", err.message);
     console.error(err.stack); // 👈 This shows the full error
     res.status(500).json({ error: "Failed to generate outfit", message: err.message });
