@@ -296,52 +296,45 @@ app.post("/suggest-outfit", async (req, res) => {
     preferredTags = weatherTagMap[weatherType] || [];
     console.log("🌦️ Weather:", weatherDescription, "→", weatherType);
 
-    } catch (err) {
-      console.error("❌ Error in /suggest-outfit:", err);
-      res.status(500).json({ error: err.message || "Internal Server Error" });
-    }
-
-    // ----------  WEATHER FILTER  ----------
-    const filteredItems = items.filter(it => {
-       const tags = (it.tags || []).map(t => t.toLowerCase());
-       return preferredTags.some(tag => tags.includes(tag));
-     });
-    
-       usableItems = filteredItems.length > 0 ? filteredItems : items;
-    console.log(
-      "👚 Items kept after weather filter:",
-      `${filteredItems.length}/${items.length}`
-    );
-    // --------------------------------------
-
-    // ✅ FILTER OUT ITEMS BASED ON USER CONSTRAINTS
-    if (constraints && constraints.toLowerCase().includes("no")) {
-      const blockedTerms = constraints
-        .toLowerCase()
-        .split("no")
-        .map((term) => term.trim())
-        .filter(Boolean); // remove empty strings
-
-      usableItems = usableItems.filter((item) => {
-        const itemTags = [
-          item.name?.toLowerCase() || "",
-          item.category?.toLowerCase() || "",
-          ...(item.tags || []).map((tag) => tag.toLowerCase())
-        ];
-
-        return !blockedTerms.some((blocked) =>
-          itemTags.some((tag) => tag.includes(blocked))
-        );
-      });
-
-      console.log("⛔ Removed items matching constraints:", blockedTerms);
-    }
-
   } catch (err) {
     console.warn("⚠️ Failed to fetch weather info:", err.message);
-     console.error("❌ OpenAI error payload:", err.response?.data || err.message);
   }
 
+  // ----------  WEATHER FILTER  ----------
+  const filteredItems = items.filter(it => {
+     const tags = (it.tags || []).map(t => t.toLowerCase());
+     return preferredTags.some(tag => tags.includes(tag));
+   });
+  
+     usableItems = filteredItems.length > 0 ? filteredItems : items;
+  console.log(
+    "👚 Items kept after weather filter:",
+    `${filteredItems.length}/${items.length}`
+  );
+  // --------------------------------------
+
+  // ✅ FILTER OUT ITEMS BASED ON USER CONSTRAINTS
+  if (constraints && constraints.toLowerCase().includes("no")) {
+    const blockedTerms = constraints
+      .toLowerCase()
+      .split("no")
+      .map((term) => term.trim())
+      .filter(Boolean); // remove empty strings
+
+    usableItems = usableItems.filter((item) => {
+      const itemTags = [
+        item.name?.toLowerCase() || "",
+        item.category?.toLowerCase() || "",
+        ...(item.tags || []).map((tag) => tag.toLowerCase())
+      ];
+
+      return !blockedTerms.some((blocked) =>
+        itemTags.some((tag) => tag.includes(blocked))
+      );
+    });
+
+    console.log("⛔ Removed items matching constraints:", blockedTerms);
+  }
 
   if (!occasion && vibe && vibeOccasionMap[vibe]) {
     occasion = vibeOccasionMap[vibe].join(" or ");
