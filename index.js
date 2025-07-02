@@ -66,7 +66,8 @@ app.post("/auto-tag", async (req, res) => {
         .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
 
       return {
-        image_url,
+        image_url,         // preview thumbnail
+        imagePath: `wardrobe/${file.name}`,   // add this line
         name: obj._tags_map?.Subcategory || obj._tags_map?.Category || "TO_BE_DETERMINED",
         category: obj._tags_map?.Category || "TO_BE_DETERMINED",
         color: obj._tags_map?.Color || "TO_BE_DETERMINED",
@@ -110,14 +111,14 @@ app.get("/wardrobe", async (req, res) => {
 // ✅ Add wardrobe item
 app.post("/wardrobe", async (req, res) => {
   try {
-    const { uid, image_url, name, category, color, tags } = req.body;
-    if (!uid || !image_url) {
-      return res.status(400).json({ error: "uid and image_url are required" });
+    const { uid, image_path, name, category, color, tags } = req.body;
+      if (!uid || !image_path) {
+        return res.status(400).json({ error: "uid and image_path are required" });
     }
 
     const docRef = await db.collection("wardrobe").add({
       uid,
-      image_url,
+      image_path,
       name,
       category,
       color,
@@ -234,49 +235,76 @@ function getWeatherType(description = "") {
   return "hot"; // default fallback
 }
 
-function generateOutfitPrompt(usableItems, occasion, vibe, city, constraints, weatherType) {
-  const itemList = usableItems
-    .map(
-      (item) =>
-        `- ${item.name || "Unnamed"} (${item.category || "Uncategorised"}, ${
-          item.color || "No colour"
-        })`
-    )
-    .join("\n");
+// ---------- give AI a stable id it can refer to ----------
+ // wid = wardrobe-id
+
+// generateOutfitPrompt.js  (or inside the route)
+
+/**
+ * Build the textual prompt we send to GPT.
+ * ────────────────────────────────────────────────
+ * @param {Array}  list         – wardrobe items AFTER all filters
+ * @param {String} occasion     – “casual”, “formal” … (may be mapped from vibe)
+ * @param {String} vibe         – “fun”, “elegant”, …
+ * @param {String} city         – user-supplied city (for weather call)
+ * @param {String} constraints  – free-text style prefs (“no black”, “no heels”…)
+ * @param {String} weatherType  – “hot” | “cold” | “rainy”  (derived from wttr.in)
+ */
+function generateOutfitPrompt(list, occasion, vibe, city, constraints, weatherType){
+  const wardrobeLines = list
+    .map((it)=>`#${it.wid}: ${it.name} | ${it.category} | ${it.color}`)
+    .join('\n');
 
   return `
-You are a fashion-stylist AI. Based **only** on the wardrobe provided, create **2** complete outfits.
+You are a top–tier fashion stylist AI. Create exactly **2 structured outfits** for a "${occasion}" "${vibe}" event in ${city}.
 
-🧾 Occasion: ${occasion}
-🎭 Vibe: ${vibe}
-📍 City: ${city}
-☀️ Weather type: ${weatherType}
-❌ Constraints: ${constraints || "None"}
+Choose from the wardrobe list below. Use only the `wid` numbers to refer to items.
 
-Wardrobe:
-${itemList}
+Each outfit must follow **one of these valid formats**:
+- Format A: top + bottom + shoes + (optional accessory or outerwear)
+- Format B: dress + shoes + (optional outerwear or accessory)
 
-Guidelines
-- Use 3 – 5 items per outfit.
-- Pick weather-appropriate pieces for ${city}.
-- **Only** use items from the wardrobe list.
-- Respond in *clean JSON* exactly like:
+Outfit rules:
+- 3 to 5 total pieces per outfit.
+- Each item must have a unique `wid`. No repeats.
+- Never mix dress with top/bottom in the same look.
+- Prioritize weather-appropriate choices for ${city} (${weatherType}).
+- Obey user constraints: ${constraints || "none"}
 
+Return this JSON:
 {
   "outfits": [
     {
-      "style_note": "…",
-      "items": [
-        { "name": "Beige trench coat",
-          "category": "Outerwear",
-          "color": "Beige",
-          "image_url": "…" }
-      ]
-    }
+      "style_note": "...",
+      "items": [ { "wid": 1 }, { "wid": 4 }, ... ]
+    },
+    ...
   ]
-}
+  }
 `;
 }
+
+
+function normaliseCategory(cat = "") {
+  return cat.toLowerCase()
+            .replace(/[^a-z]/g, "")        // keep letters only
+            .replace(/(wear|es|s)$/, "");   // jeans -> jean, dresses -> dress
+}
+
+const BUCKETS = {
+  upperwear : ["shirt","blouse","kurta","tee","cardigan","tshirt","top"],
+  bottomwear: ["jean","trouser","pant","skirt","short"],
+  dress     : ["dress","jumpsuit"],
+  outerwear : ["jacket","blazer","coat","shrug"],
+  footwear  : ["sneaker","heel","sandal","boot","shoe"],
+  accessory : ["bag","belt","scarf","jewellery","eyewear","sunglass"]
+};
+
+function getBucket(cat){
+  const key = normaliseCategory(cat);
+  return Object.keys(BUCKETS).find(b => BUCKETS[b].some(k => key.includes(k)));
+}
+
 
 
 // ✅ Suggest Outfit
@@ -306,7 +334,9 @@ app.post("/suggest-outfit", async (req, res) => {
      return preferredTags.some(tag => tags.includes(tag));
    });
   
-     usableItems = filteredItems.length > 0 ? filteredItems : items;
+  // 2️⃣ keep the filter only if it still leaves us ≥ 5 options
+  // only accept the weather filter if we still have some breadth
+  usableItems = filteredItems.length >= 5 ? filteredItems : items;
   console.log(
     "👚 Items kept after weather filter:",
     `${filteredItems.length}/${items.length}`
@@ -325,6 +355,7 @@ app.post("/suggest-outfit", async (req, res) => {
       const itemTags = [
         item.name?.toLowerCase() || "",
         item.category?.toLowerCase() || "",
+        item.color?.toLowerCase()    || "",   
         ...(item.tags || []).map((tag) => tag.toLowerCase())
       ];
 
@@ -348,7 +379,8 @@ app.post("/suggest-outfit", async (req, res) => {
     const docRef = doc(db, "preferences", uid);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      constraints = docSnap.data().stylePrefs || "";
+      const saved = docSnap.data().stylePrefs || "";
+      constraints = [saved, constraints].filter(Boolean).join(" ").trim(); // keep both
     }
   } catch (err) {
     console.warn("⚠️ Could not fetch user constraints:", err.message);
@@ -360,6 +392,8 @@ app.post("/suggest-outfit", async (req, res) => {
     usableItems = usableItems.slice(0, 40);
   }
 
+  //give every surviving piece a unique wid\
+  usableItems = usableItems.map((it, idx) => ({ ...it, wid: idx }));
   const prompt = generateOutfitPrompt(usableItems, occasion, vibe, city, constraints, weatherType);
 
 
@@ -372,19 +406,48 @@ app.post("/suggest-outfit", async (req, res) => {
       // ----------  CALL OPENAI ----------
       const output = await callOpenAI(prompt);   // <-- real call
       console.log("🧠 Raw model output:", output);
-  
-      // ----------  PARSE CLEAN JSON ----------
-      let parsed;
-      try {
-        parsed = JSON.parse(output);
-      } catch (err) {
-        console.error("❌ JSON parse failed:", err.message);
-        return res.status(500).json({ error: "Bad JSON from OpenAI", message: err.message });
+
+
+    // safe parse + fallback
+    let parsed;
+    try {
+      parsed = JSON.parse(output);
+    } catch (e) {
+      console.error("🧠 GPT response parsing failed:", output);
+      return res.json({ outfits: [] });
+    }
+
+    // ✅ Skip remapping if usableItems or wid match fails
+    if (!parsed.outfits || !Array.isArray(parsed.outfits)) {
+      return res.json({ outfits: [] });
+    }
+
+    const resolvedOutfits = parsed.outfits.map(o => {
+      const seen = new Set();
+      const finalItems = [];
+
+      for (const itRaw of o.items) {
+        const it = ("wid" in itRaw) ? usableItems[itRaw.wid] : itRaw;
+        const bucket = getBucket(it.category || it.name) || "misc";
+
+        if (bucket === "dress") {
+          // remove any earlier top/bottom if a dress sneaks in afterwards
+          finalItems.filter(i => !["upperwear","bottomwear"].includes(getBucket(i.category||i.name)));
+          seen.delete("upperwear"); seen.delete("bottomwear");
+        }
+        if (!seen.has(bucket)) {
+          finalItems.push(it);
+          seen.add(bucket);
+        }
       }
+      return { style_note: o.style_note, items: finalItems };
+    });
+      
+
+    res.json({ outfits: resolvedOutfits });
+
   
-      // Support both {outfits:[…]} or bare […]
-      const outfits = Array.isArray(parsed) ? parsed : parsed.outfits;
-      res.json({ outfits });
+
     } catch (err) {
 
     console.error("❌ OpenAI error:", err.message);
