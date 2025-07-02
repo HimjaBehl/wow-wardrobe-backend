@@ -1,52 +1,24 @@
 // agent.js
-
-const { ChatOpenAI } = require("@langchain/openai");
+const { ChatOpenAI } = require("langchain/dist/chat_models/openai");
 const { initializeAgentExecutorWithOptions } = require("langchain/agents");
-const { Tool } = require("langchain/tools");
-const { collection, query, where, getDocs } = require("firebase-admin/firestore");
-const { db } = require("./firebase");
-require("dotenv").config();
 
-// Tool 1: Fetch user wardrobe
-const getUserWardrobeTool = new Tool({
-  name: "get_user_wardrobe",
-  description: "Fetch wardrobe items from a user's closet by UID",
-  func: async (uid) => {
-    const q = query(collection(db, "wardrobe"), where("uid", "==", uid));
-    const snapshot = await getDocs(q);
-    const items = snapshot.docs.map(doc => doc.data());
-    return JSON.stringify(items);
-  }
-});
+let executor; // Cache the executor so we don't re-create it every call
 
-// Tool 2: Fetch user preferences
-const getUserPrefsTool = new Tool({
-  name: "get_user_preferences",
-  description: "Fetch style preferences like dislikes or favorite colors",
-  func: async (uid) => {
-    const docRef = db.collection("user_preferences").doc(uid);
-    const docSnap = await docRef.get();
-    return docSnap.exists ? JSON.stringify(docSnap.data()) : "{}";
-  }
-});
+async function setupAgent() {
+  if (executor) return executor;
 
-// OpenAI model setup
-const model = new ChatOpenAI({
-  modelName: "gpt-4o",
-  temperature: 0.7
-});
+  const model = new ChatOpenAI({
+    temperature: 0.7,
+    modelName: "gpt-3.5-turbo",
+    openAIApiKey: process.env.OPENAI_API_KEY,
+  });
 
-// Create and export the agent
-const setupAgent = async () => {
-  const agent = await initializeAgentExecutorWithOptions(
-    [getUserWardrobeTool, getUserPrefsTool],
-    model,
-    {
-      agentType: "openai-functions",
-      verbose: true,
-    }
-  );
-  return agent;
-};
+  executor = await initializeAgentExecutorWithOptions([], model, {
+    agentType: "chat-zero-shot-react-description",
+    verbose: true,
+  });
+
+  return executor;
+}
 
 module.exports = setupAgent;

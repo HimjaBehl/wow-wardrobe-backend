@@ -10,6 +10,11 @@ const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fet
 const app = express(); // 👈 this was missing
 console.log("🔑 XIMILAR_API_KEY loaded:", !!process.env.XIMILAR_API_KEY);
 console.log("🧠 OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
+// 👉 Safe lowercase helper used everywhere
+function safeLower(txt) {
+  return typeof txt === "string" ? safeLower(txt) : "";
+}
+
 
 
 
@@ -52,7 +57,7 @@ app.post("/auto-tag", async (req, res) => {
           rawTags
             .map((tag) =>
               typeof tag === "string"
-              ? (typeof tag === "string" ? tag.toLowerCase().replace(/^.*\//, "") : "")
+              ? (typeof tag === "string" ? safeLower(tag).replace(/^.*\//, "") : "")
                 : null
             )
             .filter((tag) => tag)
@@ -171,9 +176,9 @@ app.get("/plan-outfit", async (req, res) => {
 /* ─── AI Stylist: Suggest outfit ─── */
 app.post("/suggest-outfit", async (req, res) => {
   const { uid, occasion = "casual", vibe = "fun" } = req.body;
-  // ✅ Clean defaults to avoid crash on .toLowerCase()
-  const occasionFormatted = occasion ? typeof occasion === "string" ? occasion.toLowerCase() : "" : "";
-  const vibeFormatted = vibe ? typeof vibe === "string" ? vibe.toLowerCase() : "" : "";
+  // ✅ Clean defaults to avoid crash on
+  const occasionFormatted = occasion ? typeof occasion === "string" ? safeLower(occasion) : "" : "";
+  const vibeFormatted = vibe ? typeof vibe === "string" ? safeLower(vibe) : "" : "";
 
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
