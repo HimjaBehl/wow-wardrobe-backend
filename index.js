@@ -12,8 +12,9 @@ console.log("🔑 XIMILAR_API_KEY loaded:", !!process.env.XIMILAR_API_KEY);
 console.log("🧠 OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
 // 👉 Safe lowercase helper used everywhere
 function safeLower(txt) {
-  return typeof txt === "string" ? safeLower(txt) : "";
+  return typeof txt === "string" ? txt.toLowerCase() : "";
 }
+
 
 
 
@@ -186,9 +187,21 @@ app.post("/suggest-outfit", async (req, res) => {
     const agent = await setupAgent();
 
     console.log("📩 Calling agent with:", { uid, occasion, vibe });
-
+    
     const result = await agent.call({
-      input: `Suggest a complete outfit for a "${occasion}" occasion with a "${vibe}" vibe for user ${uid}. Return JSON: { "outfit": [ { "name": string, "image_url": string } ] }`,
+      input: `You are a fashion stylist. You must respond ONLY in strict JSON format. Do not include any explanation.
+
+      Suggest a complete outfit for a "${occasion}" occasion with a "${vibe}" vibe for user ${uid}. Here is the format to follow:
+
+      {
+        "outfit": [
+          { "name": "White Shirt", "image_url": "https://example.com/shirt.jpg" },
+          { "name": "Blue Jeans", "image_url": "https://example.com/jeans.jpg" }
+        ]
+      }
+      Return only valid JSON. Do not include any other text.`,
+
+
     });
     console.log("🧠 Agent result:", result);
 
@@ -199,7 +212,27 @@ app.post("/suggest-outfit", async (req, res) => {
     }
 
     // If the LLM already gives structured JSON, keep it; if it gives a string, try to parse it.
-    const payload = typeof result.output === "string" ? JSON.parse(result.output) : result.output;
+      let payload;
+      try {
+        const rawOutput = result?.output?.toString?.() || "";
+
+        console.log("🧾 Agent raw output:", rawOutput);
+
+        payload = JSON.parse(rawOutput);
+      } catch (err) {
+        console.error("❌ JSON parse failed:", result.output);
+        return res.status(500).json({
+          error: "Agent output was not valid JSON",
+          raw: result.output?.toString?.(),
+          message: err.message,
+        });
+      }
+
+    } catch (err) {
+      console.error("❌ JSON parse failed:", result.output);
+      return res.status(500).json({ error: "Agent output was not valid JSON", raw: result.output });
+    }
+
     return res.json(payload);
 
   } catch (err) {
