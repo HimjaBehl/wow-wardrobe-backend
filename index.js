@@ -172,8 +172,8 @@ app.get("/plan-outfit", async (req, res) => {
 app.post("/suggest-outfit", async (req, res) => {
   const { uid, occasion = "casual", vibe = "fun" } = req.body;
   // ✅ Clean defaults to avoid crash on .toLowerCase()
-  const occasionFormatted = occasion ? typeof occasion === "string" ? occasion.toLowerCase() : ""
-  const vibeFormatted = vibe ? typeof vibe === "string" ? vibe.toLowerCase() : ""
+  const occasionFormatted = occasion ? typeof occasion === "string" ? occasion.toLowerCase() : "" : "";
+  const vibeFormatted = vibe ? typeof vibe === "string" ? vibe.toLowerCase() : "" : "";
 
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
