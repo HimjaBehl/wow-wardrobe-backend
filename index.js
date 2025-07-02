@@ -439,13 +439,12 @@ app.post("/suggest-outfit", async (req, res) => {
   console.log("📨 Final OpenAI Prompt:\n", prompt);
 
   try {
-      console.log("🧠 Payload into prompt:", { usableItems, occasion, vibe, city, constraints });
-      console.log("📨 Prompt text:\n", prompt);
-  
-      // ----------  CALL OPENAI ----------
-      const output = await callOpenAI(prompt);   // <-- real call
-      console.log("🧠 Raw model output:", output);
+    console.log("🧠 Payload into prompt:", { usableItems, occasion, vibe, city, constraints });
+    console.log("📨 Prompt text:\n", prompt);
 
+    // ----------  CALL OPENAI ----------
+    const output = await callOpenAI(prompt);   // <-- real call
+    console.log("🧠 Raw model output:", output);
 
     // safe parse + fallback
     let parsed;
@@ -457,59 +456,51 @@ app.post("/suggest-outfit", async (req, res) => {
     }
 
     // ✅ Skip remapping if usableItems or wid match fails
-    // ✅ Skip remapping if usableItems or wid match fails
     if (!parsed.outfits || !Array.isArray(parsed.outfits)) {
       return res.json({ outfits: [] });
     }
 
-      /* ──── BEGIN slot-aware resolver (paste this) ──── */
-      const resolvedOutfits = parsed.outfits.map(raw => {
-        const usedSlots = new Set();
-        const items = [];
+    /* ──── BEGIN slot-aware resolver (paste this) ──── */
+    const resolvedOutfits = parsed.outfits.map(raw => {
+      const usedSlots = new Set();
+      const items = [];
 
-        for (const ref of raw.items) {
-          const it = ("wid" in ref) ? usableItems[ref.wid] : ref;
-          const slot = detectSlot(it.name, it.category) || "accessory";
+      for (const ref of raw.items) {
+        const it = ("wid" in ref) ? usableItems[ref.wid] : ref;
+        const slot = detectSlot(it.name, it.category) || "accessory";
 
-          // ── hard guards ───────────────────────────────
-          if (slot === "dress" && (usedSlots.has("top") || usedSlots.has("bottom")))
-            continue; // no tops/bottoms if dress picked
+        // ── hard guards ───────────────────────────────
+        if (slot === "dress" && (usedSlots.has("top") || usedSlots.has("bottom")))
+          continue; // no tops/bottoms if dress picked
 
-          if ((slot === "top" || slot === "bottom") && usedSlots.has("dress"))
-            continue; // don't add top/bottom after dress
+        if ((slot === "top" || slot === "bottom") && usedSlots.has("dress"))
+          continue; // don't add top/bottom after dress
 
-          if (usedSlots.has(slot)) continue; // one per slot
-          // ─────────────────────────────────────────────
+        if (usedSlots.has(slot)) continue; // one per slot
+        // ─────────────────────────────────────────────
 
-          usedSlots.add(slot);
-          items.push({ ...it, _slot: slot });
-        }
+        usedSlots.add(slot);
+        items.push({ ...it, _slot: slot });
+      }
 
-        // validity check: need shoes AND (dress OR (top+bottom))
-        const valid =
-          usedSlots.has("shoes") &&
-          (usedSlots.has("dress") ||
-           (usedSlots.has("top") && usedSlots.has("bottom")));
+      // validity check: need shoes AND (dress OR (top+bottom))
+      const valid =
+        usedSlots.has("shoes") &&
+        (usedSlots.has("dress") ||
+         (usedSlots.has("top") && usedSlots.has("bottom")));
 
-        if (!valid) return null; // drop the outfit completely
+      if (!valid) return null; // drop the outfit completely
 
-        // pretty order for your front-end
-        items.sort((a, b) => ORDER.indexOf(a._slot) - ORDER.indexOf(b._slot));
+      // pretty order for your front-end
+      items.sort((a, b) => ORDER.indexOf(a._slot) - ORDER.indexOf(b._slot));
 
-        return { style_note: raw.style_note, items };
-      }).filter(Boolean); // removes any nulls
-      /* ──── END slot-aware resolver ──── */
-
-    });
-
-      
+      return { style_note: raw.style_note, items };
+    }).filter(Boolean); // removes any nulls
+    /* ──── END slot-aware resolver ──── */
 
     res.json({ outfits: resolvedOutfits });
 
-  
-
-    } catch (err) {
-
+  } catch (err) {
     console.error("❌ OpenAI error:", err.message);
     console.error(err.stack); // 👈 This shows the full error
     res.status(500).json({ error: "Failed to generate outfit", message: err.message });
