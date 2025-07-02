@@ -228,11 +228,6 @@ app.post("/suggest-outfit", async (req, res) => {
         });
       }
 
-    } catch (err) {
-      console.error("❌ JSON parse failed:", result.output);
-      return res.status(500).json({ error: "Agent output was not valid JSON", raw: result.output });
-    }
-
     return res.json(payload);
 
   } catch (err) {
