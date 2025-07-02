@@ -1,5 +1,6 @@
+
 // agent.js
-const { ChatOpenAI } = require("langchain/dist/chat_models/openai");
+const { ChatOpenAI } = require("@langchain/openai");
 const { initializeAgentExecutorWithOptions } = require("langchain/agents");
 
 let executor; // Cache the executor so we don't re-create it every call
