@@ -179,7 +179,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
   try {
     const agent = await setupAgent();
-    
+
     console.log("📩 Calling agent with:", { uid, occasion, vibe });
 
     const result = await agent.call({
