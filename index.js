@@ -258,7 +258,7 @@ function generateOutfitPrompt(list, occasion, vibe, city, constraints, weatherTy
   return `
 You are a top–tier fashion stylist AI. Create exactly **2 structured outfits** for a "${occasion}" "${vibe}" event in ${city}.
 
-Choose from the wardrobe list below. Use only the `wid` numbers to refer to items.
+Choose from the wardrobe list below. Use only the wid numbers to refer to items.
 
 Each outfit must follow **one of these valid formats**:
 - Format A: top + bottom + shoes + (optional accessory or outerwear)
