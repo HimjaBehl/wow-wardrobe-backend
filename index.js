@@ -266,10 +266,17 @@ Each outfit must follow **one of these valid formats**:
 
 Outfit rules:
 - 3 to 5 total pieces per outfit.
-- Each item must have a unique `wid`. No repeats.
+- Each item must have a unique wid. No repeats.
 - Never mix dress with top/bottom in the same look.
 - Prioritize weather-appropriate choices for ${city} (${weatherType}).
 - Obey user constraints: ${constraints || "none"}
+- List the pieces in this order when you answer:
+1. upper-wear (top *or* dress)
+2. bottom (skip if dress used)
+3. bag (optional but before shoes)
+4. shoes
+5. accessories / outerwear (optional)
+
 
 Return this JSON:
 {
@@ -293,7 +300,7 @@ function normaliseCategory(cat = "") {
 
 const BUCKETS = {
   upperwear : ["shirt","blouse","kurta","tee","cardigan","tshirt","top"],
-  bottomwear: ["jean","trouser","pant","skirt","short"],
+  bottomwear: ["pant","pants","trouser","trousers","jean","jeans","skirt","short","shorts"],
   dress     : ["dress","jumpsuit"],
   outerwear : ["jacket","blazer","coat","shrug"],
   footwear  : ["sneaker","heel","sandal","boot","shoe"],
@@ -304,6 +311,38 @@ function getBucket(cat){
   const key = normaliseCategory(cat);
   return Object.keys(BUCKETS).find(b => BUCKETS[b].some(k => key.includes(k)));
 }
+
+/* ──── BEGIN SLOT_MAP block ──── */
+const SLOT_MAP = {
+  top: ["top","shirt","t-shirt","tee","blouse","kurta","cardigan","sweater"],
+  bottom: ["pant","pants","trouser","trousers","jean","jeans",
+           "skirt","short","shorts"],
+  dress: ["dress","dresses","jumpsuit"],
+  shoes: ["sneaker","sneakers","heel","heels","boot","boots",
+          "shoe","sandals","loafer"],
+  bag: ["bag","handbag","tote","crossbody","sling"],
+  outerwear: ["jacket","coat","blazer","shrug","trench"],
+  accessory: ["belt","scarf","earring","bracelet","jewellery",
+              "sunglass","sunglasses","watch"]
+};
+
+const ORDER = [
+  "top",          // or dress (comes next)
+  "dress",
+  "bottom",
+  "bag",
+  "shoes",
+  "outerwear",
+  "accessory"
+];
+
+function detectSlot(name = "", category = "") {
+  const txt = `${name} ${category}`.toLowerCase();
+  return Object.entries(SLOT_MAP)
+               .find(([slot, keys]) => keys.some(k => txt.includes(k)))
+               ?.[0];
+}
+/* ──── END SLOT_MAP block ──── */
 
 
 
@@ -418,30 +457,51 @@ app.post("/suggest-outfit", async (req, res) => {
     }
 
     // ✅ Skip remapping if usableItems or wid match fails
+    // ✅ Skip remapping if usableItems or wid match fails
     if (!parsed.outfits || !Array.isArray(parsed.outfits)) {
       return res.json({ outfits: [] });
     }
 
-    const resolvedOutfits = parsed.outfits.map(o => {
-      const seen = new Set();
-      const finalItems = [];
+      /* ──── BEGIN slot-aware resolver (paste this) ──── */
+      const resolvedOutfits = parsed.outfits.map(raw => {
+        const usedSlots = new Set();
+        const items = [];
 
-      for (const itRaw of o.items) {
-        const it = ("wid" in itRaw) ? usableItems[itRaw.wid] : itRaw;
-        const bucket = getBucket(it.category || it.name) || "misc";
+        for (const ref of raw.items) {
+          const it = ("wid" in ref) ? usableItems[ref.wid] : ref;
+          const slot = detectSlot(it.name, it.category) || "accessory";
 
-        if (bucket === "dress") {
-          // remove any earlier top/bottom if a dress sneaks in afterwards
-          finalItems.filter(i => !["upperwear","bottomwear"].includes(getBucket(i.category||i.name)));
-          seen.delete("upperwear"); seen.delete("bottomwear");
+          // ── hard guards ───────────────────────────────
+          if (slot === "dress" && (usedSlots.has("top") || usedSlots.has("bottom")))
+            continue; // no tops/bottoms if dress picked
+
+          if ((slot === "top" || slot === "bottom") && usedSlots.has("dress"))
+            continue; // don't add top/bottom after dress
+
+          if (usedSlots.has(slot)) continue; // one per slot
+          // ─────────────────────────────────────────────
+
+          usedSlots.add(slot);
+          items.push({ ...it, _slot: slot });
         }
-        if (!seen.has(bucket)) {
-          finalItems.push(it);
-          seen.add(bucket);
-        }
-      }
-      return { style_note: o.style_note, items: finalItems };
+
+        // validity check: need shoes AND (dress OR (top+bottom))
+        const valid =
+          usedSlots.has("shoes") &&
+          (usedSlots.has("dress") ||
+           (usedSlots.has("top") && usedSlots.has("bottom")));
+
+        if (!valid) return null; // drop the outfit completely
+
+        // pretty order for your front-end
+        items.sort((a, b) => ORDER.indexOf(a._slot) - ORDER.indexOf(b._slot));
+
+        return { style_note: raw.style_note, items };
+      }).filter(Boolean); // removes any nulls
+      /* ──── END slot-aware resolver ──── */
+
     });
+
       
 
     res.json({ outfits: resolvedOutfits });
