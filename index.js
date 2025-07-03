@@ -188,7 +188,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
     console.log("📩 Calling agent with:", { uid, occasion, vibe });
     
-                                       const result = await agent.call({ input: `You are a fashion stylist. You must respond ONLY in strict JSON format. Do not include any explanation.
+    const result = await agent.call({ input: `You are a fashion stylist. You must respond ONLY in strict JSON format. Do not include any explanation.
 
       Suggest a complete outfit for a "${occasion}" occasion with a "${vibe}" vibe for user ${uid}. Here is the format to follow:
 
@@ -198,24 +198,13 @@ app.post("/suggest-outfit", async (req, res) => {
           { "name": "Blue Jeans", "image_url": "https://example.com/jeans.jpg" }
         ]
       }
-      Return only valid JSON. Do not include any other text.`,
-
-
+      Return only valid JSON. Do not include any other text.`
     });
+    
     console.log("🧠 RAW result from agent:", result);
     console.log("🧪 Agent raw output before parse:", JSON.stringify(result, null, 2));
 
     return res.json(result.output);
-    
-
-    } catch (err) {
-      console.error("🔥 JSON Parse Failed", err);
-      return res.status(500).json({
-        error: "Agent failed",
-        message: "Failed to parse AI output. " + err.message,
-      });
-    }
-
 
   } catch (err) {
     console.error("🔥 Agent error:", err);
