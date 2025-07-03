@@ -12,12 +12,9 @@ const parser = StructuredOutputParser.fromZodSchema(
             name: z.string(),
             image: z.string().url()
           })
-        )
+        ).describe("List of clothing items in the outfit")
       })
     )
-  })
-      )
-      .describe("List of clothing items in the outfit"),
   })
 );
 
