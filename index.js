@@ -188,8 +188,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
     console.log("📩 Calling agent with:", { uid, occasion, vibe });
     
-    const result = await agent.call({
-      input: `You are a fashion stylist. You must respond ONLY in strict JSON format. Do not include any explanation.
+                                       const result = await agent.call({ input: `You are a fashion stylist. You must respond ONLY in strict JSON format. Do not include any explanation.
 
       Suggest a complete outfit for a "${occasion}" occasion with a "${vibe}" vibe for user ${uid}. Here is the format to follow:
 
@@ -203,32 +202,20 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
     });
-    console.log("🧠 Agent result:", result);
+    console.log("🧠 RAW result from agent:", result);
+    console.log("🧪 Agent raw output before parse:", JSON.stringify(result, null, 2));
 
+    return res.json(result.output);
+    
 
-    if (!result?.output) {
-      console.error("⚠️ Agent returned no output", result);
-      return res.status(500).json({ error: "Agent produced no output" });
+    } catch (err) {
+      console.error("🔥 JSON Parse Failed", err);
+      return res.status(500).json({
+        error: "Agent failed",
+        message: "Failed to parse AI output. " + err.message,
+      });
     }
 
-    // If the LLM already gives structured JSON, keep it; if it gives a string, try to parse it.
-      let payload;
-      try {
-        const rawOutput = result?.output?.toString?.() || "";
-
-        console.log("🧾 Agent raw output:", rawOutput);
-
-        payload = JSON.parse(rawOutput);
-      } catch (err) {
-        console.error("❌ JSON parse failed:", result.output);
-        return res.status(500).json({
-          error: "Agent output was not valid JSON",
-          raw: result.output?.toString?.(),
-          message: err.message,
-        });
-      }
-
-    return res.json(payload);
 
   } catch (err) {
     console.error("🔥 Agent error:", err);
