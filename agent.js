@@ -29,10 +29,7 @@ function safeJson(text = "") {
 }
 
 /* Fix old storage domain in returned URLs --------------------------- */
-  function patchImages(json = { looks: [] }) {   // ← default arg
-     json.looks.forEach(look =>
-  
-
+function patchImages(json = { looks: [] }) {   // ← default arg
   json.looks.forEach(look =>
     look.items?.forEach(it => {
       if (typeof it.image === "string") {
