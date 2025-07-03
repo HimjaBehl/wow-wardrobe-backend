@@ -47,3 +47,8 @@ parsed.outfit = parsed.outfit.map(item => ({
 // -----------------------------------------------------------
 
 return { output: parsed };
+    },
+  };
+}
+
+module.exports = setupAgent;
