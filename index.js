@@ -178,31 +178,20 @@ app.get("/plan-outfit", async (req, res) => {
 });
 
 /* ─── AI Stylist: Suggest outfit ─── */
-    app.post("/suggest-outfit", async (req, res) => {
-      const { uid, occasion = "", vibe = "", weather = "", prompt = "" } = req.body;
-      if (!uid) return res.status(400).json({ error: "uid is required" });
+app.post("/suggest-outfit", async (req, res) => {
+  const { uid, occasion = "", vibe = "", weather = "", prompt = "" } = req.body;
+  if (!uid) return res.status(400).json({ error: "uid is required" });
 
-      try {
-        const agent = await setupAgent();
+  try {
+    const agent = await setupAgent();
 
-        // Build final prompt
-        const structuredPrompt = `occasion: "${occasion}", vibe: "${vibe}", weather: "${weather}"`;
-        const finalInput = prompt
-          ? `User styling query: "${prompt}". Use their wardrobe only.`
-          : `Generate a stylish outfit for ${structuredPrompt}. Use user’s wardrobe items.`;
+    // Build final prompt
+    const structuredPrompt = `occasion: "${occasion}", vibe: "${vibe}", weather: "${weather}"`;
+    const finalInput = prompt
+      ? `User styling query: "${prompt}". Use their wardrobe only.`
+      : `Generate a stylish outfit for ${structuredPrompt}. Use user's wardrobe items.`;
 
-        const result = await agent.call({ input: finalInput });
-
-        console.log("🧠 Result:", result);
-        return res.json(result.output);
-      } catch (err) {
-        console.error("🔥 Agent error:", err);
-        res.status(500).json({ error: "Agent failed", message: err.message });
-      }
-    });
-
-
-
+    const result = await agent.call({ input: finalInput });
 
     console.log("✅ Agent response:", result);
     res.json(result.output);
