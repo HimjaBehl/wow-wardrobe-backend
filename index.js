@@ -187,7 +187,7 @@ app.post("/suggest-outfit", async (req, res) => {
     const wardrobe = snapshot.docs.map(doc => doc.data());
     
     const wardrobeText = wardrobe.map(item => {
-      return `• ${item.name} (${item.category}) - ${item.image_path}`;
+      return `• ${item.name} (${item.category}) - ${item.image_url}`;
     }).join("\n");
 
     const agent = await setupAgent();
@@ -195,21 +195,30 @@ app.post("/suggest-outfit", async (req, res) => {
 
     // 🟢  agent.call returns { output: … } – already parsed in agent.js
     const result = await agent.call({
-      input: `You are a fashion stylist. You must ONLY suggest outfits using the wardrobe provided below.
+      input: `You are a fashion stylist. You must respond ONLY in strict JSON format. Do not include any explanation.
 
-    Wardrobe:
+    Suggest a complete outfit for a "${occasionFormatted}" occasion with a "${vibeFormatted}" vibe for user ${uid}.
+
+Rules:
+- Use item names from the wardrobe
+- Do not use slashes or fallback values like category names (e.g. "Footwear/Sneakers")
+- Keep item names clean and specific
+
+    Use ONLY the items provided below from the user's wardrobe (avoid duplicates or reused images):
+
     ${wardrobeText}
 
-    Suggest a complete outfit for a "${occasion}" occasion with a "${vibe}" vibe.
-    Respond in this exact JSON format ONLY:
-
+    Here is the response format:
     {
       "outfit": [
-        { "name": "White Shirt", "image_url": "https://..." },
-        { "name": "Blue Jeans", "image_url": "https://..." }
+        { "name": "White Shirt", "image_url": "https://example.com/shirt.jpg" },
+        { "name": "Blue Jeans", "image_url": "https://example.com/jeans.jpg" }
       ]
-    }`
+    }
+    Return only valid JSON. Do not include any other text.`
     });
+
+
 
     console.log("✅ Agent response:", result);
     res.json(result.output);

@@ -30,22 +30,20 @@ async function setupAgent() {
 
 ${formatInstructions}`;
 
-      const response = await model.invoke([
-        {
-          role: "system",
-          content: "You are a fashion stylist AI that ONLY responds in structured JSON format.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ]);
+const response = await model.invoke([
+  { role: "system", content: "You are a fashion stylist …" },
+  { role: "user",   content: prompt },
+]);
 
-      return {
-        output: await parser.parse(response.content),
-      };
-    },
-  };
-}
+// ---- PATCH bad storage domain ↓ ---------------------------
+const parsed = await parser.parse(response.content);
+parsed.outfit = parsed.outfit.map(item => ({
+  ...item,
+  image_url: item.image_url.replace(
+    "firebasestorage.app",
+    "firebasestorage.googleapis.com"
+  ),
+}));
+// -----------------------------------------------------------
 
-module.exports = setupAgent;
+return { output: parsed };
