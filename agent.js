@@ -42,7 +42,7 @@ ${formatInstructions}`;
       ]);
 
       return {
-        output: await parser.parse(response),
+        output: await parser.parse(response.content),
       };
     },
   };

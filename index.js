@@ -111,6 +111,11 @@ app.get("/wardrobe", async (req, res) => {
   }
 });
 
+const wardrobeText = wardrobe.map(item => {
+  return `• ${item.name} (${item.category}) - ${item.image_path}`;
+}).join("\n");
+
+
 
 
 
@@ -177,41 +182,34 @@ app.get("/plan-outfit", async (req, res) => {
 /* ─── AI Stylist: Suggest outfit ─── */
 app.post("/suggest-outfit", async (req, res) => {
   const { uid, occasion = "casual", vibe = "fun" } = req.body;
-  // ✅ Clean defaults to avoid crash on
-  const occasionFormatted = occasion ? typeof occasion === "string" ? safeLower(occasion) : "" : "";
-  const vibeFormatted = vibe ? typeof vibe === "string" ? safeLower(vibe) : "" : "";
-
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
   try {
+    const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
+    const wardrobe = snapshot.docs.map(doc => doc.data());
     const agent = await setupAgent();
-
     console.log("📩 Calling agent with:", { uid, occasion, vibe });
-    
-    const result = await agent.call({ input: `You are a fashion stylist. You must respond ONLY in strict JSON format. Do not include any explanation.
 
-      Suggest a complete outfit for a "${occasion}" occasion with a "${vibe}" vibe for user ${uid}. Here is the format to follow:
+    // 🟢  agent.call returns { output: … } – already parsed in agent.js
+    const result = await agent.call({
+      input: `You are a fashion stylist. You must ONLY suggest outfits using the wardrobe provided below.
 
-      {
-        "outfit": [
-          { "name": "White Shirt", "image_url": "https://example.com/shirt.jpg" },
-          { "name": "Blue Jeans", "image_url": "https://example.com/jeans.jpg" }
-        ]
-      }
-      Return only valid JSON. Do not include any other text.`
+    Wardrobe:
+    ${wardrobeText}
+
+    Suggest a complete outfit for a "${occasion}" occasion with a "${vibe}" vibe.
+    Respond in this exact JSON format ONLY:
+
+    {
+      "outfit": [
+        { "name": "White Shirt", "image_url": "https://..." },
+        { "name": "Blue Jeans", "image_url": "https://..." }
+      ]
+    }`
     });
-    
-    console.log("🧠 RAW result from agent:", result);
-    console.log("🧪 Agent raw output before parse:", JSON.stringify(result, null, 2));
 
-    return res.json(result.output);
-
-  } catch (err) {
-    console.error("🔥 Agent error:", err);
-    res.status(500).json({ error: "Agent failed", message: err.message });
-  }
-});
 /* ─── End suggest-outfit ─── */
+
 
 
 
