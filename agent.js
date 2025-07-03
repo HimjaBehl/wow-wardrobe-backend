@@ -4,12 +4,18 @@ const { z } = require("zod");
 
 const parser = StructuredOutputParser.fromZodSchema(
   z.object({
-    outfit: z
-      .array(
-        z.object({
-          name: z.string().describe("Name of the clothing item"),
-          image_url: z.string().url().describe("Image URL of the item"),
-        })
+    looks: z.array(
+      z.object({
+        title: z.string(),
+        items: z.array(
+          z.object({
+            name: z.string(),
+            image: z.string().url()
+          })
+        )
+      })
+    )
+  })
       )
       .describe("List of clothing items in the outfit"),
   })

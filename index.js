@@ -6,6 +6,28 @@ const path = require("path");
 const setupAgent = require("./agent");
 const { v4: uuidv4 } = require("uuid");
 const { db, storage } = require("./firebase");
+// ─── WEATHER HELPER ─────────────────────────────────────────────
+const OPENWEATHER_URL =
+  "https://api.openweathermap.org/data/2.5/weather?units=metric";
+
+async function getWeather(city = "Delhi") {
+  try {
+    const url = `${OPENWEATHER_URL}&q=${encodeURIComponent(
+      city
+    )}&appid=${process.env.OPENWEATHER_API_KEY}`;
+
+    const { data } = await axios.get(url);
+    // e.g. "light rain", 31 → "Light rain, 31 °C"
+    return `${data.weather?.[0]?.description || "clear sky"}, ${Math.round(
+      data.main.temp
+    )}°C`;
+  } catch (err) {
+    console.warn("⚠️ Weather fetch failed:", err.message);
+    return null; // silently continue without weather
+  }
+}
+// ────────────────────────────────────────────────────────────────
+
 const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const app = express(); // 👈 this was missing
 console.log("🔑 XIMILAR_API_KEY loaded:", !!process.env.XIMILAR_API_KEY);
@@ -177,31 +199,92 @@ app.get("/plan-outfit", async (req, res) => {
   }
 });
 
-/* ─── AI Stylist: Suggest outfit ─── */
+/* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
-  const { uid, occasion = "", vibe = "", weather = "", prompt = "" } = req.body;
+  const {
+    uid,
+    occasion    = "",
+    vibe        = "",
+    city        = "Delhi",
+    constraints = "",
+    prompt      = "" // free-text box from the UI
+  } = req.body;
+
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
   try {
+    /* 0️⃣  Pull the user’s wardrobe from Firestore */
+    const snap = await db.collection("wardrobe")
+      .where("uid", "==", uid)
+      .get();
+
+    const wardrobeItems = snap.docs.map(d => d.data());
+
+    // Nicely formatted bulleted list the LLM can read
+    const wardrobeText = wardrobeItems.length
+      ? wardrobeItems.map(it =>
+          `• ${it.name || "Unnamed item"} (${it.category || "No category"})`
+        ).join("\n")
+      : "(user wardrobe is empty)";
+
+    /* 1️⃣  Weather summary */
+    const weatherNow = await getWeather(city); // e.g. “light rain, 23 °C”
+
+    /* 2️⃣  Compose the final prompt sent to the agent */
+    const finalInput = prompt.trim()
+      ? `User styling query: "${prompt.trim()}".
+         Current weather in ${city}: ${weatherNow || "N/A"}.
+         Here is the user's wardrobe:\n${wardrobeText}
+         Respond in this exact JSON format:
+         {
+           "looks": [
+             {
+               "title": "Look 1",
+               "items": [
+                 { "name": "Item Name", "image": "https://..." }
+               ]
+             }
+           ]
+         }
+         Only use items from the user's wardrobe. Do NOT make up new items.`
+      : `Generate a stylish outfit with these parameters:
+         • Occasion : "${occasion}"
+         • Vibe     : "${vibe}"
+         • Weather  : "${weatherNow || "N/A"}"
+         • Extra    : "${constraints}"
+         Use only the following wardrobe items:\n${wardrobeText}
+         Respond in this exact JSON format:
+         {
+           "looks": [
+             {
+               "title": "Look 1",
+               "items": [
+                 { "name": "Item Name", "image": "https://..." }
+               ]
+             }
+           ]
+         }
+         Only use items from the user's wardrobe. Do NOT make up new items.`.replace(/[ \t]+\n/g, "\n");
+
+    /* 3️⃣  Call the agent / LLM */
     const agent = await setupAgent();
-
-    // Build final prompt
-    const structuredPrompt = `occasion: "${occasion}", vibe: "${vibe}", weather: "${weather}"`;
-    const finalInput = prompt
-      ? `User styling query: "${prompt}". Use their wardrobe only.`
-      : `Generate a stylish outfit for ${structuredPrompt}. Use user's wardrobe items.`;
-
+    console.log("📩  Calling agent with:", { uid, occasion, vibe, city, weatherNow });
     const result = await agent.call({ input: finalInput });
+    console.log("🧾 Raw agent output:", JSON.stringify(result, null, 2));
 
-    console.log("✅ Agent response:", result);
+    /* 4️⃣  Ship the structured JSON straight back to the client */
+    console.log("✅  Agent responded:", result);
     res.json(result.output);
+
   } catch (err) {
-    console.error("❌ Failed to suggest outfit:", err.message);
-    res.status(500).json({ error: "Failed to suggest outfit" });
+    console.error("❌  Failed to suggest outfit:", err);
+    res.status(500).json({ error: "Failed to suggest outfit", message: err.message });
   }
 });
+/* ─── End suggest-outfit ─────────────────────────────────────────────── */
 
-/* ─── End suggest-outfit ─── */
+
+
 
 
 
