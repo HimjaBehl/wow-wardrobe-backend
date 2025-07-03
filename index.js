@@ -223,56 +223,59 @@ app.post("/suggest-outfit", async (req, res) => {
     // Nicely formatted bulleted list the LLM can read
     const wardrobeText = wardrobeItems.length
     ? wardrobeItems.map(it =>
-        `• ${it.name || "Unnamed item"} (${it.category || "No category"}) - ${it.image_path || "no image"}`
+        `• ${it.name || "Unnamed item"} (${it.category || "No category"}) - https://firebasestorage.googleapis.com/v0/b/wowapp1406.appspot.com/o/${encodeURIComponent(it.image_path)}?alt=media`
       ).join("\n")
     : "(user wardrobe is empty)";
+
+
 
 
     /* 1️⃣  Weather summary */
     const weatherNow = await getWeather(city); // e.g. “light rain, 23 °C”
 
     /* 2️⃣  Compose the final prompt sent to the agent */
-    const finalInput = prompt.trim()
-      ? `User styling query: "${prompt.trim()}".
-         Current weather in ${city}: ${weatherNow || "N/A"}.
-         Here is the user's wardrobe:\n${wardrobeText}
-         Respond in this exact JSON format:
-         {
-           "looks": [
-             {
-               "title": "Look 1",
-               "items": [
-                 { "name": "Item Name", "image": "https://..." }
-               ]
-             }
-           ]
-         }
-          Only use items from the user's wardrobe.
-Use the exact image URL provided for each item.
-Do NOT make up new items or placeholder links.`
-      : `Generate a stylish outfit with these parameters:
-         • Occasion : "${occasion}"
-         • Vibe     : "${vibe}"
-         • Weather  : "${weatherNow || "N/A"}"
-         • Extra    : "${constraints}"
-         Use only the following wardrobe items:\n${wardrobeText}
-         Respond in this exact JSON format:
-{
-  "looks": [
-    {
-      "title": "Look 1",
-      "items": [
-        { "name": "Item Name", "image": "https://..." }
-      ]
-    }
-  ]
-}
-Do not wrap your response in triple backticks or code fences.
+    const finalInput = (
+  prompt.trim()
+    ? `User styling query: "${prompt.trim()}".  
+       Current weather in ${city}: ${weatherNow || "N/A"}.  
+       Here is the user's wardrobe:\n${wardrobeText}  
+       Respond in this exact JSON format:
+       {
+         "looks": [
+           {
+             "title": "Look 1",
+             "items": [
+               { "name": "Item Name", "image": "https://..." }
+             ]
+           }
+         ]
+       }
+       Only use items from the user's wardrobe.
+       Use the exact image URL provided for each item.
+       Do NOT make up new items or placeholder links.`
+    : `Generate a stylish outfit with these parameters:
+       • Occasion : "${occasion}"
+       • Vibe     : "${vibe}"
+       • Weather  : "${weatherNow || "N/A"}"
+       • Extra    : "${constraints}"
+       Use only the following wardrobe items:\n${wardrobeText}
+       Respond in this exact JSON format:
+       {
+         "looks": [
+           {
+             "title": "Look 1",
+             "items": [
+               { "name": "Item Name", "image": "https://..." }
+             ]
+           }
+         ]
+       }
+       Do not wrap your response in triple backticks or code fences.
+       Only use items from the user's wardrobe.
+       Use the exact image URL provided for each item.
+       Do NOT make up new items or placeholder links.`
+).replace(/[ \t]+\n/g, "\n");   // ← now this is legal JS
 
-         Only use items from the user's wardrobe.
-Use the exact image URL provided for each item.
-Do NOT make up new items or placeholder links.
-replace(/[ \t]+\n/g, "\n");
 
     /* 3️⃣  Call the agent / LLM */
     const setupAgent = require("./agent");
@@ -358,5 +361,5 @@ process.on("unhandledRejection", (reason, promise) => {
 // ✅ Start server
 const PORT = 5000; // Make sure you define the PORT
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
