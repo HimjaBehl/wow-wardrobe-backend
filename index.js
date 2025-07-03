@@ -222,10 +222,11 @@ app.post("/suggest-outfit", async (req, res) => {
 
     // Nicely formatted bulleted list the LLM can read
     const wardrobeText = wardrobeItems.length
-      ? wardrobeItems.map(it =>
-          `• ${it.name || "Unnamed item"} (${it.category || "No category"})`
-        ).join("\n")
-      : "(user wardrobe is empty)";
+    ? wardrobeItems.map(it =>
+        `• ${it.name || "Unnamed item"} (${it.category || "No category"}) - ${it.image_path || "no image"}`
+      ).join("\n")
+    : "(user wardrobe is empty)";
+
 
     /* 1️⃣  Weather summary */
     const weatherNow = await getWeather(city); // e.g. “light rain, 23 °C”
@@ -246,7 +247,9 @@ app.post("/suggest-outfit", async (req, res) => {
              }
            ]
          }
-         Only use items from the user's wardrobe. Do NOT make up new items.`
+          Only use items from the user's wardrobe.
+Use the exact image URL provided for each item.
+Do NOT make up new items or placeholder links.`
       : `Generate a stylish outfit with these parameters:
          • Occasion : "${occasion}"
          • Vibe     : "${vibe}"
@@ -266,9 +269,14 @@ app.post("/suggest-outfit", async (req, res) => {
 }
 Do not wrap your response in triple backticks or code fences.
 
-         Only use items from the user's wardrobe. Do NOT make up new items.`.replace(/[ \t]+\n/g, "\n");
+         Only use items from the user's wardrobe.
+Use the exact image URL provided for each item.
+Do NOT make up new items or placeholder links.
+replace(/[ \t]+\n/g, "\n");
 
     /* 3️⃣  Call the agent / LLM */
+    const setupAgent = require("./agent");
+    const agent = await setupAgent();
     const result = await agent.call({ input: finalInput });
        console.log("🧾 Raw agent output:", JSON.stringify(result, null, 2));
     
