@@ -178,45 +178,29 @@ app.get("/plan-outfit", async (req, res) => {
 });
 
 /* ─── AI Stylist: Suggest outfit ─── */
-app.post("/suggest-outfit", async (req, res) => {
-  const { uid, occasion = "casual", vibe = "fun" } = req.body;
-  if (!uid) return res.status(400).json({ error: "uid is required" });
+    app.post("/suggest-outfit", async (req, res) => {
+      const { uid, occasion = "", vibe = "", weather = "", prompt = "" } = req.body;
+      if (!uid) return res.status(400).json({ error: "uid is required" });
 
-  try {
-    const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
-    const wardrobe = snapshot.docs.map(doc => doc.data());
-    
-    const wardrobeText = wardrobe.map(item => {
-      return `• ${item.name} (${item.category}) - ${item.image_url}`;
-    }).join("\n");
+      try {
+        const agent = await setupAgent();
 
-    const agent = await setupAgent();
-    console.log("📩 Calling agent with:", { uid, occasion, vibe });
+        // Build final prompt
+        const structuredPrompt = `occasion: "${occasion}", vibe: "${vibe}", weather: "${weather}"`;
+        const finalInput = prompt
+          ? `User styling query: "${prompt}". Use their wardrobe only.`
+          : `Generate a stylish outfit for ${structuredPrompt}. Use user’s wardrobe items.`;
 
-    // 🟢  agent.call returns { output: … } – already parsed in agent.js
-    const result = await agent.call({
-      input: `You are a fashion stylist. You must respond ONLY in strict JSON format. Do not include any explanation.
+        const result = await agent.call({ input: finalInput });
 
-    Suggest a complete outfit for a "${occasionFormatted}" occasion with a "${vibeFormatted}" vibe for user ${uid}.
-
-Rules:
-- Use item names from the wardrobe
-- Do not use slashes or fallback values like category names (e.g. "Footwear/Sneakers")
-- Keep item names clean and specific
-
-    Use ONLY the items provided below from the user's wardrobe (avoid duplicates or reused images):
-
-    ${wardrobeText}
-
-    Here is the response format:
-    {
-      "outfit": [
-        { "name": "White Shirt", "image_url": "https://example.com/shirt.jpg" },
-        { "name": "Blue Jeans", "image_url": "https://example.com/jeans.jpg" }
-      ]
-    }
-    Return only valid JSON. Do not include any other text.`
+        console.log("🧠 Result:", result);
+        return res.json(result.output);
+      } catch (err) {
+        console.error("🔥 Agent error:", err);
+        res.status(500).json({ error: "Agent failed", message: err.message });
+      }
     });
+
 
 
 
