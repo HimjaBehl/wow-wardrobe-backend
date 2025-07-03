@@ -186,7 +186,7 @@ app.get("/plan-outfit", async (req, res) => {
   }
 
   try {
-    const docRef = db.collection("outfit_plans").doc(`${uid}_${date}`);
+    const docRef = db.collection("outfit_plans").doc(uid + "_" + date);
     const docSnap = await docRef.get();
     if (docSnap.exists) {
       res.json(docSnap.data());
@@ -330,7 +330,7 @@ app.post("/plan-outfit", async (req, res) => {
   }
 
   try {
-    const planRef = db.collection("outfit_plans").doc(`${uid}_${date}`);
+    const planRef = db.collection("outfit_plans").doc(uid + "_" + date);
     await planRef.set({ uid, date, outfit });
     res.status(200).json({ message: "Outfit plan saved successfully" });
   } catch (err) {
