@@ -254,27 +254,34 @@ app.post("/suggest-outfit", async (req, res) => {
          • Extra    : "${constraints}"
          Use only the following wardrobe items:\n${wardrobeText}
          Respond in this exact JSON format:
-         {
-           "looks": [
-             {
-               "title": "Look 1",
-               "items": [
-                 { "name": "Item Name", "image": "https://..." }
-               ]
-             }
-           ]
-         }
+{
+  "looks": [
+    {
+      "title": "Look 1",
+      "items": [
+        { "name": "Item Name", "image": "https://..." }
+      ]
+    }
+  ]
+}
+Do not wrap your response in triple backticks or code fences.
+
          Only use items from the user's wardrobe. Do NOT make up new items.`.replace(/[ \t]+\n/g, "\n");
 
     /* 3️⃣  Call the agent / LLM */
-    const agent = await setupAgent();
-    console.log("📩  Calling agent with:", { uid, occasion, vibe, city, weatherNow });
     const result = await agent.call({ input: finalInput });
-    console.log("🧾 Raw agent output:", JSON.stringify(result, null, 2));
+       console.log("🧾 Raw agent output:", JSON.stringify(result, null, 2));
+    
+        /* 4️⃣ sanity-check */
+        if (!Array.isArray(result.output?.looks) || !result.output.looks.length) {
+          return res
+            .status(502)
+            .json({ error: "Agent returned no looks", raw: result.output });
+        }
+    
+        /* 5️⃣  Ship clean JSON */
+        res.json(result.output);
 
-    /* 4️⃣  Ship the structured JSON straight back to the client */
-    console.log("✅  Agent responded:", result);
-    res.json(result.output);
 
   } catch (err) {
     console.error("❌  Failed to suggest outfit:", err);

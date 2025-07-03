@@ -1,56 +1,94 @@
+/* ─── agent.js ─────────────────────────────────────────────────────────
+   Light-weight stylist agent that expects ONE JSON object:
+
+   {
+     "looks": [
+       {
+         "title": "Look 1",
+         "items": [
+           { "name": "...", "image": "https://..." }
+         ]
+       }
+     ]
+   }
+   ------------------------------------------------------------------- */
+
 const { ChatOpenAI } = require("@langchain/openai");
-const { StructuredOutputParser } = require("langchain/output_parsers");
-const { z } = require("zod");
 
-const parser = StructuredOutputParser.fromZodSchema(
-  z.object({
-    looks: z.array(
-      z.object({
-        title: z.string(),
-        items: z.array(
-          z.object({
-            name: z.string(),
-            image: z.string().url()
-          })
-        ).describe("List of clothing items in the outfit")
-      })
-    )
-  })
-);
+/* Small helper: robust JSON extraction  ------------------------------ */
+function safeJson(text = "") {
+  if (!text) return null;
 
-const formatInstructions = parser.getFormatInstructions();
+  // strip ```json … ``` wrappers if the model added them
+  const cleaned = text
+    .replace(/```json\s*([\s\S]*?)```/i, "$1")   // fenced block
+    .trim();
 
+  try   { return JSON.parse(cleaned); }
+  catch { return { looks: [] }; }
+}
+
+/* Fix old storage domain in returned URLs --------------------------- */
+  function patchImages(json = { looks: [] }) {   // ← default arg
+     json.looks.forEach(look =>
+  
+
+  json.looks.forEach(look =>
+    look.items?.forEach(it => {
+      if (typeof it.image === "string") {
+        it.image = it.image.replace(
+          "firebasestorage.app",
+          "firebasestorage.googleapis.com"
+        );
+      }
+    })
+  );
+  return json;
+}
+
+/* MAIN exported factory --------------------------------------------- */
 async function setupAgent() {
+  const model = new ChatOpenAI({
+    temperature : 0.7,
+    modelName   : "gpt-3.5-turbo",
+    openAIApiKey: process.env.OPENAI_API_KEY,
+  });
+
   return {
     call: async ({ input }) => {
-      const model = new ChatOpenAI({
-        temperature: 0.7,
-        modelName: "gpt-3.5-turbo",
-        openAIApiKey: process.env.OPENAI_API_KEY,
-      });
+      /* ––– Build the prompt ––– */
+      const prompt = `
+You are a professional fashion stylist AI.
+Respond **only** with valid JSON and nothing else.
 
-      const prompt = `You are a fashion stylist. Suggest a complete outfit for this: ${input}
+Expected schema:
+{
+  "looks": [
+    {
+      "title": "<short label>",
+      "items": [
+        { "name": "<item name>", "image": "<image URL>" }
+      ]
+    }
+  ]
+}
 
-${formatInstructions}`;
+${input}`.trim();
 
-const response = await model.invoke([
-  { role: "system", content: "You are a fashion stylist …" },
-  { role: "user",   content: prompt },
-]);
+      /* ––– Call LLM ––– */
+      const response = await model.invoke([
+        { role: "system", content: "You are a fashion stylist AI." },
+        { role: "user",   content: prompt }
+      ]);
 
-// ---- PATCH bad storage domain ↓ ---------------------------
-const parsed = await parser.parse(response.content);
-parsed.outfit = parsed.outfit.map(item => ({
-  ...item,
-  image_url: item.image_url.replace(
-    "firebasestorage.app",
-    "firebasestorage.googleapis.com"
-  ),
-}));
-// -----------------------------------------------------------
+      /* ––– Parse and patch ––– */
+      const parsed = patchImages(safeJson(response.content));
 
-return { output: parsed };
-    },
+      /* never let the caller see undefined */
+          if (!Array.isArray(parsed.looks)) parsed.looks = [];
+
+      return { output: parsed };
+    }
   };
 }
 
