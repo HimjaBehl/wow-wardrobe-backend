@@ -111,9 +111,7 @@ app.get("/wardrobe", async (req, res) => {
   }
 });
 
-const wardrobeText = wardrobe.map(item => {
-  return `• ${item.name} (${item.category}) - ${item.image_path}`;
-}).join("\n");
+
 
 
 
@@ -187,6 +185,11 @@ app.post("/suggest-outfit", async (req, res) => {
   try {
     const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
     const wardrobe = snapshot.docs.map(doc => doc.data());
+    
+    const wardrobeText = wardrobe.map(item => {
+      return `• ${item.name} (${item.category}) - ${item.image_path}`;
+    }).join("\n");
+
     const agent = await setupAgent();
     console.log("📩 Calling agent with:", { uid, occasion, vibe });
 
@@ -207,6 +210,14 @@ app.post("/suggest-outfit", async (req, res) => {
       ]
     }`
     });
+
+    console.log("✅ Agent response:", result);
+    res.json(result.output);
+  } catch (err) {
+    console.error("❌ Failed to suggest outfit:", err.message);
+    res.status(500).json({ error: "Failed to suggest outfit" });
+  }
+});
 
 /* ─── End suggest-outfit ─── */
 
