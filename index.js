@@ -59,6 +59,8 @@ app.post("/auto-tag", async (req, res) => {
   if (!image_url) return res.status(400).json({ error: "Image URL is required" });
 
   try {
+    console.log("🚀 Sending image to Ximilar:", image_url);
+
     const tagRes = await axios.post(
       "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
       { records: [{ _url: image_url }] },
@@ -70,16 +72,22 @@ app.post("/auto-tag", async (req, res) => {
       }
     );
 
+    console.log("✅ Ximilar response:", JSON.stringify(tagRes.data, null, 2));
+
     const objects = tagRes.data?.records?.[0]?._objects || [];
 
+    // your tagging logic continues...
     const detected = objects.map((obj) => {
       const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
 
       const cleanedTags = Array.from(
         new Set(
           rawTags
-            .filter(t => typeof t === "string")
-               .map(t => safeLower(t).replace(/^.*\//, ""))
+            .map((tag) =>
+              typeof tag === "string"
+                ? tag.toLowerCase().replace(/^.*\//, "")
+                : null
+            )
             .filter((tag) => tag)
         )
       )
@@ -88,7 +96,7 @@ app.post("/auto-tag", async (req, res) => {
 
       return {
         image_url,
-         image_path: `wardrobe/${obj?.file?.name || uuidv4()}`,  // 🔄 snake-case to match DB
+        image_path: `wardrobe/${obj?.file?.name || uuidv4()}`,
         name:
           obj._tags_map?.Subcategory ||
           obj._tags_map?.Category ||
@@ -99,12 +107,16 @@ app.post("/auto-tag", async (req, res) => {
       };
     });
 
-
     res.json({ detected });
   } catch (err) {
-    console.error("❌ Auto-tagging error:", err.message);
-    res.status(500).json({ error: "Auto-tagging failed", message: err.message });
+    console.error("❌ FULL ERROR OBJECT:", JSON.stringify(err?.response?.data || err.message, null, 2));
+    res.status(500).json({
+      error: "Auto-tagging failed",
+      message: err?.response?.data?.error || err.message,
+    });
   }
+
+
 });
 
 
@@ -139,7 +151,7 @@ app.get("/wardrobe", async (req, res) => {
 // ✅ Add wardrobe item
 app.post("/wardrobe", async (req, res) => {
   try {
-    const { uid, image_path, name, category, color, tags } = req.body;
+    const { uid, image_path, image_url, name, category, color, tags } = req.body;
       if (
             !uid ||
             !image_path ||
@@ -154,6 +166,7 @@ app.post("/wardrobe", async (req, res) => {
     const docRef = await db.collection("wardrobe").add({
       uid,
       image_path,
+      image_url,
       name,
       category,
       color,
@@ -241,7 +254,10 @@ app.post("/suggest-outfit", async (req, res) => {
 
     /* 2️⃣  Compose the final prompt sent to the agent */
       const finalInput = `
-       You are a fashion-stylist AI. Use ONLY the wardrobe items listed below.
+       SYSTEM:
+You are Tina, a fashion-stylist AI.  You MUST reply in valid JSON and follow ALL rules.Use ONLY the wardrobe items listed below.
+
+      USER:
        Wardrobe:
        ${wardrobeText}
 
@@ -252,30 +268,37 @@ app.post("/suggest-outfit", async (req, res) => {
        • Extra    : "${constraints || "none"}"
        ${prompt.trim() ? `• User request: "${prompt.trim()}"` : ""}
 
+       Rules (must be obeyed):
+       1. Return exactly **2** looks.
+       2. Each look MUST contain **3–5 distinct items**.
+       3. Each item MUST exist in the wardrobe list (match by name).
+       4. If you cannot comply, respond with: {"error":"NOT_ENOUGH_ITEMS"}.
+
        Reply in pure JSON (no markdown, no back-ticks) with this exact schema:
 
        {
-         "looks": [
-           {
-             "title": "Look 1",
-             "items": [
-               { "name": "Item Name", "image": "https://..." }
-             ]
-           },
-           {
-             "title": "Look 2",
-             "items": [
-               { "name": "Item Name", "image": "https://..." }
-             ]
-           }
-         ]
-       }
+  "looks":[
+    {
+      "title":"Look 1",
+      "items":[
+        { "name":"...", "image":"..." }
+      ]
+    },
+    {
+      "title":"Look 2",
+      "items":[
+        { "name":"...", "image":"..." }
+      ]
+    }
+  ]
+}
+`.trim();
 
        Rules:
        1. Each look MUST contain **3-5 distinct items** (top/bottom/shoes/accessory etc.).
        2. Do NOT invent new garments or URLs.
        3. Skip a category only if the wardrobe truly lacks options.
-       `.trim().replace(/[ \t]+\n/g, "\n");   // ← now this is legal JS
+       `
 
     console.log("🧠 Prompt to LLM:\n", finalInput);
 
