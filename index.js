@@ -359,20 +359,13 @@ ${wardrobeLines}
 
     console.log("🧠 Raw LLM Looks:", JSON.stringify(result.output.looks, null, 2));
 
-    
-    function validateLookAgainstRules(look, rules = {}) {
-      const bannedItems = (rules.bannedItems || []).map(x => x.toLowerCase());
-
-      const violates = look.items.some(item => {
-        const name = (item.name || "").toLowerCase();
-        return bannedItems.some(ban =>
-          name.includes(ban)
-        );
-      });
-
-      // If any banned item found → reject the whole look
-      return !violates;
-    }
+    // Return the result
+    res.json(result.output);
+  } catch (err) {
+    console.error("❌ Suggest outfit error:", err.message);
+    res.status(500).json({ error: "Failed to generate outfit suggestions" });
+  }
+});
 
 /* ─── End suggest-outfit ─────────────────────────────────────────────── */
 
