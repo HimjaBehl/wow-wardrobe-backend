@@ -385,12 +385,14 @@ ${wardrobeLines}
     }
     /* ───────────────────────────────────────────────────────── */
 
+    /* 8️⃣ return final result */
+    res.json(result.output);
 
-
-
-
-
-
+  } catch (err) {
+    console.error("❌ Suggest outfit error:", err.message);
+    res.status(500).json({ error: "AI suggestion failed", message: err.message });
+  }
+});
 
 // ✅ Like (save-as-favourite) outfit
 app.post("/like-outfit", async (req, res) => {
