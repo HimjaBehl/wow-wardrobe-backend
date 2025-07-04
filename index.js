@@ -253,6 +253,9 @@ app.post("/suggest-outfit", async (req, res) => {
       }));
     
     // build lookup for idx → full wardrobe object
+    const uniqueWardrobe = Array.from(
+      new Map(wardrobeItems.map(it => [it.image_url, it])).values()
+    );
     const idx2item = Object.fromEntries(
       wardrobeItems.slice(0, MAX).map((it, i) => [String(i), {
         image_url: it.image_url,
@@ -352,22 +355,35 @@ ${wardrobeLines}
         })
         .filter(Boolean); // drop nulls
     });
-    /* ─────────────────────────────────────────────────────────── */
 
-    // 🚮 Remove looks that ended up empty
-    result.output.looks = result.output.looks.filter(l => l.items.length);
+    /* 7️⃣  ── STYLE-RULE VALIDATION ────────────────────────── */
+    // 7-A: parse user constraints → build rules
+    function parseConstraints(text = "") {
+      const bans = [];
+      text
+        .toLowerCase()
+        .split(",")
+        .map(s => s.trim())
+        .forEach(t => {
+          if (t.startsWith("no ")) bans.push(t.replace("no ", "").trim());
+        });
+      return { bannedItems: bans };
+    }
 
-    console.log("🧠 Raw LLM Looks:", JSON.stringify(result.output.looks, null, 2));
+    const userRules = parseConstraints(constraints);
 
-    // Return the result
-    res.json(result.output);
-  } catch (err) {
-    console.error("❌ Suggest outfit error:", err.message);
-    res.status(500).json({ error: "Failed to generate outfit suggestions" });
-  }
-});
+    // 7-B: filter looks that violate rules
+    result.output.looks = result.output.looks.filter(look =>
+      validateLookAgainstRules(look, userRules)
+    );
 
-/* ─── End suggest-outfit ─────────────────────────────────────────────── */
+    // 7-C: if nothing left → send 400 so UI can react
+    if (result.output.looks.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "All looks violated user constraints", raw: result.output });
+    }
+    /* ───────────────────────────────────────────────────────── */
 
 
 
