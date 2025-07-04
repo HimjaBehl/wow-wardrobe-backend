@@ -216,111 +216,141 @@ app.get("/plan-outfit", async (req, res) => {
   }
 });
 
+
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
-  const {
-    uid,
-    occasion    = "",
-    vibe        = "",
-    city        = "Delhi",
-    constraints = "",
-    prompt      = "" // free-text box from the UI
-  } = req.body;
+  const { uid, occasion = "", vibe = "", city = "Delhi",
+          constraints = "", prompt = "" } = req.body;
 
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
   try {
-    /* 0️⃣  Pull the user’s wardrobe from Firestore */
-    const snap = await db.collection("wardrobe")
-      .where("uid", "==", uid)
-      .get();
+    /* 0️⃣ wardrobe fetch */
+    const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+    if (snap.empty) return res.status(400).json({ error: "Wardrobe empty" });
 
-    const wardrobeItems = snap.docs.map(d => d.data());
-    console.log("👕 Wardrobe items going to LLM:", wardrobeItems);
+    let wardrobeItems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+    /* build public url if missing */
+    const bucket = "wowapp1406.appspot.com";
+    wardrobeItems = wardrobeItems.map((it) =>
+      it.image_url
+        ? it
+        : { ...it,
+            image_url: `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(it.image_path)}?alt=media`
+          }
+    );
 
-    // Nicely formatted bulleted list the LLM can read
-    const wardrobeText = wardrobeItems
-      .filter(it => it.image_path && !it.image_path.includes("undefined"))
-    .map(it =>
-      `• ${it.name || "Unnamed"} (${it.category || "No category"}) - https://firebasestorage.googleapis.com/v0/b/wowapp1406.appspot.com/o/${encodeURIComponent(it.image_path)}?alt=media`
-    ).join("\n") || "(user wardrobe is empty)";
+    /* 1️⃣ brutally slim + re-id */
+    const MAX = 60;
+    const sample = wardrobeItems.slice(0, MAX)
+      .map((it, idx) => ({
+        idx,                                   // 0-59
+        name    : it.name    || "Unnamed",
+        category: it.category|| "NoCat",
+        color   : it.color   || "NoCol",
+      }));
+    
+    // build lookup for idx → full wardrobe object
+    const idx2item = Object.fromEntries(
+      wardrobeItems.slice(0, MAX).map((it, i) => [String(i), {
+        image_url: it.image_url,
+        name     : it.name || `Item ${i + 1}`,
+        category : it.category || "",
+        color    : it.color || "",
+      }])
+    );
 
+    /* 2️⃣ weather */
+    const weatherNow = await getWeather(city);
 
+    /* 3️⃣ compact prompt (pipe-delimited) */
+    const wardrobeLines = sample
+      .map((w) => `${w.idx}|${w.name}|${w.category}|${w.color}`)
+      .join("\n");
 
-
-    /* 1️⃣  Weather summary */
-    const weatherNow = await getWeather(city); // e.g. “light rain, 23 °C”
-
-    /* 2️⃣  Compose the final prompt sent to the agent */
     const finalInput = `
-    SYSTEM:
-    You are Tina, a fashion-stylist AI. You MUST reply in valid JSON and follow ALL rules.
+SYSTEM:
+You are Tina, an AI stylist.
 
-    USER:
-    Wardrobe:
-    ${wardrobeText}
-
-    Context:
-    • Occasion : "${occasion}"
-    • Vibe     : "${vibe}"
-    • Weather  : "${weatherNow || "N/A"}"
-    • Extra    : "${constraints || "none"}"${prompt.trim() ? `\n• User text : "${prompt.trim()}"` : ""}
-
-    Rules (must be obeyed):
-    1. Return exactly **2** looks.
-    2. Each look MUST contain **3–5 distinct items**.
-    3. Each item MUST exist in the wardrobe list (match by name).
-    4. If you cannot comply, respond with: {"error":"NOT_ENOUGH_ITEMS"}.
-
-    Return ONLY this JSON schema (no markdown):
-
-    {
-      "looks":[
-        {
-          "title":"Look 1",
-          "items":[
-            { "name":"...", "image":"..." }
-          ]
-        },
-        {
-          "title":"Look 2",
-          "items":[
-            { "name":"...", "image":"..." }
-          ]
-        }
-      ]
-    }
-    `.trim();
-
-    console.log("🧠 Prompt to LLM:\n", finalInput);
+USER DATA:
+Wardrobe (line format idx|name|category|color):
+${wardrobeLines}
 
 
-    /* 3️⃣  Call the agent / LLM */
-    const agent = await setupAgent();
-    const result = await agent.call({ input: finalInput });
-       console.log("🧾 Raw agent output:", JSON.stringify(result, null, 2));
+Context:
+Occasion: ${occasion}
+Vibe    : ${vibe}
+Weather : ${weatherNow || "N/A"}
+Extra   : ${constraints || "none"}
+${prompt.trim() ? `User text: ${prompt.trim()}` : ""}
 
-        /* 4️⃣ sanity-check */
-        if (
-  !Array.isArray(result.output?.looks) ||
-  result.output.looks.some((l) => (l.items || []).length < 3)
-) {
-  return res
-    .status(502)
-    .json({ error: "Agent returned incomplete looks", raw: result.output });
+
+Rules:
+1) Return exactly 2 looks.
+2) Each look must contain 3–5 items.
+3) Each look should follow **either**:
+   a) One-piece + footwear (+ accessories)
+   b) Topwear + bottomwear + footwear (+ accessories)
+4) NEVER combine one-piece with bottomwear or topwear.
+5) Avoid repeating items across looks.
+6) Pick items that are weather-appropriate, stylish, and visually coherent.
+7) JSON ONLY:
+
+{
+ "looks":[
+   { "title":"Look 1",
+     "items":[ { "idx":"3" } ]
+   },
+   { "title":"Look 2",
+     "items":[ { "idx":"7" } ]
+   }
+ ]
 }
+`.trim();
+
+    /* 4️⃣ debug prompt length */
+    console.log("🧠 prompt length (chars):", finalInput.length);
+
+    /* 5️⃣ call agent */
+    const agent  = await setupAgent();
+    const result = await agent.call({ input: finalInput });
+    console.log("🧾 raw output:", JSON.stringify(result.output, null, 2));
+
+    /* 🔥 6️⃣  ── HYDRATE EARLY ────────────────────────────────────────── */
+    result.output.looks.forEach((look, i) => {
+      look.items = look.items
+        .map((it) => {
+          const full = idx2item[it.idx] || {};
+          return {
+            ...it,
+            image_url: full.image_url || "",
+            name     : full.name      || "",
+            category : full.category  || "",
+            color    : full.color     || "",
+          };
+        })
+        .filter(it => it.image_url && it.name); // ✅ keep only valid items
+    });
+
+    /* 
+    
 
 
-        /* 5️⃣  Ship clean JSON */
-        res.json(result.output);
+    ──────────────────────────────────────────────────────────────── */
 
 
-  } catch (err) {
-    console.error("❌  Failed to suggest outfit:", err);
-    res.status(500).json({ error: "Failed to suggest outfit", message: err.message });
-  }
-});
+    /* 6️⃣ validate basic JSON shape */
+    if (!Array.isArray(result.output?.looks) ||
+        result.output.looks.length !== 2 ||
+        result.output.looks.some(l => (l.items||[]).length < 3)) {
+      return res.status(502).json({ error: "Bad response", raw: result.output });
+    }
+
+    res.json(result.output);
+
+      
+
 /* ─── End suggest-outfit ─────────────────────────────────────────────── */
 
 
