@@ -253,46 +253,45 @@ app.post("/suggest-outfit", async (req, res) => {
     const weatherNow = await getWeather(city); // e.g. “light rain, 23 °C”
 
     /* 2️⃣  Compose the final prompt sent to the agent */
-      const finalInput = `
-       SYSTEM:
-You are Tina, a fashion-stylist AI.  You MUST reply in valid JSON and follow ALL rules.Use ONLY the wardrobe items listed below.
+    const finalInput = `
+    SYSTEM:
+    You are Tina, a fashion-stylist AI. You MUST reply in valid JSON and follow ALL rules.
 
-      USER:
-       Wardrobe:
-       ${wardrobeText}
+    USER:
+    Wardrobe:
+    ${wardrobeText}
 
-       Context:
-       • Occasion : "${occasion}"
-       • Vibe     : "${vibe}"
-       • Weather  : "${weatherNow || "N/A"}"
-       • Extra    : "${constraints || "none"}"
-       ${prompt.trim() ? `• User request: "${prompt.trim()}"` : ""}
+    Context:
+    • Occasion : "${occasion}"
+    • Vibe     : "${vibe}"
+    • Weather  : "${weatherNow || "N/A"}"
+    • Extra    : "${constraints || "none"}"${prompt.trim() ? `\n• User text : "${prompt.trim()}"` : ""}
 
-       Rules (must be obeyed):
-       1. Return exactly **2** looks.
-       2. Each look MUST contain **3–5 distinct items**.
-       3. Each item MUST exist in the wardrobe list (match by name).
-       4. If you cannot comply, respond with: {"error":"NOT_ENOUGH_ITEMS"}.
+    Rules (must be obeyed):
+    1. Return exactly **2** looks.
+    2. Each look MUST contain **3–5 distinct items**.
+    3. Each item MUST exist in the wardrobe list (match by name).
+    4. If you cannot comply, respond with: {"error":"NOT_ENOUGH_ITEMS"}.
 
-       Reply in pure JSON (no markdown, no back-ticks) with this exact schema:
+    Return ONLY this JSON schema (no markdown):
 
-       {
-  "looks":[
     {
-      "title":"Look 1",
-      "items":[
-        { "name":"...", "image":"..." }
-      ]
-    },
-    {
-      "title":"Look 2",
-      "items":[
-        { "name":"...", "image":"..." }
+      "looks":[
+        {
+          "title":"Look 1",
+          "items":[
+            { "name":"...", "image":"..." }
+          ]
+        },
+        {
+          "title":"Look 2",
+          "items":[
+            { "name":"...", "image":"..." }
+          ]
+        }
       ]
     }
-  ]
-}
-`.trim();
+    `.trim();
 
        Rules:
        // 1. Each look MUST contain **3-5 distinct items** (top/bottom/shoes/accessory etc.).
@@ -309,11 +308,15 @@ You are Tina, a fashion-stylist AI.  You MUST reply in valid JSON and follow ALL
        console.log("🧾 Raw agent output:", JSON.stringify(result, null, 2));
     
         /* 4️⃣ sanity-check */
-        if (!Array.isArray(result.output?.looks) || !result.output.looks.length) {
-          return res
-            .status(502)
-            .json({ error: "Agent returned no looks", raw: result.output });
-        }
+        if (
+  !Array.isArray(result.output?.looks) ||
+  result.output.looks.some((l) => (l.items || []).length < 3)
+) {
+  return res
+    .status(502)
+    .json({ error: "Agent returned incomplete looks", raw: result.output });
+}
+
     
         /* 5️⃣  Ship clean JSON */
         res.json(result.output);
