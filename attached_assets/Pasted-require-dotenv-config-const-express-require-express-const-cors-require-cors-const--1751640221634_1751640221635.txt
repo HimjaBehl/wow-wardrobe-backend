@@ -1,6 +1,5 @@
 require("dotenv").config();
 const express = require("express");
-const { validateLookAgainstRules } = require("./lib/styleRules");
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
@@ -262,10 +261,6 @@ app.post("/suggest-outfit", async (req, res) => {
       }])
     );
 
-    // 🗂  Show which wardrobe indices are available
-    console.log("🗂 idx2item keys:", Object.keys(idx2item));
-
-
     /* 2️⃣ weather */
     const weatherNow = await getWeather(city);
 
@@ -274,43 +269,45 @@ app.post("/suggest-outfit", async (req, res) => {
       .map((w) => `${w.idx}|${w.name}|${w.category}|${w.color}`)
       .join("\n");
 
-    
-
-const finalInput = `
+    const finalInput = `
 SYSTEM:
 You are Tina, an AI stylist.
 
-You help users pick outfits from their wardrobe. Each item has an index, name, category, and color. You must return exactly 2 stylish, weather-appropriate looks based on their vibe, occasion, and style preferences.
+USER DATA:
+Wardrobe (line format idx|name|category|color):
+${wardrobeLines}
+
+
+Context:
+Occasion: ${occasion}
+Vibe    : ${vibe}
+Weather : ${weatherNow || "N/A"}
+Extra   : ${constraints || "none"}
+${prompt.trim() ? `User text: ${prompt.trim()}` : ""}
+
 
 Rules:
-1. Each look must have 3–5 items.
-2. Each look must follow one of:
+1) Return exactly 2 looks.
+2) Each look must contain 3–5 items.
+3) Each look should follow **either**:
    a) One-piece + footwear (+ accessories)
    b) Topwear + bottomwear + footwear (+ accessories)
-3. Do NOT mix topwear with one-pieces.
-4. Avoid repeating items across looks.
-5. Do NOT return image URLs or item names — ONLY use index numbers.
-6. Output strictly in JSON like below:
+4) NEVER combine one-piece with bottomwear or topwear.
+5) Avoid repeating items across looks.
+6) Pick items that are weather-appropriate, stylish, and visually coherent.
+7) JSON ONLY:
 
 {
  "looks":[
-   { "title":"Look 1", "items":[ { "idx":"3" }, { "idx":"7" }, { "idx":"12" } ] },
-   { "title":"Look 2", "items":[ { "idx":"5" }, { "idx":"2" }, { "idx":"11" } ] }
+   { "title":"Look 1",
+     "items":[ { "idx":"3" } ]
+   },
+   { "title":"Look 2",
+     "items":[ { "idx":"7" } ]
+   }
  ]
 }
-
-User Input:
-Occasion: ${occasion}
-Vibe: ${vibe}
-Weather: ${weatherNow || "N/A"}
-Constraints: ${constraints || "none"}
-${prompt.trim() ? `Custom Prompt: ${prompt.trim()}` : ""}
-
-Wardrobe:
-Each line is in the format idx|name|category|color
-${wardrobeLines}
 `.trim();
-
 
     /* 4️⃣ debug prompt length */
     console.log("🧠 prompt length (chars):", finalInput.length);
@@ -320,60 +317,43 @@ ${wardrobeLines}
     const result = await agent.call({ input: finalInput });
     console.log("🧾 raw output:", JSON.stringify(result.output, null, 2));
 
-    /* 🔥 6️⃣  ── HYDRATE & CLEAN ───────────────────────────────── */
-    result.output.looks.forEach((look, li) => {
-      look.items = (look.items || [])
+    /* 🔥 6️⃣  ── HYDRATE EARLY ────────────────────────────────────────── */
+    result.output.looks.forEach((look, i) => {
+      look.items = look.items
         .map((it) => {
-          const full = idx2item[it.idx];
-          if (!full) {
-            console.warn(
-              `⚠️  Look ${li + 1}: idx "${it.idx}" not found in wardrobe lookup`
-            );
-            return null;                              // mark as bad → filtered out
-          }
-
-          const hydrated = {
+          const full = idx2item[it.idx] || {};
+          return {
             ...it,
             image_url: full.image_url || "",
             name     : full.name      || "",
             category : full.category  || "",
             color    : full.color     || "",
           };
-
-          if (!hydrated.image_url || !hydrated.name) {
-            console.warn(
-              `⚠️  Look ${li + 1}: idx "${it.idx}" missing critical fields`,
-              hydrated
-            );
-            return null;
-          }
-
-          return hydrated;
         })
-        .filter(Boolean); // drop nulls
+        .filter(it => it.image_url && it.name); // ✅ keep only valid items
     });
-    /* ─────────────────────────────────────────────────────────── */
 
-    // 🚮 Remove looks that ended up empty
-    result.output.looks = result.output.looks.filter(l => l.items.length);
+    /* 
+    
 
-    // 6️⃣-A: Optional rule logic (pull from DB or define manually for now)
-    const userRules = {
-      bannedItems: ["heels", "wool sweater"] // ← TEMP list (eventually from Firestore)
-    };
 
-    // 6️⃣-B: Validate looks using styleRules
-    result.output.looks = result.output.looks.filter(look =>
-      validateLookAgainstRules(look, userRules)
-    );
+    ──────────────────────────────────────────────────────────────── */
 
-    // 6️⃣-C: Fallback if no valid looks
-    if (result.output.looks.length === 0) {
-      return res.status(400).json({
-        error: "All outfit suggestions had invalid structure or violated styling rules",
-        raw: result.output
-      });
+
+    /* 6️⃣ validate basic JSON shape */
+    if (!Array.isArray(result.output?.looks) ||
+        result.output.looks.length !== 2 ||
+        result.output.looks.some(l => (l.items||[]).length < 3)) {
+      return res.status(502).json({ error: "Bad response", raw: result.output });
     }
+
+    res.json(result.output);
+
+  } catch (err) {
+    console.error("❌ Suggest outfit error:", err.message);
+    res.status(500).json({ error: "Failed to suggest outfit", message: err.message });
+  }
+});
 
 /* ─── End suggest-outfit ─────────────────────────────────────────────── */
 
