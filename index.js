@@ -78,11 +78,8 @@ app.post("/auto-tag", async (req, res) => {
       const cleanedTags = Array.from(
         new Set(
           rawTags
-            .map((tag) =>
-              typeof tag === "string"
-              ? (typeof tag === "string" ? safeLower(tag).replace(/^.*\//, "") : "")
-                : null
-            )
+            .filter(t => typeof t === "string")
+               .map(t => safeLower(t).replace(/^.*\//, ""))
             .filter((tag) => tag)
         )
       )
@@ -91,7 +88,7 @@ app.post("/auto-tag", async (req, res) => {
 
       return {
         image_url,
-        imagePath: `wardrobe/${obj?.file?.name || uuidv4()}`, // fallback name
+         image_path: `wardrobe/${obj?.file?.name || uuidv4()}`,  // 🔄 snake-case to match DB
         name:
           obj._tags_map?.Subcategory ||
           obj._tags_map?.Category ||
@@ -143,8 +140,15 @@ app.get("/wardrobe", async (req, res) => {
 app.post("/wardrobe", async (req, res) => {
   try {
     const { uid, image_path, name, category, color, tags } = req.body;
-      if (!uid || !image_path) {
-        return res.status(400).json({ error: "uid and image_path are required" });
+      if (
+            !uid ||
+            !image_path ||
+            typeof image_path !== "string" ||
+            image_path.includes("undefined")
+          ) {
+            return res
+              .status(400)
+              .json({ error: "Valid uid & image_path are required (image_path was empty or invalid)" });
     }
 
     const docRef = await db.collection("wardrobe").add({
@@ -219,13 +223,15 @@ app.post("/suggest-outfit", async (req, res) => {
       .get();
 
     const wardrobeItems = snap.docs.map(d => d.data());
+    console.log("👕 Wardrobe items going to LLM:", wardrobeItems);
+
 
     // Nicely formatted bulleted list the LLM can read
-    const wardrobeText = wardrobeItems.length
-    ? wardrobeItems.map(it =>
-        `• ${it.name || "Unnamed item"} (${it.category || "No category"}) - https://firebasestorage.googleapis.com/v0/b/wowapp1406.appspot.com/o/${encodeURIComponent(it.image_path)}?alt=media`
-      ).join("\n")
-    : "(user wardrobe is empty)";
+    const wardrobeText = wardrobeItems
+      .filter(it => it.image_path && !it.image_path.includes("undefined"))
+    .map(it =>
+      `• ${it.name || "Unnamed"} (${it.category || "No category"}) - https://firebasestorage.googleapis.com/v0/b/wowapp1406.appspot.com/o/${encodeURIComponent(it.image_path)}?alt=media`
+    ).join("\n") || "(user wardrobe is empty)";
 
 
 
@@ -234,32 +240,20 @@ app.post("/suggest-outfit", async (req, res) => {
     const weatherNow = await getWeather(city); // e.g. “light rain, 23 °C”
 
     /* 2️⃣  Compose the final prompt sent to the agent */
-    const finalInput = (
-  prompt.trim()
-    ? `User styling query: "${prompt.trim()}".  
-       Current weather in ${city}: ${weatherNow || "N/A"}.  
-       Here is the user's wardrobe:\n${wardrobeText}  
-       Respond in this exact JSON format:
-       {
-         "looks": [
-           {
-             "title": "Look 1",
-             "items": [
-               { "name": "Item Name", "image": "https://..." }
-             ]
-           }
-         ]
-       }
-       Only use items from the user's wardrobe.
-       Use the exact image URL provided for each item.
-       Do NOT make up new items or placeholder links.`
-    : `Generate a stylish outfit with these parameters:
+      const finalInput = `
+       You are a fashion-stylist AI. Use ONLY the wardrobe items listed below.
+       Wardrobe:
+       ${wardrobeText}
+
+       Context:
        • Occasion : "${occasion}"
        • Vibe     : "${vibe}"
        • Weather  : "${weatherNow || "N/A"}"
-       • Extra    : "${constraints}"
-       Use only the following wardrobe items:\n${wardrobeText}
-       Respond in this exact JSON format:
+       • Extra    : "${constraints || "none"}"
+       ${prompt.trim() ? `• User request: "${prompt.trim()}"` : ""}
+
+       Reply in pure JSON (no markdown, no back-ticks) with this exact schema:
+
        {
          "looks": [
            {
@@ -267,18 +261,27 @@ app.post("/suggest-outfit", async (req, res) => {
              "items": [
                { "name": "Item Name", "image": "https://..." }
              ]
+           },
+           {
+             "title": "Look 2",
+             "items": [
+               { "name": "Item Name", "image": "https://..." }
+             ]
            }
          ]
        }
-       Do not wrap your response in triple backticks or code fences.
-       Only use items from the user's wardrobe.
-       Use the exact image URL provided for each item.
-       Do NOT make up new items or placeholder links.`
+
+       Rules:
+       1. Each look MUST contain **3-5 distinct items** (top/bottom/shoes/accessory etc.).
+       2. Do NOT invent new garments or URLs.
+       3. Skip a category only if the wardrobe truly lacks options.
+       `.trim();
 ).replace(/[ \t]+\n/g, "\n");   // ← now this is legal JS
+
+    console.log("🧠 Prompt to LLM:\n", finalInput);
 
 
     /* 3️⃣  Call the agent / LLM */
-    const setupAgent = require("./agent");
     const agent = await setupAgent();
     const result = await agent.call({ input: finalInput });
        console.log("🧾 Raw agent output:", JSON.stringify(result, null, 2));
