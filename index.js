@@ -295,9 +295,9 @@ You are Tina, a fashion-stylist AI.  You MUST reply in valid JSON and follow ALL
 `.trim();
 
        Rules:
-       1. Each look MUST contain **3-5 distinct items** (top/bottom/shoes/accessory etc.).
-       2. Do NOT invent new garments or URLs.
-       3. Skip a category only if the wardrobe truly lacks options.
+       // 1. Each look MUST contain **3-5 distinct items** (top/bottom/shoes/accessory etc.).
+       // 2. Do NOT invent new garments or URLs.
+       // 3. Skip a category only if the wardrobe truly lacks options.
        `
 
     console.log("🧠 Prompt to LLM:\n", finalInput);
