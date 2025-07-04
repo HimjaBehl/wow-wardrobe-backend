@@ -349,7 +349,11 @@ Rules:
 
     res.json(result.output);
 
-      
+  } catch (err) {
+    console.error("❌ Suggest outfit error:", err.message);
+    res.status(500).json({ error: "Failed to suggest outfit", message: err.message });
+  }
+});
 
 /* ─── End suggest-outfit ─────────────────────────────────────────────── */
 
