@@ -357,30 +357,22 @@ ${wardrobeLines}
     // 🚮 Remove looks that ended up empty
     result.output.looks = result.output.looks.filter(l => l.items.length);
 
-    // 6️⃣-A: Optional rule logic (pull from DB or define manually for now)
-    const userRules = {
-      bannedItems: ["heels", "wool sweater"] // ← TEMP list (eventually from Firestore)
-    };
+    console.log("🧠 Raw LLM Looks:", JSON.stringify(result.output.looks, null, 2));
 
-    // 6️⃣-B: Validate looks using styleRules
-    result.output.looks = result.output.looks.filter(look =>
-      validateLookAgainstRules(look, userRules)
-    );
+    
+    function validateLookAgainstRules(look, rules = {}) {
+      const bannedItems = (rules.bannedItems || []).map(x => x.toLowerCase());
 
-    // 6️⃣-C: Fallback if no valid looks
-    if (result.output.looks.length === 0) {
-      return res.status(400).json({
-        error: "All outfit suggestions had invalid structure or violated styling rules",
-        raw: result.output
+      const violates = look.items.some(item => {
+        const name = (item.name || "").toLowerCase();
+        return bannedItems.some(ban =>
+          name.includes(ban)
+        );
       });
-    }
 
-    res.json(result.output);
-  } catch (err) {
-    console.error("❌ Suggest outfit error:", err.message);
-    res.status(500).json({ error: "Failed to suggest outfit", message: err.message });
-  }
-});
+      // If any banned item found → reject the whole look
+      return !violates;
+    }
 
 /* ─── End suggest-outfit ─────────────────────────────────────────────── */
 
