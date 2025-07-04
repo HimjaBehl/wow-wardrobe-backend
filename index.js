@@ -300,7 +300,7 @@ app.post("/suggest-outfit", async (req, res) => {
     const agent = await setupAgent();
     const result = await agent.call({ input: finalInput });
        console.log("🧾 Raw agent output:", JSON.stringify(result, null, 2));
-    
+
         /* 4️⃣ sanity-check */
         if (
   !Array.isArray(result.output?.looks) ||
@@ -311,7 +311,7 @@ app.post("/suggest-outfit", async (req, res) => {
     .json({ error: "Agent returned incomplete looks", raw: result.output });
 }
 
-    
+
         /* 5️⃣  Ship clean JSON */
         res.json(result.output);
 
