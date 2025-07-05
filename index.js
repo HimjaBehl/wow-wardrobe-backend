@@ -3,6 +3,7 @@ const express = require("express");
 const { validateLookAgainstRules } = require("./lib/styleRules");
 const { guessSilhouette, pickPalette } = require("./lib/fashionTags");
 const { harmonious } = require("./lib/colorRules");
+const fashionTags = require('./lib/fashionTags');
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
