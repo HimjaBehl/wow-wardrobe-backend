@@ -4,6 +4,7 @@ const { validateLookAgainstRules } = require("./lib/styleRules");
 const { guessSilhouette, pickPalette } = require("./lib/fashionTags");
 const { harmonious } = require("./lib/colorRules");
 const fashionTags = require('./lib/fashionTags');
+const { styleMoodMap } = require("./lib/styleMoodMap");
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
@@ -81,8 +82,6 @@ app.post("/auto-tag", async (req, res) => {
     const objects = tagRes.data?.records?.[0]?._objects || [];
 
     // your tagging logic continues...
-    const { guessSilhouette, pickPalette } = require("./lib/fashionTags");
-
     const detected = objects.map((obj) => {
       const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
 
@@ -228,8 +227,8 @@ app.get("/plan-outfit", async (req, res) => {
 
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
-  const { uid, occasion = "", vibe = "", city = "Delhi",
-          constraints = "", prompt = "" } = req.body;
+  const { uid, occasion = "", vibe = "", city = "Delhi", constraints = "", prompt = "", style_mood = "" } = req.body;
+
 
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
@@ -280,6 +279,21 @@ app.post("/suggest-outfit", async (req, res) => {
     /* 2️⃣ weather */
     const weatherNow = await getWeather(city);
 
+
+    const moodStyle = styleMoodMap[style_mood.toLowerCase()] || null;
+
+    let moodCommentary = "";
+
+    if (moodStyle) {
+      moodCommentary = `
+    Mood: ${style_mood}
+    Palette Suggestions: ${moodStyle.palettes.join(", ")}
+    Preferred Silhouettes: ${moodStyle.silhouettes.join(", ")}
+    Style Keywords: ${moodStyle.keywords.join(", ")}
+    `.trim();
+    }
+
+
     /* 3️⃣ compact prompt (pipe-delimited) */
     const wardrobeLines = sample
       .map((w) => `${w.idx}|${w.name}|${w.category}|${w.color}`)
@@ -326,7 +340,10 @@ Occasion: ${occasion}
 Vibe: ${vibe}
 Weather: ${weatherNow || "N/A"}
 Constraints: ${constraints || "none"}
+${style_mood ? `Style Mood: ${style_mood}` : ""}
+${moodCommentary ? `\n\nStyle Guidance:\n${moodCommentary}` : ""}
 ${prompt.trim() ? `Custom Prompt: ${prompt.trim()}` : ""}
+
 
 Wardrobe:
 Each line is in the format idx|name|category|color
@@ -427,9 +444,6 @@ ${wardrobeLines}
 
     console.log("🎯 Constraints parsed:", userRules);
     console.log("🎯 Looks BEFORE validation:", JSON.stringify(result.output.looks, null, 2));
-
-
-    const { harmonious } = require("./lib/colorRules");
 
     result.output.looks = result.output.looks.filter(l => {
       const palettes = l.items.map(it => it.palette || pickPalette(it.color));
