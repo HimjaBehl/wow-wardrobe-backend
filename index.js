@@ -115,35 +115,6 @@ app.post("/auto-tag", async (req, res) => {
       };
     });
 
-      const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
-
-      const cleanedTags = Array.from(
-        new Set(
-          rawTags
-            .map((tag) =>
-              typeof tag === "string"
-                ? tag.toLowerCase().replace(/^.*\//, "")
-                : null
-            )
-            .filter((tag) => tag)
-        )
-      )
-        .slice(0, 6)
-        .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
-
-      return {
-        image_url,
-        image_path: `wardrobe/${obj?.file?.name || uuidv4()}`,
-        name:
-          obj._tags_map?.Subcategory ||
-          obj._tags_map?.Category ||
-          "TO_BE_DETERMINED",
-        category: obj._tags_map?.Category || "TO_BE_DETERMINED",
-        color: obj._tags_map?.Color || "TO_BE_DETERMINED",
-        tags: cleanedTags,
-      };
-    });
-
     res.json({ detected });
   } catch (err) {
     console.error("❌ FULL ERROR OBJECT:", JSON.stringify(err?.response?.data || err.message, null, 2));
