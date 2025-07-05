@@ -4,7 +4,7 @@ const { validateLookAgainstRules } = require("./lib/styleRules");
 const { guessSilhouette, pickPalette } = require("./lib/fashionTags");
 const { harmonious } = require("./lib/colorRules");
 const fashionTags = require('./lib/fashionTags');
-const { styleMoodMap } = require("./lib/styleMoodMap");
+const { styleMoodMap } = require("./styleMoodMap");
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
@@ -327,6 +327,7 @@ Silhouette & Colour guidance:
 - Avoid clashing colors unless neutrals can anchor the look.
 
 - Output strictly in JSON like below:
+⚠️ IMPORTANT: You must respond ONLY with valid JSON (no markdown, no comments, no apologies).
 
 {
  "looks":[
@@ -373,10 +374,33 @@ ${wardrobeLines}
     }
 
 
+    // 🛑 If Tina didn’t give valid JSON…
     if (!result || !result.output || !Array.isArray(result.output.looks)) {
       console.error("❌ Agent returned invalid format:", JSON.stringify(result, null, 2));
-      return res.status(500).json({ error: "Agent returned invalid or malformed response" });
+
+      const raw = result?.output || result || "(no output)";
+      const rawText = typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
+
+      return res.status(502).json({
+        error        : "Invalid JSON from LLM",
+        prompt_length: finalInput.length,
+        wardrobe_sample: sample, // max 60 items
+        style_mood   : style_mood || "none",
+        raw_output   : rawText   // send raw LLM response to Postman
+      });
     }
+
+      console.error("❌ Agent returned invalid format:", JSON.stringify(result, null, 2));
+
+      return res.status(502).json({
+        error        : "Invalid JSON from LLM",
+        prompt_length: finalInput.length,
+        wardrobe_sample: sample,          // first 60 items we sent
+        style_mood   : style_mood || "none",
+        raw_output   : (result && result.output) || result   // what Tina actually said
+      });
+    }
+
 
       // ⬇️ NEW quick-out guard – paste right below the block above
     if (!result.output.looks || result.output.looks.length === 0) {
