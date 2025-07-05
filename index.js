@@ -258,7 +258,7 @@ app.post("/suggest-outfit", async (req, res) => {
         category: it.category|| "NoCat",
         color   : it.color   || "NoCol",
       }));
-    
+
     // build lookup for idx → full wardrobe object
     const uniqueWardrobe = Array.from(
       new Map(wardrobeItems.map(it => [it.image_url, it])).values()
@@ -299,7 +299,7 @@ app.post("/suggest-outfit", async (req, res) => {
       .map((w) => `${w.idx}|${w.name}|${w.category}|${w.color}`)
       .join("\n");
 
-    
+
 
 const finalInput = `
 SYSTEM:
@@ -356,7 +356,7 @@ ${wardrobeLines}
     console.log("🧠 prompt length (chars):", finalInput.length);
 
     console.log("📤 Sending to agent with prompt:", finalInput);
-    
+
     // 5️⃣ call agent
     const agent = await setupAgent();
     let result;
@@ -389,18 +389,6 @@ ${wardrobeLines}
         raw_output   : rawText   // send raw LLM response to Postman
       });
     }
-
-      console.error("❌ Agent returned invalid format:", JSON.stringify(result, null, 2));
-
-      return res.status(502).json({
-        error        : "Invalid JSON from LLM",
-        prompt_length: finalInput.length,
-        wardrobe_sample: sample,          // first 60 items we sent
-        style_mood   : style_mood || "none",
-        raw_output   : (result && result.output) || result   // what Tina actually said
-      });
-    }
-
 
       // ⬇️ NEW quick-out guard – paste right below the block above
     if (!result.output.looks || result.output.looks.length === 0) {
@@ -449,7 +437,7 @@ ${wardrobeLines}
         .filter(Boolean); // drop nulls
     });
 
-    
+
 
     /* ---------- Build user-specific rules ------------- */
     function parseConstraints(text = "") {
@@ -479,7 +467,7 @@ ${wardrobeLines}
       validateLookAgainstRules(l, userRules)
     );
 
-     
+
     // Add this:
     if (result.output.looks.length === 0) {
       console.warn("😬 Agent returned no looks at all.");
@@ -487,8 +475,8 @@ ${wardrobeLines}
     }
 
     console.log("🕵️‍♀️  Raw agent looks:", JSON.stringify(result.output.looks, null, 2));
-    
-    
+
+
 
     /* 8️⃣ return final result */
     res.json(result.output);
