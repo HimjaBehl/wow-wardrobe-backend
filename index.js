@@ -1,6 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const { validateLookAgainstRules } = require("./lib/styleRules");
+const { guessSilhouette, pickPalette } = require("./lib/fashionTags");
+const { harmonious } = require("./lib/colorRules");
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
@@ -78,7 +80,41 @@ app.post("/auto-tag", async (req, res) => {
     const objects = tagRes.data?.records?.[0]?._objects || [];
 
     // your tagging logic continues...
+    const { guessSilhouette, pickPalette } = require("./lib/fashionTags");
+
     const detected = objects.map((obj) => {
+      const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
+
+      const cleanedTags = Array.from(
+        new Set(
+          rawTags
+            .map((tag) =>
+              typeof tag === "string"
+                ? tag.toLowerCase().replace(/^.*\//, "")
+                : null
+            )
+            .filter((tag) => tag)
+        )
+      )
+        .slice(0, 6)
+        .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
+
+      const name = obj._tags_map?.Subcategory || obj._tags_map?.Category || "TO_BE_DETERMINED";
+      const category = obj._tags_map?.Category || "TO_BE_DETERMINED";
+      const color = obj._tags_map?.Color || "TO_BE_DETERMINED";
+
+      return {
+        image_url,
+        image_path: `wardrobe/${obj?.file?.name || uuidv4()}`,
+        name,
+        category,
+        color,
+        tags: cleanedTags,
+        silhouette: guessSilhouette(name + " " + category),
+        palette: pickPalette(color),
+      };
+    });
+
       const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
 
       const cleanedTags = Array.from(
@@ -284,16 +320,27 @@ SYSTEM:
 You are Tina, an AI stylist.
 
 You help users pick outfits from their wardrobe. Each item has an index, name, category, and color. You must return exactly 2 stylish, weather-appropriate looks based on their vibe, occasion, and style preferences.
+If the wardrobe does not have enough variety, still try to create a look using whatever is available.
+Do NOT leave the looks list empty.
+
 
 Rules:
-1. Each look must have 3–5 items.
-2. Each look must follow one of:
-   a) One-piece + footwear (+ accessories)
-   b) Topwear + bottomwear + footwear (+ accessories)
-3. Do NOT mix topwear with one-pieces.
-4. Avoid repeating items across looks.
-5. Do NOT return image URLs or item names — ONLY use index numbers.
-6. Output strictly in JSON like below:
+You must follow these rules when generating looks:
+- Each look must have at least 3 items.
+- Prefer full outfits that include one item each from:
+  - Topwear (T-shirts, shirts, blouses)
+  - Bottomwear (jeans, shorts, skirts)
+  - Footwear
+- If user has a dress, that can replace top+bottom.
+- Add 1–2 accessories (optional) like bags, jewelry, sunglasses.
+- Avoid repeating the same item in different looks.
+
+Silhouette & Colour guidance:
+- Aim for visual balance: match loose/baggy bottoms with slim tops and vice versa.
+- Prefer full outfits with one main color family and up to two accents (neutrals don’t count).
+- Avoid clashing colors unless neutrals can anchor the look.
+
+- Output strictly in JSON like below:
 
 {
  "looks":[
@@ -318,10 +365,43 @@ ${wardrobeLines}
     /* 4️⃣ debug prompt length */
     console.log("🧠 prompt length (chars):", finalInput.length);
 
-    /* 5️⃣ call agent */
-    const agent  = await setupAgent();
-    const result = await agent.call({ input: finalInput });
-    console.log("🧾 raw output:", JSON.stringify(result.output, null, 2));
+    console.log("📤 Sending to agent with prompt:", finalInput);
+    
+    // 5️⃣ call agent
+    const agent = await setupAgent();
+    let result;
+
+    try {
+      result = await agent.call({ input: finalInput });
+
+      if (result.output?.error) {
+        console.error("🚨 Agent error:", result.output.error);
+        return res.status(502).json({ error: result.output.error });
+      }
+    } catch (e) {
+      console.error("❌ AGENT CALL FAILED:", e); // full object, not just e.message
+      return res.status(500).json({ error: "Agent call failed", message: e.message });
+    }
+
+
+    if (!result || !result.output || !Array.isArray(result.output.looks)) {
+      console.error("❌ Agent returned invalid format:", JSON.stringify(result, null, 2));
+      return res.status(500).json({ error: "Agent returned invalid or malformed response" });
+    }
+
+      // ⬇️ NEW quick-out guard – paste right below the block above
+    if (!result.output.looks || result.output.looks.length === 0) {
+      console.warn("😬 Agent returned zero looks. Dumping full response...");
+      console.warn(JSON.stringify(result, null, 2));
+
+      return res.status(502).json({
+        error: "Stylist agent returned no looks.",
+        debug: result.output || {},
+        message: "Try removing vibe/occasion or check if wardrobe has topwear + bottomwear + footwear"
+      });
+    }
+
+
 
     /* 🔥 6️⃣  ── HYDRATE & CLEAN ───────────────────────────────── */
     result.output.looks.forEach((look, li) => {
@@ -356,8 +436,9 @@ ${wardrobeLines}
         .filter(Boolean); // drop nulls
     });
 
-    /* 7️⃣  ── STYLE-RULE VALIDATION ────────────────────────── */
-    // 7-A: parse user constraints → build rules
+    
+
+    /* ---------- Build user-specific rules ------------- */
     function parseConstraints(text = "") {
       const bans = [];
       text
@@ -372,18 +453,32 @@ ${wardrobeLines}
 
     const userRules = parseConstraints(constraints);
 
-    // 7-B: filter looks that violate rules
-    result.output.looks = result.output.looks.filter(look =>
-      validateLookAgainstRules(look, userRules)
+    console.log("🎯 Constraints parsed:", userRules);
+    console.log("🎯 Looks BEFORE validation:", JSON.stringify(result.output.looks, null, 2));
+
+
+    const { harmonious } = require("./lib/colorRules");
+
+    result.output.looks = result.output.looks.filter(l => {
+      const palettes = l.items.map(it => it.palette || pickPalette(it.color));
+      return harmonious(palettes) && validateLookAgainstRules(l, userRules);
+    });
+
+    /* ---------- Apply structural + banned-item filter --- */
+    result.output.looks = result.output.looks.filter(l =>
+      validateLookAgainstRules(l, userRules)
     );
 
-    // 7-C: if nothing left → send 400 so UI can react
+     
+    // Add this:
     if (result.output.looks.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "All looks violated user constraints", raw: result.output });
+      console.warn("😬 Agent returned no looks at all.");
+      return res.status(502).json({ error: "Agent returned no looks", raw: result.output });
     }
-    /* ───────────────────────────────────────────────────────── */
+
+    console.log("🕵️‍♀️  Raw agent looks:", JSON.stringify(result.output.looks, null, 2));
+    
+    
 
     /* 8️⃣ return final result */
     res.json(result.output);

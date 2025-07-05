@@ -1,45 +1,43 @@
-// lib/styleRules.js
-const onePiece    = /dress|jumpsuit|one-piece/i;
-const topwear     = /shirt|blouse|tee|kurta|sweater/i;
-const bottomwear  = /jeans|pants|trouser|skirt|shorts/i;
+function validateLookAgainstRules(look, userRules = {}) {
+  const items = look.items || [];
+  const banned = userRules.bannedItems || [];
 
-export function classify(cat="") {
-  if (onePiece.test(cat))   return "onePiece";
-  if (topwear.test(cat))    return "top";
-  if (bottomwear.test(cat)) return "bottom";
-  return "other";
-}
+  if (items.length < 3) return false;
 
-export function isValidCombo(items=[]) {
-  let hasDress = false, hasTop = false, hasBottom = false;
-  items.forEach(i => {
-    const t = classify(i.category);
-    if (t==="onePiece") hasDress  = true;
-    if (t==="top")      hasTop    = true;
-    if (t==="bottom")   hasBottom = true;
-  });
-  if (hasDress && (hasTop || hasBottom)) return false;
-  if (!hasDress && (!hasTop || !hasBottom)) return false;
-  return true;
-}
+  let hasTop = false;
+  let hasBottom = false;
+  let hasFootwear = false;
+  let isDress = false;
 
-export function bansHeels(prefs={}) {
-  return (prefs.dislikes||[]).some(d => /heel/i.test(d));
-}
-
-export function needsLayer(items=[], weather="") {
-  return /cold|rain|snow/i.test(weather) && !items.some(i=>/jacket|coat/i.test(i.category));
-}
-
-function validateLookAgainstRules(look, rules = {}) {
-  const bannedItems = (rules.bannedItems || []).map(x => x.toLowerCase());
-
-  const violatesBan = look.items.some(item => {
+  for (const item of items) {
+    const category = (item.category || "").toLowerCase();
     const name = (item.name || "").toLowerCase();
-    return bannedItems.some(ban => name.includes(ban));
-  });
 
-  return !violatesBan;
+    if (["t-shirt", "shirt", "top", "blouse", "tank"].some(k => name.includes(k) || category.includes(k))) {
+      hasTop = true;
+    }
+
+    if (["jeans", "shorts", "pants", "trousers", "skirt"].some(k => name.includes(k) || category.includes(k))) {
+      hasBottom = true;
+    }
+
+    if (["footwear", "shoes", "heels", "sneakers", "sandals", "boots"].some(k => name.includes(k) || category.includes(k))) {
+      hasFootwear = true;
+    }
+
+    if (["dress", "jumpsuit", "gown"].some(k => name.includes(k) || category.includes(k))) {
+      isDress = true;
+    }
+
+    for (const ban of banned) {
+      if (name.includes(ban) || category.includes(ban)) return false;
+    }
+  }
+
+  const fullSet = hasTop && hasBottom && hasFootwear;
+  const onePieceSet = isDress && hasFootwear;
+
+  return fullSet || onePieceSet;
 }
 
 module.exports = { validateLookAgainstRules };
