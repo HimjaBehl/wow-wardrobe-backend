@@ -507,7 +507,7 @@ ${wardrobeLines}
     /* 8️⃣ return final result */
     res.json(result.output);
 
-  catch (err) {
+  } catch (err) {
     console.error("❌ FULL ERROR in suggest-outfit:", err);
     res.status(500).json({
       error: "AI suggestion failed",
