@@ -1,9 +1,28 @@
 require("dotenv").config();
 const express = require("express");
 const { validateLookAgainstRules } = require("./lib/styleRules");
-const { guessSilhouette, pickPalette } = require("./lib/fashionTags");
+
+// 🔥 STEP 1: Import like this, DON'T destructure yet
+const fashionTags = require("./lib/fashionTags");
+
+// 🔥 STEP 2: Log to confirm what's inside
+console.log("🧵 FULL FASHION TAGS MODULE:", fashionTags);
+console.log("🔍 typeof getSilhouetteRole:", typeof fashionTags.getSilhouetteRole);
+
+// 🔥 STEP 3: Use from object, not destructure
+const guessSilhouette = fashionTags.guessSilhouette;
+const pickPalette = fashionTags.pickPalette;
+const getSilhouetteRole = fashionTags.getSilhouetteRole;
+
+console.log({
+  gs: typeof guessSilhouette,
+  pp: typeof pickPalette,
+  sr: typeof getSilhouetteRole,
+});
+
+console.log('Loaded fashionTags =>', require('./lib/fashionTags'));
+
 const { harmonious } = require("./lib/colorRules");
-const fashionTags = require('./lib/fashionTags');
 const { styleMoodMap } = require("./styleMoodMap");
 const cors = require("cors");
 const axios = require("axios");
@@ -111,7 +130,7 @@ app.post("/auto-tag", async (req, res) => {
         color,
         tags: cleanedTags,
         silhouette: guessSilhouette(name + " " + category),
-        palette: pickPalette(color),
+        palette   : pickPalette(color),
       };
     });
 
@@ -346,6 +365,7 @@ ${moodCommentary ? `\n\nStyle Guidance:\n${moodCommentary}` : ""}
 ${prompt.trim() ? `Custom Prompt: ${prompt.trim()}` : ""}
 
 
+
 Wardrobe:
 Each line is in the format idx|name|category|color
 ${wardrobeLines}
@@ -373,6 +393,7 @@ ${wardrobeLines}
       return res.status(500).json({ error: "Agent call failed", message: e.message });
     }
 
+    console.log("🔍 FULL RAW OUTPUT:", JSON.stringify(result, null, 2));
 
     // 🛑 If Tina didn’t give valid JSON…
     if (!result || !result.output || !Array.isArray(result.output.looks)) {
@@ -390,6 +411,9 @@ ${wardrobeLines}
       });
     }
 
+    const rawText = JSON.stringify(result.output, null, 2);
+    console.error("⚠️ Raw LLM output:", rawText);
+
       // ⬇️ NEW quick-out guard – paste right below the block above
     if (!result.output.looks || result.output.looks.length === 0) {
       console.warn("😬 Agent returned zero looks. Dumping full response...");
@@ -405,37 +429,39 @@ ${wardrobeLines}
 
 
     /* 🔥 6️⃣  ── HYDRATE & CLEAN ───────────────────────────────── */
+    // 🧠 Group items into meaningful looks using silhouette roles
+    function buildCleanLook(allItems) {
+      //    ▸ Build-clean-look helper
+      const anchor = allItems.find(it =>
+        getSilhouetteRole(it.name || it.category) === "anchor"
+      );
+      if (anchor) {
+        const supporting = allItems.filter(it =>
+          getSilhouetteRole(it.name || it.category) !== "upper" && it !== anchor
+        );
+        return [anchor, ...supporting.slice(0, 3)];
+      }
+
+      const upper = allItems.find(it => getSilhouetteRole(it.name || it.category) === "upper");
+      const lower = allItems.find(it => getSilhouetteRole(it.name || it.category) === "lower");
+
+      if (upper && lower) {
+        const accessories = allItems.filter(it =>
+          getSilhouetteRole(it.name || it.category) === "accessory"
+        );
+        return [upper, lower, ...accessories.slice(0, 2)];
+      }
+
+      return allItems.slice(0, 4); // fallback if missing types
+    }
+
+    console.log("🔎 Looks before hydration:", JSON.stringify(result.output.looks, null, 2));
+
+    // 🧪 Apply silhouette filtering
     result.output.looks.forEach((look, li) => {
-      look.items = (look.items || [])
-        .map((it) => {
-          const full = idx2item[it.idx];
-          if (!full) {
-            console.warn(
-              `⚠️  Look ${li + 1}: idx "${it.idx}" not found in wardrobe lookup`
-            );
-            return null;                              // mark as bad → filtered out
-          }
-
-          const hydrated = {
-            ...it,
-            image_url: full.image_url || "",
-            name     : full.name      || "",
-            category : full.category  || "",
-            color    : full.color     || "",
-          };
-
-          if (!hydrated.image_url || !hydrated.name) {
-            console.warn(
-              `⚠️  Look ${li + 1}: idx "${it.idx}" missing critical fields`,
-              hydrated
-            );
-            return null;
-          }
-
-          return hydrated;
-        })
-        .filter(Boolean); // drop nulls
+      look.items = buildCleanLook(look.items);
     });
+
 
 
 
@@ -481,10 +507,16 @@ ${wardrobeLines}
     /* 8️⃣ return final result */
     res.json(result.output);
 
-  } catch (err) {
-    console.error("❌ Suggest outfit error:", err.message);
-    res.status(500).json({ error: "AI suggestion failed", message: err.message });
+  catch (err) {
+    console.error("❌ FULL ERROR in suggest-outfit:", err);
+    res.status(500).json({
+      error: "AI suggestion failed",
+      name: err.name || "unknown",
+      message: err.message || "No message",
+      stack: err.stack || "No stack trace",
+    });
   }
+
 });
 
 // ✅ Like (save-as-favourite) outfit
