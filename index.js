@@ -1,6 +1,8 @@
 require("dotenv").config();
-const sharp = require("sharp");
-const fs = require("fs/promises");
+
+console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" : "undefined");
+console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
+
 const express = require("express");
 const { validateLookAgainstRules } = require("./lib/styleRules");
 
@@ -50,6 +52,8 @@ const path = require("path");
 const setupAgent = require("./agent");
 const { v4: uuidv4 } = require("uuid");
 const { db, storage } = require("./firebase");
+const bucket = storage.bucket();
+
 // ─── WEATHER HELPER ─────────────────────────────────────────────
 const OPENWEATHER_URL =
   "https://api.openweathermap.org/data/2.5/weather?units=metric";
@@ -88,6 +92,8 @@ function safeLower(txt) {
 app.use(cors());
 app.use(express.json());
 
+console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY);
+
 // ✅ Root route
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -103,42 +109,94 @@ app.post("/auto-tag", async (req, res) => {
   if (!image_url) return res.status(400).json({ error: "Image URL required" });
 
   try {
-    // Step 1: Remove background using remove.bg API
-    const bgRemoved = await fetch("https://api.remove.bg/v1.0/removebg", {
-      method: "POST",
-      headers: {
-        "X-Api-Key": process.env.REMOVE_BG_API_KEY,
-      },
-      body: new URLSearchParams({
+    // 1️⃣ REMOVE BACKGROUND ------------------------------
+    const removeRes = await axios.post(
+      "https://api.remove.bg/v1.0/removebg",
+      new URLSearchParams({
         image_url,
         size: "auto",
       }),
-    });
+      {
+        headers: {
+          "X-Api-Key": process.env.REMOVE_BG_API_KEY,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        responseType: "arraybuffer",
+      }
+    );
 
-    const buffer = await bgRemoved.buffer();
-    if (!buffer || buffer.length < 1000) {
-      return res.status(400).json({ error: "Background removal failed" });
+    if (removeRes.status !== 200 || !removeRes.data) {
+      throw new Error("Background removal failed");
     }
 
-    // Step 2: Upload background-removed image to Firebase
-    const filename = `bgremoved-${Date.now()}.png`;
-    const file = bucket.file(`wardrobe/${filename}`);
-    await file.save(buffer, {
+    // 2️⃣ Upload cut-out PNG to Firebase Storage
+    const cleanedPath = `wardrobe/removed_${Date.now()}.png`;
+    await bucket.file(cleanedPath).save(removeRes.data, {
       contentType: "image/png",
       public: true,
       resumable: false,
     });
 
-    const croppedImageURL = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
+    const cleanedUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(cleanedPath)}?alt=media`;
 
-    // Step 3: Pass the cropped image to your auto-tagging logic
-    const detected = await getXimilarTags(croppedImageURL); // Replace with your tagging logic
-    res.json({ detected, image_url: croppedImageURL });
+    // 3️⃣ SEND CLEANED IMAGE TO XIMILAR -----------------
+    const tagRes = await axios.post(
+      "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
+      { records: [{ _url: cleanedUrl }] },
+      {
+        headers: {
+          Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const objects = tagRes.data?.records?.[0]?._objects || [];
+
+    const detected = objects.map((obj) => {
+      const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
+
+      const cleanedTags = Array.from(
+        new Set(
+          rawTags
+            .map((tag) =>
+              typeof tag === "string" ? tag.toLowerCase().replace(/^.*\//, "") : null
+            )
+            .filter(Boolean)
+        )
+      )
+        .slice(0, 6)
+        .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
+
+      const name = obj._tags_map?.Subcategory || obj._tags_map?.Category || "TO_BE_DETERMINED";
+      const category = obj._tags_map?.Category || "TO_BE_DETERMINED";
+      const color = obj._tags_map?.Color || "TO_BE_DETERMINED";
+
+      return {
+        image_url: cleanedUrl,
+        image_path: cleanedPath,
+        name,
+        category,
+        color,
+        tags: cleanedTags,
+        silhouette: guessSilhouette(name + " " + category),
+        palette: pickPalette(color),
+      };
+    });
+
+    // 4️⃣ Return cut-out URL + tags
+    return res.json({ detected, image_url: cleanedUrl });
+
   } catch (err) {
-    console.error("❌ Auto-tagging failed", err.message);
-    res.status(500).json({ error: "Auto-tagging failed", message: err.message });
+    console.error("🔥 Full error stack:", err); // 👈 logs full error to console
+    res.status(500).json({
+      error: "Auto-tagging failed",
+      message: err.message,
+      stack: err.stack,  // optional: send stack in Postman for now
+    });
   }
-});
+
+
 
 
 
