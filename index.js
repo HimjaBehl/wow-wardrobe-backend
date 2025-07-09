@@ -1,4 +1,6 @@
 require("dotenv").config();
+const sharp = require("sharp");
+const fs = require("fs/promises");
 const express = require("express");
 const { validateLookAgainstRules } = require("./lib/styleRules");
 
@@ -98,68 +100,46 @@ app.get("/", (req, res) => {
 // ✅ Auto-tagging
 app.post("/auto-tag", async (req, res) => {
   const { image_url } = req.body;
-  if (!image_url) return res.status(400).json({ error: "Image URL is required" });
+  if (!image_url) return res.status(400).json({ error: "Image URL required" });
 
   try {
-    console.log("🚀 Sending image to Ximilar:", image_url);
-
-    const tagRes = await axios.post(
-      "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
-      { records: [{ _url: image_url }] },
-      {
-        headers: {
-          Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    console.log("✅ Ximilar response:", JSON.stringify(tagRes.data, null, 2));
-
-    const objects = tagRes.data?.records?.[0]?._objects || [];
-
-    // your tagging logic continues...
-    const detected = objects.map((obj) => {
-      const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
-
-      const cleanedTags = Array.from(
-        new Set(
-          rawTags
-            .map((tag) =>
-              typeof tag === "string"
-                ? tag.toLowerCase().replace(/^.*\//, "")
-                : null
-            )
-            .filter((tag) => tag)
-        )
-      )
-        .slice(0, 6)
-        .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
-
-      const name = obj._tags_map?.Subcategory || obj._tags_map?.Category || "TO_BE_DETERMINED";
-      const category = obj._tags_map?.Category || "TO_BE_DETERMINED";
-      const color = obj._tags_map?.Color || "TO_BE_DETERMINED";
-
-      return {
+    // Step 1: Remove background using remove.bg API
+    const bgRemoved = await fetch("https://api.remove.bg/v1.0/removebg", {
+      method: "POST",
+      headers: {
+        "X-Api-Key": process.env.REMOVE_BG_API_KEY,
+      },
+      body: new URLSearchParams({
         image_url,
-        image_path: `wardrobe/${obj?.file?.name || uuidv4()}`,
-        name,
-        category,
-        color,
-        tags: cleanedTags,
-        silhouette: guessSilhouette(name + " " + category),
-        palette   : pickPalette(color),
-      };
+        size: "auto",
+      }),
     });
 
-    res.json({ detected });
-  } catch (err) {
-    console.error("❌ FULL ERROR OBJECT:", JSON.stringify(err?.response?.data || err.message, null, 2));
-    res.status(500).json({
-      error: "Auto-tagging failed",
-      message: err?.response?.data?.error || err.message,
+    const buffer = await bgRemoved.buffer();
+    if (!buffer || buffer.length < 1000) {
+      return res.status(400).json({ error: "Background removal failed" });
+    }
+
+    // Step 2: Upload background-removed image to Firebase
+    const filename = `bgremoved-${Date.now()}.png`;
+    const file = bucket.file(`wardrobe/${filename}`);
+    await file.save(buffer, {
+      contentType: "image/png",
+      public: true,
+      resumable: false,
     });
+
+    const croppedImageURL = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
+
+    // Step 3: Pass the cropped image to your auto-tagging logic
+    const detected = await getXimilarTags(croppedImageURL); // Replace with your tagging logic
+    res.json({ detected, image_url: croppedImageURL });
+  } catch (err) {
+    console.error("❌ Auto-tagging failed", err.message);
+    res.status(500).json({ error: "Auto-tagging failed", message: err.message });
   }
+});
+
 
 
 });
