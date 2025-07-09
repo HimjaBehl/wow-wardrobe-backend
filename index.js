@@ -35,7 +35,8 @@ console.log({
 
 console.log('Loaded fashionTags =>', require('./lib/fashionTags'));
 
-const { harmonious } = require("./lib/colorRules");
+const { harmonious }      = require("./lib/colorRules");
+const { calculateStyleScore } = require("./lib/styleScore");  
 const { styleMoodMap } = require("./styleMoodMap");
 
 console.log("💡 Available moods:", Object.keys(styleMoodMap));
@@ -555,10 +556,20 @@ ${wardrobeLines}
       // 🌊 2. run silhouette & color logic
       const cleaned = buildCleanLook(hydratedItems);
 
-      return { ...look, items: cleaned };
-    })
+      // 🏅 add a styleScore (0‒10)
+      const score = calculateStyleScore(cleaned);
+
+      return { ...look, items: cleaned, score };
+
     // 🌊 3. drop any null/empty or 1-piece looks
-    .filter((l) => Array.isArray(l.items) && l.items.length >= 2);
+    filter((l) => Array.isArray(l.items) && l.items.length >= 2);
+
+    /* ── keep only the top-2 looks by score ─────────────────────── */
+    result.output.looks = result.output.looks
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      .slice(0, 2);
+    /* ───────────────────────────────────────────────────────────── */
+
   // drop null / empty
 
 
