@@ -195,6 +195,7 @@ app.post("/auto-tag", async (req, res) => {
       stack: err.stack,  // optional: send stack in Postman for now
     });
   }
+});
 
 
 
