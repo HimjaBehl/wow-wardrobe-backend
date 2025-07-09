@@ -562,7 +562,7 @@ ${wardrobeLines}
       return { ...look, items: cleaned, score };
 
     // 🌊 3. drop any null/empty or 1-piece looks
-    filter((l) => Array.isArray(l.items) && l.items.length >= 2);
+    .filter((l) => Array.isArray(l.items) && l.items.length >= 2);
 
     /* ── keep only the top-2 looks by score ─────────────────────── */
     result.output.looks = result.output.looks
