@@ -2,28 +2,45 @@ require("dotenv").config();
 const express = require("express");
 const { validateLookAgainstRules } = require("./lib/styleRules");
 
+function silhouetteRole(text = "") {
+  const t = typeof text === "string" ? text.toLowerCase() : "";
+  if (/dress|jumpsuit/.test(t)) return "anchor";
+  if (/shirt|top|blouse|t-shirt/.test(t)) return "upper";
+  if (/jeans|pants|shorts|skirt|trousers?|bottom/.test(t)) return "lower";
+  if (/jacket|coat/.test(t)) return "outer";
+  if (/bag|shoe|sandal|boot|jewel|watch|sunglass/.test(t)) return "accessory";
+  return "misc";
+}
+
+const { isNeutral, dominantPalette,} = require("./lib/colorRules");
+
+
 // 🔥 STEP 1: Import like this, DON'T destructure yet
 const fashionTags = require("./lib/fashionTags");
 
 // 🔥 STEP 2: Log to confirm what's inside
 console.log("🧵 FULL FASHION TAGS MODULE:", fashionTags);
-console.log("🔍 typeof getSilhouetteRole:", typeof fashionTags.getSilhouetteRole);
+console.log("🔍 typeof silhouetteRole:", typeof fashionTags.silhouetteRole);
 
 // 🔥 STEP 3: Use from object, not destructure
 const guessSilhouette = fashionTags.guessSilhouette;
 const pickPalette = fashionTags.pickPalette;
-const getSilhouetteRole = fashionTags.getSilhouetteRole;
+
 
 console.log({
   gs: typeof guessSilhouette,
   pp: typeof pickPalette,
-  sr: typeof getSilhouetteRole,
+  sr: typeof silhouetteRole,
 });
 
 console.log('Loaded fashionTags =>', require('./lib/fashionTags'));
 
 const { harmonious } = require("./lib/colorRules");
 const { styleMoodMap } = require("./styleMoodMap");
+
+console.log("💡 Available moods:", Object.keys(styleMoodMap));
+
+
 const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
@@ -244,6 +261,42 @@ app.get("/plan-outfit", async (req, res) => {
 });
 
 
+// ─── User preference summariser ─────────────────────────────
+function buildUserStyleSummary(uid, max = 10) {
+  return db.collection("liked_looks")
+    .where("uid", "==", uid)
+    .orderBy("liked_at", "desc")
+    .limit(max)
+    .get()
+    .then(snap => {
+      const items = snap.docs
+        .flatMap(d => (d.data().outfit?.items || []));
+
+      if (!items.length) return "";
+
+      const counts = (prop) => items.reduce((acc, it) => {
+        const key = (it[prop] || "").toLowerCase();
+        if (!key) return acc;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+
+      const top = (obj) => Object.entries(obj)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([k]) => k)
+        .join(", ");
+
+      const summary =
+        `User often chooses colors: ${top(counts("color"))}. ` +
+        `Frequent categories: ${top(counts("category"))}.`;
+
+      return summary;
+    })
+    .catch(() => ""); // fail-silent
+}
+// ─────────────────────────────────────────────────────────────
+
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
   const { uid, occasion = "", vibe = "", city = "Delhi", constraints = "", prompt = "", style_mood = "" } = req.body;
@@ -283,23 +336,35 @@ app.post("/suggest-outfit", async (req, res) => {
       new Map(wardrobeItems.map(it => [it.image_url, it])).values()
     );
     const idx2item = Object.fromEntries(
-      wardrobeItems.slice(0, MAX).map((it, i) => [String(i), {
-        image_url: it.image_url,
-        name     : it.name || `Item ${i + 1}`,
-        category : it.category || "",
-        color    : it.color || "",
-      }])
+      wardrobeItems.slice(0, MAX).map((it, i) => [
+        String(i),
+        {
+          image_url: it.image_url,
+          name     : it.name || `Item ${i + 1}`,
+          category : it.category || "",
+          color    : it.color || "",
+          palette  : it.palette || pickPalette(it.color),   //  ← add this line
+        },
+      ])
     );
+
 
     // 🗂  Show which wardrobe indices are available
     console.log("🗂 idx2item keys:", Object.keys(idx2item));
 
 
     /* 2️⃣ weather */
+    /* 2️⃣ preferences + weather */
+    const userStyleSummary = await buildUserStyleSummary(uid);
+
     const weatherNow = await getWeather(city);
 
 
+
     const moodStyle = styleMoodMap[style_mood.toLowerCase()] || null;
+
+    console.log("🎈 Mood requested:", style_mood, "→", moodStyle);
+
 
     let moodCommentary = "";
 
@@ -363,6 +428,8 @@ Constraints: ${constraints || "none"}
 ${style_mood ? `Style Mood: ${style_mood}` : ""}
 ${moodCommentary ? `\n\nStyle Guidance:\n${moodCommentary}` : ""}
 ${prompt.trim() ? `Custom Prompt: ${prompt.trim()}` : ""}
+${userStyleSummary ? `\n\nUSER STYLE INSIGHTS:\n${userStyleSummary}` : ""}
+
 
 
 
@@ -430,37 +497,81 @@ ${wardrobeLines}
 
     /* 🔥 6️⃣  ── HYDRATE & CLEAN ───────────────────────────────── */
     // 🧠 Group items into meaningful looks using silhouette roles
-    function buildCleanLook(allItems) {
-      //    ▸ Build-clean-look helper
-      const anchor = allItems.find(it =>
-        getSilhouetteRole(it.name || it.category) === "anchor"
-      );
-      if (anchor) {
-        const supporting = allItems.filter(it =>
-          getSilhouetteRole(it.name || it.category) !== "upper" && it !== anchor
-        );
-        return [anchor, ...supporting.slice(0, 3)];
+    function buildCleanLook(allItems = []) {
+
+
+      /* ── 1. Palette check ───────────────────────── */
+      /* ── 1. Palette check ───────────────────────── */
+      const palettes = allItems.map(it => it.palette || pickPalette(it.color));
+
+      if (!harmonious(palettes)) {
+        console.warn("⚠️ Mild palette clash — allowing look through anyway:", palettes);
+        // return null; // ← disable this strict rejection
       }
 
-      const upper = allItems.find(it => getSilhouetteRole(it.name || it.category) === "upper");
-      const lower = allItems.find(it => getSilhouetteRole(it.name || it.category) === "lower");
+        console.log("🎨 Skipping look (color clash):", palettes);
+        return null;
+      }
+
+      
+        if (!harmonious(palettes)) {
+          console.log("🧯 Dropped look for palette clash:", palettes);
+          return null;
+        }
+      /* ── 2. Remove same-category duplicates ─────── */
+      const seenCategories = new Set();
+      allItems = allItems.filter(it => {
+        const cat = (it.category || "").toLowerCase();
+        if (seenCategories.has(cat)) return false;
+        seenCategories.add(cat);
+        return true;
+      });
+
+      /* ── 3. Silhouette pairing logic ────────────── */
+      const role = txt => silhouetteRole(txt.name || txt.category);
+
+      const anchor     = allItems.find(it => role(it) === "anchor");
+      const upper      = allItems.find(it => role(it) === "upper");
+      const lower      = allItems.find(it => role(it) === "lower");
+      const outer      = allItems.find(it => role(it) === "outer");
+      const accessories = allItems.filter(it => role(it) === "accessory");
+
+      if (anchor) {
+        return [anchor, outer, ...accessories.slice(0, 2)].filter(Boolean);
+      }
 
       if (upper && lower) {
-        const accessories = allItems.filter(it =>
-          getSilhouetteRole(it.name || it.category) === "accessory"
-        );
-        return [upper, lower, ...accessories.slice(0, 2)];
+        return [upper, lower, outer, ...accessories.slice(0, 1)].filter(Boolean);
       }
 
-      return allItems.slice(0, 4); // fallback if missing types
+      if (upper || lower) {
+        return [upper || lower, outer, ...accessories.slice(0, 2)].filter(Boolean);
+      }
+
+      return allItems.slice(0, 4);
     }
+
 
     console.log("🔎 Looks before hydration:", JSON.stringify(result.output.looks, null, 2));
 
     // 🧪 Apply silhouette filtering
-    result.output.looks.forEach((look, li) => {
-      look.items = buildCleanLook(look.items);
-    });
+    result.output.looks = result.output.looks
+    .map((look) => {
+      // 🌊 1. hydrate each { idx } with full wardrobe data
+      const hydratedItems = (look.items || []).map((it) => ({
+        idx: it.idx,
+        ...(idx2item[it.idx] || {}),   // inject name, category, color, palette, image_url
+      }));
+
+      // 🌊 2. run silhouette & color logic
+      const cleaned = buildCleanLook(hydratedItems);
+
+      return { ...look, items: cleaned };
+    })
+    // 🌊 3. drop any null/empty or 1-piece looks
+    .filter((l) => Array.isArray(l.items) && l.items.length >= 2);
+  // drop null / empty
+
 
 
 
@@ -520,20 +631,30 @@ ${wardrobeLines}
 });
 
 // ✅ Like (save-as-favourite) outfit
+// ✅ Like (save-as-favourite) outfit
 app.post("/like-outfit", async (req, res) => {
-  const { uid, outfit } = req.body;
-  if (!uid || !outfit) return res.status(400).json({ error: "uid & outfit required" });
+  const { uid, outfit, context = {} } = req.body;
+
+   console.log("✅ /like-outfit HIT", { uid, itemCount: outfit?.items?.length });
+
+  if (!uid || !outfit) {
+    return res.status(400).json({ error: "uid & outfit required" });
+  }
+
   try {
     await db.collection("liked_looks").add({
       uid,
       outfit,
+      context,
       liked_at: new Date().toISOString(),
     });
+
     res.json({ message: "Look liked!" });
   } catch (e) {
     res.status(500).json({ error: "Could not save like" });
   }
 });
+
 
 
 // ✅ Save outfit plan for a date
