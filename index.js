@@ -142,10 +142,6 @@ app.post("/auto-tag", async (req, res) => {
 
 
 
-});
-
-
-
 // ✅ Fetch wardrobe by user ID
 app.get("/wardrobe", async (req, res) => {
   const { uid } = req.query;
