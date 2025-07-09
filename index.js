@@ -501,23 +501,12 @@ ${wardrobeLines}
 
 
       /* ── 1. Palette check ───────────────────────── */
-      /* ── 1. Palette check ───────────────────────── */
       const palettes = allItems.map(it => it.palette || pickPalette(it.color));
 
       if (!harmonious(palettes)) {
         console.warn("⚠️ Mild palette clash — allowing look through anyway:", palettes);
         // return null; // ← disable this strict rejection
       }
-
-        console.log("🎨 Skipping look (color clash):", palettes);
-        return null;
-      }
-
-      
-        if (!harmonious(palettes)) {
-          console.log("🧯 Dropped look for palette clash:", palettes);
-          return null;
-        }
       /* ── 2. Remove same-category duplicates ─────── */
       const seenCategories = new Set();
       allItems = allItems.filter(it => {
