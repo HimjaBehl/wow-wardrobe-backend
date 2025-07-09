@@ -456,6 +456,10 @@ ${wardrobeLines}
         return res.status(502).json({ error: result.output.error });
       }
     } catch (e) {
+      console.error("❌ AGENT CALL FAILED:", e);
+      return res.status(500).json({ error: "Agent call failed", message: e.message });
+    }
+    } catch (e) {
       console.error("❌ AGENT CALL FAILED:", e); // full object, not just e.message
       return res.status(500).json({ error: "Agent call failed", message: e.message });
     }
