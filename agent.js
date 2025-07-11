@@ -49,25 +49,10 @@ async function setupAgent() {
         {
           role: "system",
           content: `You are a fashion stylist AI. Generate outfit suggestions based on the user's wardrobe and preferences.
-    You also have access to the latest fashion trend insights via the \`get_trend_insights()\` function. Use the data below if relevant.`,
-        },
-        { role: "user", content: `${input}\n\nTREND_INSIGHTS:\n${trendInfo}` },
-      ];
-
-      const res = await model.invoke(initialPrompt);
-      console.log("👗 Draft from Tina:", res.content);
-      return { draft: res.content, originalInput: input };
-    }
-
-      const initialPrompt = [
-        {
-          role: "system",
-          content: `You are a fashion stylist AI. Generate outfit suggestions based on the user's wardrobe and preferences.
           You also have access to the latest fashion trend insights via the \`get_trend_insights()\` function. 
           Use it when the user's query mentions trends, Pinterest, or what's in fashion.`,
-
         },
-        { role: "user", content: input },
+        { role: "user", content: `${input}\n\nTREND_INSIGHTS:\n${trendInfo}` },
       ];
       const res = await model.invoke(initialPrompt);
       console.log("👗 Draft from Tina:", res.content);
