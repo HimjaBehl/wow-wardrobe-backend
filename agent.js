@@ -1,14 +1,29 @@
-/* lib/agent.js
-   ultra-small wrapper around OpenAI chat – no undefined vars */
+/* lib/agent.js – Reasoning version */
 
 require("dotenv").config();
+const { execSync } = require('child_process');
+
+async function getTrendInsights(query) {
+  try {
+    const command = `python3 trend_insight_tool.py "${query}"`;
+    const output = execSync(command).toString();
+    return output.trim();
+  } catch (err) {
+    console.error("❌ Trend tool error:", err.message);
+    return "Sorry, I couldn't fetch the latest trends right now.";
+  }
+}
+
 const { ChatOpenAI } = require("@langchain/openai");
+const { RunnableSequence } = require("@langchain/core/runnables");
+const { ChatPromptTemplate } = require("@langchain/core/prompts");
 
 /* ---------- helper: strip ``` fences & parse ------------------------- */
 function safeJson(text = "") {
   const cleaned = text.replace(/```json\s*([\s\S]*?)```/i, "$1").trim();
-  try { return JSON.parse(cleaned); }
-  catch {
+  try {
+    return JSON.parse(cleaned);
+  } catch {
     console.warn("⚠️  LLM returned invalid JSON:\n" + text);
     return { looks: [], error: "Invalid JSON from LLM" };
   }
@@ -17,34 +32,77 @@ function safeJson(text = "") {
 /* ---------- exported factory ---------------------------------------- */
 async function setupAgent() {
   const model = new ChatOpenAI({
-    temperature : 0.7,
-    modelName   : "gpt-3.5-turbo",
-    openAIApiKey: process.env.OPENAI_API_KEY
+    temperature: 0.7,
+    modelName: "gpt-3.5-turbo",
+    openAIApiKey: process.env.OPENAI_API_KEY,
   });
+
+  const reasoningChain = RunnableSequence.from([
+    async (input) => {
+      // Auto-call trend tool if user query mentions trends
+      let trendInfo = "";
+      if (input.toLowerCase().includes("trend") || input.toLowerCase().includes("pinterest")) {
+        trendInfo = await getTrendInsights(input);
+      }
+
+      const initialPrompt = [
+        {
+          role: "system",
+          content: `You are a fashion stylist AI. Generate outfit suggestions based on the user's wardrobe and preferences.
+    You also have access to the latest fashion trend insights via the \`get_trend_insights()\` function. Use the data below if relevant.`,
+        },
+        { role: "user", content: `${input}\n\nTREND_INSIGHTS:\n${trendInfo}` },
+      ];
+
+      const res = await model.invoke(initialPrompt);
+      console.log("👗 Draft from Tina:", res.content);
+      return { draft: res.content, originalInput: input };
+    }
+
+      const initialPrompt = [
+        {
+          role: "system",
+          content: `You are a fashion stylist AI. Generate outfit suggestions based on the user's wardrobe and preferences.
+          You also have access to the latest fashion trend insights via the \`get_trend_insights()\` function. 
+          Use it when the user's query mentions trends, Pinterest, or what's in fashion.`,
+
+        },
+        { role: "user", content: input },
+      ];
+      const res = await model.invoke(initialPrompt);
+      console.log("👗 Draft from Tina:", res.content);
+      return { draft: res.content, originalInput: input };
+    },
+
+    async ({ draft, originalInput }) => {
+      const critiquePrompt = [
+        {
+          role: "system",
+          content:
+            "You are a senior stylist reviewing another stylist’s outfit choices. Identify if the looks follow style rules and improve if needed. Only return corrected looks in clean JSON format.",
+        },
+        {
+          role: "user",
+          content: `Prompt:\n${originalInput}\n\nDraft Looks:\n${draft}`,
+        },
+      ];
+      const revisedRes = await model.invoke(critiquePrompt);
+      console.log("🧠 Tina’s Revised Output:", revisedRes.content);
+      return safeJson(revisedRes.content);
+    },
+  ]);
 
   return {
     call: async ({ input }) => {
       try {
-        /* 1️⃣ ask the model */
-        const response = await model.invoke([
-          { role: "system", content: "You are a fashion stylist AI." },
-          { role: "user",   content: input }          // <-- use finalInput
-        ]);
-
-        console.log("📝 Raw LLM text:", response.content);
-
-        /* 2️⃣ parse */
-        const parsed = safeJson(response.content);
-        if (!Array.isArray(parsed.looks)) parsed.looks = [];
-
-        console.log("✅ Parsed JSON:", JSON.stringify(parsed, null, 2));
-        return { output: parsed };
-
+        const finalOutput = await reasoningChain.invoke(input);
+        console.log("✅ Final Looks JSON:", JSON.stringify(finalOutput, null, 2));
+        return { output: finalOutput };
       } catch (err) {
-        console.error("💥 Agent crashed:", err);
-        return { output: { looks: [], error: "Agent call failed" } };
+        console.error("💥 Reasoning loop failed:", err);
+        return { output: { looks: [], error: "Reasoning loop crashed" } };
       }
-    }
+    },
   };
 }
 

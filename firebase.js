@@ -8,7 +8,7 @@ if (!getApps().length) {
   app = initializeApp({
     credential: cert(serviceAccount),
      projectId: "wowapp1406",
-    storageBucket: "wowapp1406.appspot.com",
+    storageBucket: "wowapp1406.firebasestorage.app",   
   });
 } else {
   app = getApp();

@@ -50,9 +50,17 @@ const cors = require("cors");
 const axios = require("axios");
 const path = require("path");
 const setupAgent = require("./agent");
+let agent = null;
+setupAgent().then((a) => {
+  agent = a;
+});
+
 const { v4: uuidv4 } = require("uuid");
 const { db, storage } = require("./firebase");
 const bucket = storage.bucket();
+
+console.log("✅ Firebase initialized with bucket:", bucket.name);
+
 
 // ─── WEATHER HELPER ─────────────────────────────────────────────
 const OPENWEATHER_URL =
@@ -83,6 +91,26 @@ console.log("🧠 OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
 // 👉 Safe lowercase helper used everywhere
 function safeLower(txt) {
   return typeof txt === "string" ? txt.toLowerCase() : "";
+}
+
+function isColorGoodForSkinTone(color = "", skinTone = "") {
+  const warmTones = ["olive", "mustard", "rust", "coral", "maroon", "gold", "peach", "warm beige"];
+  const coolTones = ["icy blue", "lavender", "mint", "grey", "neon green", "silver", "lilac"];
+
+  const clr = safeLower(color);
+  const tone = safeLower(skinTone);
+
+  if (!clr || !tone) return true; // no filtering
+
+  if (tone.includes("warm")) {
+    return !coolTones.some((ct) => clr.includes(ct));
+  }
+
+  if (tone.includes("cool")) {
+    return !warmTones.some((wt) => clr.includes(wt));
+  }
+
+  return true; // neutral or unknown tone
 }
 
 
@@ -333,9 +361,31 @@ function buildUserStyleSummary(uid, max = 10) {
 }
 // ─────────────────────────────────────────────────────────────
 
+async function getUserMemory(uid) {
+  try {
+    const doc = await db.collection("tina_memory").doc(uid).get();
+    return doc.exists ? doc.data() : {};
+  } catch (err) {
+    console.error("🧠 Error fetching tina_memory:", err.message);
+    return {};
+  }
+}
+
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
   const { uid, occasion = "", vibe = "", city = "Delhi", constraints = "", prompt = "", style_mood = "" } = req.body;
+
+  // 🔍 Fetch onboarding memory
+  let user_preferences = {};
+  try {
+    const doc = await db.collection("tina_memory").doc(uid).get();
+    if (doc.exists) {
+      user_preferences = doc.data();
+    }
+  } catch (err) {
+    console.warn("⚠️ Could not load user preferences", err.message);
+  }
+
 
 
   if (!uid) return res.status(400).json({ error: "uid is required" });
@@ -394,6 +444,23 @@ app.post("/suggest-outfit", async (req, res) => {
     const userStyleSummary = await buildUserStyleSummary(uid);
 
     const weatherNow = await getWeather(city);
+    const userPreferences = await getUserMemory(uid);
+
+    const skinTone = userPreferences.skinTone || "";
+
+    if (skinTone) {
+      wardrobeItems = wardrobeItems.filter((it) =>
+        isColorGoodForSkinTone(it.color || "", skinTone)
+      );
+      console.log("🎨 Wardrobe after skin tone filter:", wardrobeItems.length);
+    }
+
+    console.log("🧠 User memory:", userPreferences);
+
+    const rejectedColors = wardrobeItems.filter(
+      (it) => !isColorGoodForSkinTone(it.color || "", skinTone)
+    );
+    console.log("❌ Items rejected due to skin tone:", rejectedColors.map(i => i.color));
 
 
 
@@ -465,6 +532,17 @@ ${style_mood ? `Style Mood: ${style_mood}` : ""}
 ${moodCommentary ? `\n\nStyle Guidance:\n${moodCommentary}` : ""}
 ${prompt.trim() ? `Custom Prompt: ${prompt.trim()}` : ""}
 ${userStyleSummary ? `\n\nUSER STYLE INSIGHTS:\n${userStyleSummary}` : ""}
+${Object.keys(userPreferences || {}).length ? `
+USER PREFERENCES:
+${JSON.stringify(userPreferences)}
+
+Skin tone guidance:
+If the user has a warm skin tone (like 'fair warm'), prefer earthy, rich, and warm colors like olive, mustard, rust, coral, maroon, gold.
+Avoid cool tones like icy blue, greyish lilac, or neon green.
+
+` : ""}
+
+
 
 
 
@@ -472,6 +550,9 @@ ${userStyleSummary ? `\n\nUSER STYLE INSIGHTS:\n${userStyleSummary}` : ""}
 Wardrobe:
 Each line is in the format idx|name|category|color
 ${wardrobeLines}
+
+Here are their style preferences:
+${JSON.stringify(user_preferences)}
 `.trim();
 
 
@@ -636,9 +717,47 @@ ${wardrobeLines}
     });
 
     /* ---------- Apply structural + banned-item filter --- */
-    result.output.looks = result.output.looks.filter(l =>
-      validateLookAgainstRules(l, userRules)
-    );
+    const { isValidCombo, needsLayer } = require("./lib/styleRules");
+
+    result.output.looks = result.output.looks.filter(l => {
+      const items = l.items;
+
+      const passesBanCheck = validateLookAgainstRules(l, userRules);
+      const passesStructure = isValidCombo(items);
+      const passesWeather = !needsLayer(items, weatherNow);
+
+      if (!passesBanCheck) console.warn("❌ Banned item detected");
+      if (!passesStructure) console.warn("❌ Invalid top/bottom structure");
+      if (!passesWeather) console.warn("❌ Missing layer for weather");
+
+      return passesBanCheck && passesStructure && passesWeather;
+    });
+
+
+    const rejected = [];
+
+    result.output.looks = result.output.looks.filter(l => {
+      const items = l.items;
+
+      const fails = [];
+
+      if (!validateLookAgainstRules(l, userRules)) fails.push("banned item");
+      if (!isValidCombo(items)) fails.push("invalid outfit combo");
+      if (needsLayer(items, weatherNow)) fails.push("missing layer for weather");
+
+      if (fails.length) {
+        rejected.push({ title: l.title, reasons: fails });
+        return false;
+      }
+      return true;
+    });
+
+    if (result.output.looks.length === 0) {
+      return res.status(502).json({
+        error: "No valid looks generated",
+        rejected_reasons: rejected
+      });
+    }
 
 
     // Add this:
@@ -666,7 +785,68 @@ ${wardrobeLines}
 
 });
 
-// ✅ Like (save-as-favourite) outfit
+// ✅ Build Tina’s Style DNA
+app.post("/build-style-dna", async (req, res) => {
+  const { uid } = req.body;
+
+  if (!uid) {
+    return res.status(400).json({ error: "uid is required" });
+  }
+
+  try {
+    // Fetch wardrobe items
+    const snap = await db.collection("wardrobe")
+      .where("uid", "==", uid)
+      .get();
+
+    const wardrobeItems = snap.docs.map(d => d.data());
+
+    // Fetch preferences
+    const memDoc = await db.collection("tina_memory").doc(uid).get();
+    const preferences = memDoc.exists ? memDoc.data() : {};
+
+    // Create a condensed summary string
+    const wardrobeList = wardrobeItems.map(i => `${i.name || "unnamed"} (${i.category})`).join(", ");
+    const prompt = `
+Analyze this user’s style based on their wardrobe and preferences. 
+Summarize it in one sentence. 
+Wardrobe: ${wardrobeList}
+Preferences: ${JSON.stringify(preferences)}
+Output just the sentence. Example: “Boho-street with bold color pops.”
+`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method : "POST",
+      headers: {
+        "Content-Type" : "application/json",
+        "Authorization" : `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [
+          { role: "system", content: "You are a fashion stylist AI." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7
+      })
+    });
+
+    const json = await response.json();
+    const reply = json.choices?.[0]?.message?.content || "No style detected.";
+
+    // Save it to memory
+    await db.collection("tina_memory").doc(uid).set(
+      { style_dna: reply }, { merge: true }
+    );
+
+    res.status(200).json({ style_dna: reply });
+
+  } catch (err) {
+    console.error("❌ Failed to build style DNA:", err.message);
+    res.status(500).json({ error: "Failed to generate style DNA" });
+  }
+});
+
 // ✅ Like (save-as-favourite) outfit
 app.post("/like-outfit", async (req, res) => {
   const { uid, outfit, context = {} } = req.body;
@@ -710,6 +890,103 @@ app.post("/plan-outfit", async (req, res) => {
   }
 });
 
+// ✅ Save onboarding preferences
+app.post("/onboarding", async (req, res) => {
+  const { uid, dislikes = [], bodyType = "", skinTone = "", favColors = [] } = req.body;
+
+  if (!uid) {
+    return res.status(400).json({ error: "uid is required" });
+  }
+
+  try {
+    await db.collection("tina_memory").doc(uid).set({
+      dislikes,
+      bodyType,
+      skinTone,
+      favColors,
+      updated_at: new Date().toISOString(),
+    });
+
+    res.status(200).json({ message: "Preferences saved successfully" });
+  } catch (err) {
+    console.error("❌ Failed to save onboarding:", err.message);
+    res.status(500).json({ error: "Failed to save onboarding preferences" });
+
+    // ✅ Fetch onboarding preferences
+    app.get("/onboarding", async (req, res) => {
+      const { uid } = req.query;
+
+      if (!uid) {
+        return res.status(400).json({ error: "uid is required" });
+      }
+
+      try {
+        const doc = await db.collection("tina_memory").doc(uid).get();
+        if (doc.exists) {
+          res.status(200).json(doc.data());
+        } else {
+          res.status(404).json({ error: "No preferences found for this user" });
+        }
+      } catch (err) {
+        console.error("❌ Failed to fetch onboarding:", err.message);
+        res.status(500).json({ error: "Failed to fetch onboarding preferences" });
+      }
+    });
+    // ✅ Generate and store Style DNA
+    app.post("/build-style-dna", async (req, res) => {
+      const { uid } = req.body;
+      if (!uid) return res.status(400).json({ error: "uid is required" });
+
+      try {
+        // 1. Fetch wardrobe items
+        const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+        const wardrobe = snap.docs.map((doc) => doc.data());
+
+        // 2. Fetch styling memory
+        const memDoc = await db.collection("tina_memory").doc(uid).get();
+        const memory = memDoc.exists ? memDoc.data() : {};
+
+        // 3. Build prompt
+        const wardrobeList = wardrobe
+          .map(it => `• ${it.name || "Unnamed"} (${it.category || "unknown"}) - ${it.color || "no color"}`)
+          .join("\n");
+
+        const prompt = `
+    Based on this user's wardrobe and styling preferences, describe their personal fashion vibe in 1 punchy sentence.
+
+    Wardrobe:
+    ${wardrobeList || "(No wardrobe items)"}
+
+    Preferences:
+    ${JSON.stringify(memory)}
+
+    Focus on silhouette, color, accessories, and layering style. Avoid generic terms. 
+    Only return the sentence, no explanation or formatting.
+    `;
+
+        // 4. Call OpenAI
+        if (!agent) return res.status(503).json({ error: "Agent not ready yet" });
+
+        const { output } = await agent.call({ input: prompt });
+        const dna = output?.description || output?.style_dna || output?.text || "Modern casual chic"; // fallback
+
+
+        // 5. Save to memory
+        await db.collection("tina_memory").doc(uid).set({
+          ...memory,
+          style_dna: styleDNA
+        });
+
+        res.status(200).json({ style_dna: styleDNA });
+      } catch (err) {
+        console.error("❌ Failed to build style DNA:", err);
+        res.status(500).json({ error: "Failed to build style DNA" });
+      }
+    });
+
+  }
+});
+
 
 // ✅ Error handling middleware
 app.use((err, req, res, next) => {
@@ -725,6 +1002,27 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
+
+
+// ✅ Fetch onboarding preferences
+app.get("/onboarding", async (req, res) => {
+  const { uid } = req.query;
+
+  if (!uid) return res.status(400).json({ error: "uid is required" });
+
+  try {
+    const doc = await db.collection("tina_memory").doc(uid).get();
+    if (doc.exists) {
+      res.status(200).json(doc.data());
+    } else {
+      res.status(404).json({ error: "No preferences found for this user" });
+    }
+  } catch (err) {
+    console.error("❌ Failed to fetch onboarding:", err.message);
+    res.status(500).json({ error: "Failed to fetch onboarding preferences" });
+  }
+});
+
 
 // ✅ Start server
 const PORT = process.env.PORT || 3000;
