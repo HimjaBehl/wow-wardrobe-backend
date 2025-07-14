@@ -4,6 +4,12 @@ console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" :
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
 
 const express = require("express");
+const getTrendInsights = require("./tools/getTrendInsights");
+
+const tools = [
+  getTrendInsights,
+];
+
 const { validateLookAgainstRules } = require("./lib/styleRules");
 
 function silhouetteRole(text = "") {
