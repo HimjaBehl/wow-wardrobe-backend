@@ -12,9 +12,7 @@ const tools = [
 
 const { validateLookAgainstRules } = require("./lib/styleRules");
 
-app.get("/ping", (req, res) => {
-  res.json({ ok: true, time: Date.now() });
-});
+
 
 
 function silhouetteRole(text = "") {
