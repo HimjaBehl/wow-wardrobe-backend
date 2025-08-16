@@ -1,8 +1,8 @@
 import os
 from langchain.tools import tool
 from supabase import create_client
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import SupabaseVectorStore
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import SupabaseVectorStore
 from dotenv import load_dotenv
 import os
 
@@ -30,5 +30,12 @@ vectorstore = SupabaseVectorStore(
 def get_trend_insights(query: str) -> str:
     """Returns trending fashion insights based on the user’s query."""
     results = vectorstore.similarity_search(query, k=3)
+
+    print(f"🧠 Query: {query}")
+    print(f"🔎 Results: {results}")
+
+    if not results:
+        return "No matching trends found in the database."
+
     insights = "\n\n".join([r.page_content for r in results])
     return insights
