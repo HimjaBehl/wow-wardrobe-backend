@@ -427,10 +427,7 @@ app.post("/suggest-outfit", async (req, res) => {
     bodyKeys: Object.keys(req.body || {})
   });
 
-  const { uid, dryRun } = req.body || {};
-  if (!uid) return res.status(400).json({ error: "uid is required" });
-
-app.post("/suggest-outfit", async (req, res) => {
+  const { uid, dryRun, occasion = "", vibe = "", city = "Delhi", constraints = "", prompt = "", style_mood = "" } = req.body || {};
   const { uid, occasion = "", vibe = "", city = "Delhi", constraints = "", prompt = "", style_mood = "" } = req.body;
 
   // 🔍 Fetch onboarding memory
@@ -838,7 +835,6 @@ app.post("/suggest-outfit", async (req, res) => {
       stack: err.stack || "No stack trace",
     });
   }
-
 });
 
 // ✅ Build Tina’s Style DNA
