@@ -127,7 +127,17 @@ function isColorGoodForSkinTone(color = "", skinTone = "") {
 
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "2mb" })); // keep your existing call, or replace with this
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    uptime: process.uptime(),
+    node: process.version,
+    env: process.env.NODE_ENV || "dev",
+    hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+  });
+});
 
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY);
 
@@ -411,6 +421,16 @@ async function getUserMemory(uid) {
 
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
+  console.log("HIT /suggest-outfit", {
+    ts: new Date().toISOString(),
+    xDebug: req.headers["x-debug"] || null,
+    bodyKeys: Object.keys(req.body || {})
+  });
+
+  const { uid, dryRun } = req.body || {};
+  if (!uid) return res.status(400).json({ error: "uid is required" });
+
+app.post("/suggest-outfit", async (req, res) => {
   const { uid, occasion = "", vibe = "", city = "Delhi", constraints = "", prompt = "", style_mood = "" } = req.body;
 
   // 🔍 Fetch onboarding memory
@@ -584,6 +604,15 @@ app.post("/suggest-outfit", async (req, res) => {
     console.log("📦 Full wardrobe count:", wardrobeItems.length);
     console.log("🌤 Weather now:", weatherNow);
 
+    // ✅ Diagnostic: skip AI to isolate backend/firestore issues
+    if (dryRun) {
+      return res.json({
+        ok: true,
+        note: "Dry run — skipped AI call",
+        wardrobeCount: wardrobeItems.length,
+        samplePreview: sample.slice(0, 5)  // shows first few items we'll send to AI
+      });
+    }
 
     // 5️⃣ call agent
     if (!agent) agent = await setupAgent();
