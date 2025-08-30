@@ -428,7 +428,6 @@ app.post("/suggest-outfit", async (req, res) => {
   });
 
   const { uid, dryRun, occasion = "", vibe = "", city = "Delhi", constraints = "", prompt = "", style_mood = "" } = req.body || {};
-  const { uid, occasion = "", vibe = "", city = "Delhi", constraints = "", prompt = "", style_mood = "" } = req.body;
 
   // 🔍 Fetch onboarding memory
   let user_preferences = {};
