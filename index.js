@@ -385,48 +385,6 @@ app.get("/wardrobe", async (req, res) => {
       }
     });
 
-
-    function capitalizeWords(str) {
-      return str
-        .toLowerCase()
-        .split(/[\s-/]+/)
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
-    }
-
-    const tagsRaw = tags || [];
-
-    const capitalizedTags = tagsRaw.map(capitalizeWords);
-    const capitalizedName = capitalizeWords(name || "Item");
-    const capitalizedColor = capitalizeWords(color || "");
-    const capitalizedCategory = capitalizeWords(category || "");
-
-    const knownFabrics = ["Cotton", "Linen", "Denim", "Silk", "Wool", "Nylon", "Polyester", "Chiffon"];
-    const fabric = capitalizedTags.find(tag => knownFabrics.includes(tag)) || "Unknown";
-
-    const primaryTag = capitalizedName;
-
-    const docRef = await db.collection("wardrobe").add({
-      uid,
-      image_path,
-      image_url,
-      name: capitalizedName,
-      category: capitalizedCategory,
-      color: capitalizedColor,
-      tags: capitalizedTags,
-      primaryTag,
-      fabric,
-      created_at: new Date().toISOString(),
-    });
-
-
-    res.status(200).json({ message: "Item added", id: docRef.id });
-  } catch (err) {
-    console.error("❌ Error adding item:", err.message);
-    res.status(500).json({ error: "Failed to save wardrobe item" });
-  }
-});
-
 // ✅ Delete wardrobe item
 app.delete("/wardrobe/:id", async (req, res) => {
   const { id } = req.params;
