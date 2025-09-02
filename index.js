@@ -3,6 +3,7 @@ require("dotenv").config();
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" : "undefined");
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
 
+const { validateLook } = require("./lib/fashionBrain");
 const express = require("express");
 const getTrendInsights = require("./tools/getTrendInsights");
 
@@ -481,6 +482,11 @@ app.post("/suggest-outfit", async (req, res) => {
 
     let wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+    // 2️⃣ Fetch user preferences (onboarding memory)
+    const memDoc = await db.collection("tina_memory").doc(uid).get();
+    const prefs = memDoc.exists ? memDoc.data() : {};
+
+
     if (wardrobeItems.length < 3) {
       return res.status(400).json({ error: "Need at least 3 wardrobe items." });
     }
@@ -535,7 +541,11 @@ app.post("/suggest-outfit", async (req, res) => {
     - Avoid repeating the same silhouette role twice (e.g., 2 outers).
     - Consider fabrics and seasonal relevance (wool/velvet → winter, linen/cotton → summer).
     - Respect user dislikes, skin tone, and favorite colors (already filtered above).
+    - User dislikes (must avoid): ${prefs?.dislikes?.join(", ") || "none"}.
+    - Skin tone: ${prefs?.skinTone || "unknown"}.
+    - Fav colors: ${prefs?.favColors?.join(", ") || "none"}.
     - Add a "style_note" explaining why the look works (e.g. color balance, silhouette, occasion match).
+    - ❗ STRICT RULE: A valid outfit = (top + bottom + footwear) OR (dress/jumpsuit + footwear). Never return invalid outfits.
 
     Respond ONLY in strict JSON. No text, no markdown.
 
@@ -617,15 +627,99 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
     if (parsed.looks && Array.isArray(parsed.looks)) {
-      parsed.looks = parsed.looks.map(look => ({
-        title: look.title,
-        style_note: look.style_note || "Suggested look",
-        items: (look.items || []).map(it => ({
-          ...idx2item[it.idx],   // ✅ hydrate with wardrobeItems
+      parsed.looks = parsed.looks.map(look => {
+        let hydratedItems = (look.items || []).map(it => ({
+          ...idx2item[it.idx],
           idx: it.idx,
-        })),
-      }));
-    }
+        }));
+
+        // 🧹 Cleanup rules before validation
+        // ❌ Remove duplicate bags
+        const bags = hydratedItems.filter(it => (it.category || "").toLowerCase().includes("bag"));
+        if (bags.length > 1) {
+          hydratedItems = hydratedItems.filter(it => !(it.category || "").toLowerCase().includes("bag"));
+          hydratedItems.push(bags[0]); // keep only one bag
+        }
+
+        // ❌ Remove bottoms if a dress/jumpsuit is present
+        const hasDress = hydratedItems.some(it => (it.category || "").toLowerCase().includes("dress") || (it.category || "").toLowerCase().includes("jumpsuit"));
+        if (hasDress) {
+          hydratedItems = hydratedItems.filter(it => {
+            const c = (it.category || "").toLowerCase();
+            return !(c.includes("pants") || c.includes("jeans") || c.includes("trousers") || c.includes("skirt") || c.includes("shorts"));
+          });
+        }
+
+        // ❌ Ensure footwear exists (fallback: add first available footwear)
+        const hasFootwear = hydratedItems.some(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
+        if (!hasFootwear) {
+          const footwear = wardrobeItems.find(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
+          if (footwear) hydratedItems.push(footwear);
+        }
+
+        // ✅ Run validations
+        const validationFB = validateLook(hydratedItems, { weather: city });
+        const validationRules = validateLookAgainstRules(
+          { items: hydratedItems }, 
+          { 
+            bannedItems: (prefs?.dislikes || []),
+            weather: city
+          }
+        );
+
+        return {
+          title: look.title,
+          style_note: look.style_note || "Suggested look",
+          items: hydratedItems,
+          validation: {
+            fashionBrain: validationFB,
+            styleRules: validationRules,
+          },
+        };
+      });
+
+
+      // 🔎 Keep only looks that passed strict styleRules
+      parsed.looks.forEach(l => {
+        if (!l.validation.styleRules.valid) {
+          console.log("🚫 Look failed rules:", l.title, l.validation.styleRules.errors);
+        }
+      });
+
+      parsed.looks = parsed.looks.filter(l => {
+        // allow looks that are valid OR have <= 2 soft errors
+        return l.validation.styleRules.valid || 
+          (l.validation.styleRules.errors && l.validation.styleRules.errors.length <= 2);
+      });
+
+
+      // 🚑 Fallback if nothing survived
+      if (!parsed.looks.length) {
+        const fallbackItems = wardrobeItems.map((it, i) => ({
+          id: it.id,
+          name: it.name,
+          category: it.category,
+          color: it.color,
+          image_url: it.image_url,
+          tags: it.tags || [],
+          taxonomyPath: it.taxonomyPath || "",
+          attributes: it.attributes || {},
+          fabric: it.fabric || "",
+          silhouette: it.silhouette || "",
+          idx: String(i),
+        }));
+
+        parsed.looks = [
+          { title: "Fallback Look 1", items: fallbackItems.slice(0, 3) },
+          { title: "Fallback Look 2", items: fallbackItems.slice(3, 6) }
+        ];
+        parsed.note = "Fallback triggered: Tina’s suggestions failed validation rules.";
+      }
+
+
+
+
+
 
     console.log("🎨 Hydrated looks:", JSON.stringify(parsed, null, 2));
     res.json(parsed);

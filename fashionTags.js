@@ -1,34 +1,41 @@
-// ─── Silhouette helpers ─────────────────────────
 function guessSilhouette(text = "") {
-  const t = typeof text === "string" ? text.toLowerCase() : "";
-  if (/dress/.test(t)) return "fit-and-flare";
-  if (/wide|baggy|flare/.test(t)) return "wide-leg";
-  if (/slim|skinny|legging/.test(t)) return "slim";
-  if (/shirt|top|blouse/.test(t)) return /oversize/.test(t) ? "boxy" : "slim";
-  if (/jacket|coat/.test(t)) return "structured";
-  return "regular";
-}
+  const t = (text || "").toLowerCase();
 
-function pickPalette(color = "") {
-  const c = typeof color === "string" ? color.toLowerCase() : "";
-  if (/white|black|grey|cream|beige|khaki|nude/.test(c)) return "neutral";
-  if (/red|orange|yellow|maroon/.test(c)) return "warm";
-  if (/blue|green|teal|purple/.test(c)) return "cool";
-  return "unknown";
-}
+  // One-piece anchors
+  if (/dress|jumpsuit|gown/.test(t)) return "anchor";
 
-function getSilhouetteRole(text = "") {
-  const t = typeof text === "string" ? text.toLowerCase() : "";
-  if (/dress|jumpsuit/.test(t)) return "anchor";
-  if (/shirt|top|blouse|t-shirt/.test(t)) return "upper";
-  if (/jeans|pants|shorts|skirt|trousers?|bottom/.test(t)) return "lower";
-  if (/jacket|coat/.test(t)) return "outer";
-  if (/bag|shoe|sandal|boot|jewel|watch|sunglass/.test(t)) return "accessory";
+  // Tops
+  if (/shirt|top|blouse|t-shirt|tank/.test(t)) {
+    if (/oversized|loose|boxy/.test(t)) return "upper-oversized";
+    if (/slim|fitted|bodycon/.test(t)) return "upper-fitted";
+    if (/flowy|ruffle/.test(t)) return "upper-flowy";
+    return "upper";
+  }
+
+  // Bottoms
+  if (/pants|jeans|trousers/.test(t)) {
+    if (/wide|flared|bootcut/.test(t)) return "lower-wide";
+    if (/skinny|slim/.test(t)) return "lower-fitted";
+    return "lower";
+  }
+  if (/skirt/.test(t)) {
+    if (/pleated|a-line/.test(t)) return "lower-flowy";
+    return "lower";
+  }
+  if (/shorts/.test(t)) return "lower";
+
+  // Outerwear
+  if (/jacket|coat|blazer/.test(t)) {
+    if (/oversized|longline/.test(t)) return "outer-oversized";
+    return "outer";
+  }
+
+  // Accessories / Footwear
+  if (/shoe|sandal|boot|heel|sneaker/.test(t)) return "footwear";
+  if (/bag|purse|clutch|backpack/.test(t)) return "bag";
+  if (/belt|scarf|jewel|watch|sunglass/.test(t)) return "accessory";
+
   return "misc";
 }
 
-module.exports = {
-  guessSilhouette,
-  pickPalette,
-  getSilhouetteRole
-};
+module.exports = { guessSilhouette };
