@@ -15,7 +15,7 @@ const tools = [
 
 import { validateLookAgainstRules } from "./lib/styleRules.js";
 // 🔮 Load fashion taxonomy
-import { taxonomy } from "./lib/taxonomyUtils.js";
+import { taxonomy, findCategory, getAttributes } from "./lib/taxonomyUtils.js";
 console.log("✅ Loaded fashion taxonomy with top categories:", Object.keys(taxonomy));
 
 
@@ -243,7 +243,6 @@ app.post("/auto-tag", async (req, res) => {
       const color = colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1);
 
       // 👇 taxonomy lookup
-      import { findCategory, getAttributes } from "./lib/taxonomyUtils.js";
       const taxonomyMatch = findCategory(nameRaw.toLowerCase());
       const taxonomyAttributes = taxonomyMatch
         ? getAttributes(taxonomyMatch.subCategory) || {}
@@ -358,7 +357,6 @@ app.get("/wardrobe", async (req, res) => {
         const primaryTag = capitalizedName;
 
         // 👇 NEW: taxonomy enrichment
-        import { findCategory, getAttributes } from "./lib/taxonomyUtils.js";
         const taxonomyMatch = findCategory(capitalizedName.toLowerCase());
         const taxonomyAttributes = taxonomyMatch
           ? getAttributes(taxonomyMatch.subCategory) || {}
