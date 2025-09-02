@@ -1,13 +1,13 @@
 import { runTina } from "./tinaAgent.js";
-
-require("dotenv").config();
+import dotenv from "dotenv";
+dotenv.config();
 
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" : "undefined");
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
 
-const { validateLook } = require("./lib/fashionBrain");
-const express = require("express");
-const getTrendInsights = require("./tools/getTrendInsights");
+import { validateLook } from "./lib/fashionBrain.js";
+import express from "express";
+import getTrendInsights from "./tools/getTrendInsights.js";
 
 const tools = [
   getTrendInsights,
