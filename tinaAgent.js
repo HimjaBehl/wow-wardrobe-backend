@@ -247,3 +247,5 @@ output.looks = output.looks.map((look) => ({
 
 console.log("🎯 TinaAgent final parsed output:", output);
 return output;
+
+}
