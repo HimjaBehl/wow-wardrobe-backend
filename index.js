@@ -723,6 +723,14 @@ ${wardrobeLines}
     console.log("🎨 Hydrated looks:", JSON.stringify(parsed, null, 2));
     res.json(parsed);
 
+    } else {
+      return res.status(200).json({
+        looks: [
+          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
+          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
+        ],
+        note: "No valid looks found",
+      });
     }
 
   } catch (err) {
