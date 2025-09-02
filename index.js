@@ -56,7 +56,6 @@ console.log({
 console.log('Loaded fashionTags =>', fashionTags);
 
 
-import { calculateStyleScore } from "./lib/styleScore.js";
 import { styleMoodMap } from "./styleMoodMap.js";
 
 console.log("💡 Available moods:", Object.keys(styleMoodMap));
