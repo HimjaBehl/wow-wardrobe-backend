@@ -2,7 +2,8 @@
 import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import serviceAccount from "./serviceAccountKey.json";
+import fs from "fs";
+const serviceAccount = JSON.parse(fs.readFileSync("./serviceAccountKey.json", "utf8"));
 
 let app;
 if (!getApps().length) {
