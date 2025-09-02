@@ -13,7 +13,7 @@ const tools = [
   getTrendInsights,
 ];
 
-const { validateLookAgainstRules } = require("./lib/styleRules");
+import { validateLookAgainstRules } from "./lib/styleRules.js";
 // 🔮 Load fashion taxonomy
 const { taxonomy } = require("./lib/taxonomyUtils");
 console.log("✅ Loaded fashion taxonomy with top categories:", Object.keys(taxonomy));
