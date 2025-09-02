@@ -1,3 +1,6 @@
+import 'dotenv/config';
+console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
+console.log("SUPABASE_ANON_KEY set?", !!process.env.SUPABASE_ANON_KEY);
 
 import { ChatOpenAI } from "@langchain/openai";
 import { initializeAgentExecutorWithOptions } from "langchain/agents";
@@ -201,40 +204,46 @@ export async function runTina({
 
   const result = await executor.call({ input });
 
-  console.log("🔎 Tina raw result:", result);
-  
-  let output = result.output;
+console.log("🔎 Tina raw result:", result);
 
-  // 🔍 Try deeper extraction
-  if (typeof output === "string") {
-    try {
-      output = JSON.parse(output);
-    } catch (err) {
-      console.error("❌ Could not parse Tina output:", err, output);
-      return { looks: [], error: "Invalid Tina output" };
-    }
-  }
+let output = result.output;
 
-  if (output?.raw && typeof output.raw === "string") {
-    try {
-      output = JSON.parse(output.raw);
-    } catch (err) {
-      console.error("❌ Could not parse Tina raw string:", err, output.raw);
-      return { looks: [], error: "Invalid Tina raw output" };
-    }
-  }
-
-  // ✅ Normalize
-  if (!output.looks || !Array.isArray(output.looks)) {
-    return { looks: [], error: "Invalid Tina output format" };
-  }
-
-  // Ensure trends_used exists
-  output.looks = output.looks.map((look) => ({
-    ...look,
-    trends_used: look.trends_used || [],
-  }));
-
-  console.log("🎯 TinaAgent final parsed output:", output);
-  return output;
+// 1️⃣ Sometimes LangChain stores JSON here
+if (!output && result.returnValues?.output) {
+  output = result.returnValues.output;
 }
+
+// 2️⃣ If it’s still a string, try parsing
+if (typeof output === "string") {
+  try {
+    output = JSON.parse(output);
+  } catch (err) {
+    console.error("❌ Could not parse Tina output string:", output);
+    return { looks: [], error: "Invalid Tina output" };
+  }
+}
+
+// 3️⃣ If agent wrapped JSON inside `.raw`
+if (output?.raw && typeof output.raw === "string") {
+  try {
+    output = JSON.parse(output.raw);
+  } catch (err) {
+    console.error("❌ Could not parse Tina raw field:", output.raw);
+    return { looks: [], error: "Invalid Tina raw output" };
+  }
+}
+
+// ✅ Final check
+if (!output.looks || !Array.isArray(output.looks)) {
+  console.error("❌ Tina output missing `looks`:", output);
+  return { looks: [], error: "Invalid Tina output format" };
+}
+
+// Ensure trends_used always exists
+output.looks = output.looks.map((look) => ({
+  ...look,
+  trends_used: look.trends_used || [],
+}));
+
+console.log("🎯 TinaAgent final parsed output:", output);
+return output;
