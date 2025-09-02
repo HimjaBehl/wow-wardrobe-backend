@@ -1,3 +1,5 @@
+import { runTina } from "./tinaAgent.js";
+
 require("dotenv").config();
 
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" : "undefined");
@@ -467,6 +469,23 @@ async function getUserMemory(uid) {
     return {};
   }
 }
+
+
+// 🆕 Experimental Tina agent route
+app.post("/suggest-outfit-agent", async (req, res) => {
+  const { uid, city = "Delhi", mood = "powerful", occasion = "" } = req.body;
+
+  try {
+    const result = await runTina({ uid, city, mood, occasion });
+
+    // Tina currently returns JSON as string → parse before sending to frontend
+    res.json(JSON.parse(result));
+  } catch (err) {
+    console.error("❌ Tina agent error:", err);
+    res.status(500).json({ error: "Tina agent failed", details: err.message });
+  }
+});
+
 
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
