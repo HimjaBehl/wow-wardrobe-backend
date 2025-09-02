@@ -31,4 +31,4 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node weather.js"
+args = "node index.js"

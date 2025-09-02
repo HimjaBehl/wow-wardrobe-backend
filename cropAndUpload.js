@@ -1,12 +1,12 @@
-/* cropAndUpload.js  – returns a PNG url for one bounding-box             */
-const sharp          = require("sharp");
-const { tmpdir }     = require("os");
-const { file }       = require("tmp-promise");
-const { v4: uuidv4 } = require("uuid");
-const { getStorage } = require("firebase-admin/storage");
+
+import sharp from "sharp";
+import { tmpdir } from "os";
+import { file } from "tmp-promise";
+import { v4 as uuidv4 } from "uuid";
+import { getStorage } from "firebase-admin/storage";
 
 /* bbox = {x_min, y_min, x_max, y_max} – all FRACTIONS 0-1   */
-module.exports = async function cropAndUpload(originalBuffer, bbox) {
+export default async function cropAndUpload(originalBuffer, bbox) {
   /* --- Get Firebase bucket (Firebase is already initialised in index.js) --- */
   const bucket = getStorage().bucket();
   const meta = await sharp(originalBuffer).metadata();
@@ -34,4 +34,4 @@ module.exports = async function cropAndUpload(originalBuffer, bbox) {
   });
 
   return url;
-};
+}

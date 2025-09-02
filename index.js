@@ -32,7 +32,7 @@ function silhouetteRole(text = "") {
   return "misc";
 }
 
-import { isNeutral, dominantPalette } from "./lib/colorRules.js";
+import { isNeutral, dominantPalette, harmonious } from "./lib/colorRules.js";
 
 
 // 🔥 STEP 1: Import like this, DON'T destructure yet
@@ -55,7 +55,7 @@ console.log({
 
 console.log('Loaded fashionTags =>', fashionTags);
 
-import { harmonious } from "./lib/colorRules.js";
+
 import { calculateStyleScore } from "./lib/styleScore.js";
 import { styleMoodMap } from "./styleMoodMap.js";
 
