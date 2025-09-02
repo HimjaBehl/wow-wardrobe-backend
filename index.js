@@ -485,7 +485,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
     let wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  
+
 
 
     if (wardrobeItems.length < 3) {
@@ -597,23 +597,7 @@ ${wardrobeLines}
       parsed = JSON.parse(raw);
       console.log("🔎 Parsed JSON draft:", JSON.stringify(parsed, null, 2));
 
-
-
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      console.error("❌ JSON parse failed:", err.message, raw);
-      return res.status(200).json({
-        looks: [
-          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
-          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
-        ],
-        note: "Returned fallback look because Tina’s JSON failed",
-      });
-    }
-
-    // 6️⃣ Hydrate indices with wardrobe items
+      // 6️⃣ Hydrate indices with wardrobe items
       const idx2item = Object.fromEntries(
         wardrobeItems.map((it, i) => [
           String(i),
@@ -742,8 +726,14 @@ ${wardrobeLines}
     }
 
   } catch (err) {
-    console.error("❌ Error in suggest-outfit:", err);
-    res.status(500).json({ error: "AI suggestion failed", message: err.message });
+    console.error("❌ JSON parse failed:", err.message, raw);
+    return res.status(200).json({
+      looks: [
+        { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
+        { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
+      ],
+      note: "Returned fallback look because Tina's JSON failed",
+    });
   }
 });
 
