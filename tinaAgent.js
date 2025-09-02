@@ -10,10 +10,20 @@ import { styleMoodMap } from "./styleMoodMap.js";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+// Initialize Supabase client with proper error handling
+let supabase;
+try {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required');
+  }
+  supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY
+  );
+} catch (error) {
+  console.error('Failed to initialize Supabase client:', error.message);
+  process.exit(1);
+}
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
