@@ -26,4 +26,4 @@ const styleMoodMap = {
   },
 };
 
-module.exports = { styleMoodMap };
+export { styleMoodMap };
