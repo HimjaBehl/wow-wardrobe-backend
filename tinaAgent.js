@@ -1,3 +1,4 @@
+
 import { ChatOpenAI } from "@langchain/openai";
 import { initializeAgentExecutorWithOptions } from "langchain/agents";
 import { DynamicTool } from "langchain/tools";
@@ -118,7 +119,6 @@ export async function runTina({
   }
   `;
 
-
   const result = await executor.call({ input });
 
   console.log("🔎 Tina raw result:", result);
@@ -151,3 +151,4 @@ export async function runTina({
 
   console.log("🎯 TinaAgent final parsed output:", output);
   return output;
+}
