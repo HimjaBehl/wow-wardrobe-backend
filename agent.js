@@ -1,7 +1,9 @@
+
 /* lib/agent.js – Reasoning version */
 
-require("dotenv").config();
-const { execSync } = require('child_process');
+import dotenv from "dotenv";
+dotenv.config();
+import { execSync } from 'child_process';
 
 async function getTrendInsights(query) {
   try {
@@ -14,9 +16,9 @@ async function getTrendInsights(query) {
   }
 }
 
-const { ChatOpenAI } = require("@langchain/openai");
-const { RunnableSequence } = require("@langchain/core/runnables");
-const { ChatPromptTemplate } = require("@langchain/core/prompts");
+import { ChatOpenAI } from "@langchain/openai";
+import { RunnableSequence } from "@langchain/core/runnables";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
 
 /* ---------- helper: strip ``` fences & parse ------------------------- */
 function safeJson(text = "") {
@@ -64,7 +66,7 @@ async function setupAgent() {
         {
           role: "system",
           content:
-            "You are a senior stylist reviewing another stylist’s outfit choices. Identify if the looks follow style rules and improve if needed. Only return corrected looks in clean JSON format.",
+            "You are a senior stylist reviewing another stylist's outfit choices. Identify if the looks follow style rules and improve if needed. Only return corrected looks in clean JSON format.",
         },
         {
           role: "user",
@@ -72,7 +74,7 @@ async function setupAgent() {
         },
       ];
       const revisedRes = await model.invoke(critiquePrompt);
-      console.log("🧠 Tina’s Revised Output:", revisedRes.content);
+      console.log("🧠 Tina's Revised Output:", revisedRes.content);
       return safeJson(revisedRes.content);
     },
   ]);
@@ -91,4 +93,4 @@ async function setupAgent() {
   };
 }
 
-module.exports = setupAgent;
+export default setupAgent;

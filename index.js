@@ -7,7 +7,7 @@ console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
 
 import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
-const getTrendInsights = require("./tools/getTrendInsights.js");
+import getTrendInsights from "./tools/getTrendInsights.js";
 
 const tools = [
   getTrendInsights,
@@ -15,7 +15,7 @@ const tools = [
 
 import { validateLookAgainstRules } from "./lib/styleRules.js";
 // 🔮 Load fashion taxonomy
-const { taxonomy } = require("./lib/taxonomyUtils");
+import { taxonomy } from "./lib/taxonomyUtils.js";
 console.log("✅ Loaded fashion taxonomy with top categories:", Object.keys(taxonomy));
 
 
@@ -32,11 +32,11 @@ function silhouetteRole(text = "") {
   return "misc";
 }
 
-const { isNeutral, dominantPalette,} = require("./lib/colorRules");
+import { isNeutral, dominantPalette } from "./lib/colorRules.js";
 
 
 // 🔥 STEP 1: Import like this, DON'T destructure yet
-const fashionTags = require("./lib/fashionTags");
+import fashionTags from "./lib/fashionTags.js";
 
 // 🔥 STEP 2: Log to confirm what's inside
 console.log("🧵 FULL FASHION TAGS MODULE:", fashionTags);
@@ -53,20 +53,20 @@ console.log({
   sr: typeof silhouetteRole,
 });
 
-console.log('Loaded fashionTags =>', require('./lib/fashionTags'));
+console.log('Loaded fashionTags =>', fashionTags);
 
-const { harmonious }      = require("./lib/colorRules");
-const { calculateStyleScore } = require("./lib/styleScore");
-const { styleMoodMap } = require("./styleMoodMap");
+import { harmonious } from "./lib/colorRules.js";
+import { calculateStyleScore } from "./lib/styleScore.js";
+import { styleMoodMap } from "./styleMoodMap.js";
 
 console.log("💡 Available moods:", Object.keys(styleMoodMap));
 
 
-const cors = require("cors");
-const axios = require("axios");
-const path = require("path");
-const { v4: uuidv4 } = require("uuid");
-const { db, storage } = require("./firebase");
+import cors from "cors";
+import axios from "axios";
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
+import { db, storage } from "./firebase.js";
 const bucket = storage.bucket();
 
 console.log("✅ Firebase initialized with bucket:", bucket.name);
@@ -243,7 +243,7 @@ app.post("/auto-tag", async (req, res) => {
       const color = colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1);
 
       // 👇 taxonomy lookup
-      const { findCategory, getAttributes } = require("./lib/taxonomyUtils");
+      import { findCategory, getAttributes } from "./lib/taxonomyUtils.js";
       const taxonomyMatch = findCategory(nameRaw.toLowerCase());
       const taxonomyAttributes = taxonomyMatch
         ? getAttributes(taxonomyMatch.subCategory) || {}
@@ -358,7 +358,7 @@ app.get("/wardrobe", async (req, res) => {
         const primaryTag = capitalizedName;
 
         // 👇 NEW: taxonomy enrichment
-        const { findCategory, getAttributes } = require("./lib/taxonomyUtils");
+        import { findCategory, getAttributes } from "./lib/taxonomyUtils.js";
         const taxonomyMatch = findCategory(capitalizedName.toLowerCase());
         const taxonomyAttributes = taxonomyMatch
           ? getAttributes(taxonomyMatch.subCategory) || {}
@@ -1173,16 +1173,16 @@ process.on("unhandledRejection", (reason, promise) => {
 
 
 // ✅ Start server
-const PORT = process.env.PORT || 3000
-  app.get("/ping", (req, res) => {
-    res.json({ ok: true, time: Date.now() });
-  });
+const PORT = process.env.PORT || 3000;
+
+app.get("/ping", (req, res) => {
+  res.json({ ok: true, time: Date.now() });
+});
 
 app.use((err, req, res, next) => {
   console.error("🔥 Unhandled Middleware Error:", err);
   res.status(500).json({ error: "Internal server error", message: err?.message });
 });
-
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);

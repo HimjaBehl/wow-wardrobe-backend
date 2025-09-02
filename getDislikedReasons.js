@@ -1,10 +1,11 @@
-const { getFirestore } = require("firebase-admin/firestore");
+
+import { getFirestore } from "firebase-admin/firestore";
 const db = getFirestore();
 
 /**
  * Returns an array like: ['heels', 'leather jacket', 'too formal']
  */
-module.exports = async function getDislikedReasons(uid, limit = 30) {
+export default async function getDislikedReasons(uid, limit = 30) {
   if (!uid) return [];
 
   const snapshot = await db
@@ -35,4 +36,4 @@ module.exports = async function getDislikedReasons(uid, limit = 30) {
 
   // ✅ Deduplicate
   return [...new Set(avoid)];
-};
+}

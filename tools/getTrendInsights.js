@@ -1,5 +1,5 @@
 
-const { execSync } = require('child_process');
+import { execSync } from 'child_process';
 
 // Function that uses the Python script for trend insights
 async function getTrendInsights(query) {
@@ -13,4 +13,4 @@ async function getTrendInsights(query) {
   }
 }
 
-module.exports = getTrendInsights;
+export default getTrendInsights;
