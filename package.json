@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@langchain/openai": "^0.5.16",
+    "@supabase/supabase-js": "^2.56.1",
     "@types/node": "^22.13.11",
     "axios": "^1.11.0",
     "cors": "^2.8.5",
