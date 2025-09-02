@@ -473,6 +473,9 @@ app.post("/suggest-outfit", async (req, res) => {
   console.log("HIT /suggest-outfit", { ts: new Date().toISOString() });
 
   const { uid, occasion = "", vibe = "", city = "Delhi", prompt = "" } = req.body || {};
+  // Fetch user prefs (dislikes, skinTone, favColors)
+  const prefs = await getUserMemory(uid);
+
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
   try {
@@ -482,9 +485,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
     let wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // 2️⃣ Fetch user preferences (onboarding memory)
-    const memDoc = await db.collection("tina_memory").doc(uid).get();
-    const prefs = memDoc.exists ? memDoc.data() : {};
+  
 
 
     if (wardrobeItems.length < 3) {
@@ -591,6 +592,12 @@ ${wardrobeLines}
     const data = await response.json();
     const raw = data.choices?.[0]?.message?.content || "{}";
     console.log("🟢 Raw LLM Output:", raw);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+      console.log("🔎 Parsed JSON draft:", JSON.stringify(parsed, null, 2));
+
+
 
     let parsed;
     try {
@@ -607,23 +614,26 @@ ${wardrobeLines}
     }
 
     // 6️⃣ Hydrate indices with wardrobe items
-    const idx2item = Object.fromEntries(
-      wardrobeItems.map((it, i) => [
-        String(i),
-        {
-          id: it.id,
-          name: it.name,
-          category: it.category,
-          color: it.color,
-          image_url: it.image_url,
-          tags: it.tags || [],
-          taxonomyPath: it.taxonomyPath || "",
-          attributes: it.attributes || {},
-          fabric: it.fabric || "",
-          silhouette: it.silhouette || "",
-        },
-      ])
-    );
+      const idx2item = Object.fromEntries(
+        wardrobeItems.map((it, i) => [
+          String(i),
+          {
+            id: it.id,
+            name: it.name || "Unnamed",
+            category: it.category || "",
+            color: it.color || "",
+            image_url: it.image_url || "",
+            tags: it.tags || [],
+            taxonomyPath: it.taxonomyPath || "",
+            attributes: it.attributes || {},
+            fabric: it.fabric || "",
+            silhouette: it.silhouette || "",
+            idx: String(i),
+          }
+        ])
+      );
+
+
 
 
     if (parsed.looks && Array.isArray(parsed.looks)) {
@@ -687,15 +697,20 @@ ${wardrobeLines}
       });
 
       parsed.looks = parsed.looks.filter(l => {
-        // allow looks that are valid OR have <= 2 soft errors
-        return l.validation.styleRules.valid ||
-          (l.validation.styleRules.errors && l.validation.styleRules.errors.length <= 2);
+        if (l.validation?.styleRules?.valid) return true;
+
+        // allow looks with <=2 errors
+        return (l.validation?.styleRules?.errors || []).length <= 2;
       });
+
 
 
       // 🚑 Fallback if nothing survived
       if (!parsed.looks.length) {
+        console.warn("⚠️ Fallback triggered: No valid looks survived Tina’s rules");
+
         const fallbackItems = wardrobeItems.map((it, i) => ({
+
           id: it.id,
           name: it.name,
           category: it.category,
