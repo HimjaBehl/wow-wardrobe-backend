@@ -473,6 +473,13 @@ app.post("/suggest-outfit", async (req, res) => {
   console.log("HIT /suggest-outfit", { ts: new Date().toISOString() });
 
   const { uid, occasion = "", vibe = "", city = "Delhi", prompt = "" } = req.body || {};
+  const prefs = await getUserMemory(uid);
+
+  const weatherString = await getWeather(city) || "unknown weather";
+  const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
+
+  console.log("🟢 /suggest-outfit received:", { uid, occasion, vibe, city, prompt });
+
   // Fetch user prefs (dislikes, skinTone, favColors)
   const prefs = await getUserMemory(uid);
 
@@ -481,16 +488,46 @@ app.post("/suggest-outfit", async (req, res) => {
   try {
     // 1️⃣ Fetch wardrobe
     let snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+    console.log("📦 Querying wardrobe for UID:", uid);
+    console.log("📦 Found items count:", snap.size);
+    snap.forEach(doc => console.log("➡️ Doc:", doc.id, doc.data()));
+
     if (snap.empty) return res.status(400).json({ error: "Wardrobe empty" });
 
     let wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // 🚫 Pre-filter banned items & colors so Tina never sees them
+    if (prefs?.dislikes?.length) {
+      const bans = prefs.dislikes.map(b => b.toLowerCase());
+      const beforeCount = wardrobeItems.length;
+
+      wardrobeItems = wardrobeItems.filter(it => {
+        const n = (it.name || "").toLowerCase();
+        const c = (it.category || "").toLowerCase();
+        const col = (it.color || "").toLowerCase();
+        return !bans.some(b => n.includes(b) || c.includes(b) || col.includes(b));
+      });
+
+      const afterCount = wardrobeItems.length;
+      console.log(`🛑 Prefiltered wardrobe: removed ${beforeCount - afterCount} items due to dislikes:`, prefs.dislikes);
+    }
+
+
 
 
 
 
     if (wardrobeItems.length < 3) {
-      return res.status(400).json({ error: "Need at least 3 wardrobe items." });
+      console.warn("⚠️ Not enough items survived filtering, falling back to raw wardrobe snapshot");
+
+      // fallback → reload wardrobe without seasonal/dislike filters
+      wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      if (wardrobeItems.length < 3) {
+        return res.status(400).json({ error: "Wardrobe really has less than 3 items." });
+      }
     }
+
 
     // 🔹 Seasonal fabric filtering using taxonomy attributes
     const season = "summer"; // later auto-detect via getWeather(city)
@@ -507,6 +544,8 @@ app.post("/suggest-outfit", async (req, res) => {
       return true;
     });
 
+    console.log("👗 Final wardrobe count after filtering:", wardrobeItems.length);
+    wardrobeItems.forEach(it => console.log(" -", it.name, it.category, it.color));
 
     // 3️⃣ Prepare compact wardrobe sample
     const sample = wardrobeItems.slice(0, 50).map((it, idx) => ({
@@ -529,50 +568,55 @@ app.post("/suggest-outfit", async (req, res) => {
       return `${w.idx}|${w.name}|${w.category}|${w.color}|${w.taxonomyPath}|${w.silhouette}|${w.fabric}|${attrs}`;
     }).join("\n");
 
+    // 🧠 Validate wardrobe with fashionBrain
+    const fbCheck = validateLook(wardrobeItems, { weather: city });
 
     // 4️⃣ Build strict JSON prompt
     const finalPrompt = `
-You are Tina, an expert fashion stylist.
+    You are Tina, a top-tier personal stylist who balances color theory, silhouette harmony, and fashion trends.
 
-TASK: From the wardrobe list, create 2 stylish, weather-appropriate looks.
-- Each look must have 3–5 items.
-- Use taxonomy info (category, silhouette, fabric, attributes) to balance the outfit.
-- Always combine at least: 1 upper/top + 1 lower/bottom (pants/skirt) OR 1 dress/jumpsuit as anchor.
-- Optionally add 1 outerwear, and 1–2 accessories or footwear.
-- Avoid repeating the same silhouette role twice (e.g., 2 outers).
-- Consider fabrics and seasonal relevance (wool/velvet → winter, linen/cotton → summer).
-- Respect user dislikes, skin tone, and favorite colors (already filtered above).
-- User dislikes (must avoid): ${prefs?.dislikes?.join(", ") || "none"}.
-- Skin tone: ${prefs?.skinTone || "unknown"}.
-- Fav colors: ${prefs?.favColors?.join(", ") || "none"}.
-- Add a "style_note" explaining why the look works (e.g. color balance, silhouette, occasion match).
-- ❗ STRICT RULE: A valid outfit = (top + bottom + footwear) OR (dress/jumpsuit + footwear). Never return invalid outfits.
+    TASK: Create 2 stylish, weather-appropriate outfits for the user.
+    - Each look = 3–5 items (must be valid).
+    - Base rules:
+      * Outfit = (top + bottom + footwear) OR (dress/jumpsuit + footwear).
+      * Use taxonomy info (category, silhouette, fabric, attributes).
+      * Mix silhouettes (fitted + oversized, anchor pieces, balance layers).
+      * Ensure color harmony; explain if it contrasts or complements.
+      * Seasonal fabrics only (cotton/linen/silk in summer; wool/leather/velvet in winter).
+      * Respect dislikes and banned items strictly.
+      * Consider body type and skin tone for better flattery.
+      * Optionally weave in mood hints.
 
-Respond ONLY in strict JSON. No text, no markdown.
+    CONTEXT:
+    - Occasion: ${occasion || "unspecified"}
+    - Vibe: ${vibe || "unspecified"} → mood hints: ${moodHints.join(", ") || "none"}
+    - Weather in ${city}: ${weatherString}
+    - User dislikes: ${prefs?.dislikes?.join(", ") || "none"}
+    - Skin tone: ${prefs?.skinTone || "unknown"}
+    - Fav colors: ${prefs?.favColors?.join(", ") || "none"}
+    - Body type: ${prefs?.bodyType || "unknown"}
+    - Wardrobe validation summary: ${JSON.stringify(fbCheck)}
 
-{
-  "looks": [
+    RESPONSE FORMAT: strict JSON only
     {
-      "title": "Look 1",
-      "style_note": "Balanced casual summer look with cotton shirt and linen trousers.",
-      "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
-    },
-    {
-      "title": "Look 2",
-      "style_note": "Elegant evening outfit with silk dress and heels.",
-      "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
+      "looks": [
+        {
+          "title": "Look 1",
+          "style_note": "Explain WHY this look works (color harmony, silhouette balance, weather fit, mood fit).",
+          "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
+        },
+        {
+          "title": "Look 2",
+          "style_note": "Explain WHY this look works.",
+          "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
+        }
+      ]
     }
-  ]
-}
 
-Occasion: ${occasion}
-Vibe: ${vibe}
-City: ${city}
-${prompt ? `Extra request: ${prompt}` : ""}
-
-Wardrobe (each line = idx|name|category|color|taxonomyPath|silhouette|fabric|attributes):
-${wardrobeLines}
+    Wardrobe (each line = idx|name|category|color|taxonomyPath|silhouette|fabric|attributes):
+    ${wardrobeLines}
     `.trim();
+
 
 
     // 5️⃣ Call OpenAI
@@ -681,11 +725,23 @@ ${wardrobeLines}
       });
 
       parsed.looks = parsed.looks.filter(l => {
+        // ✅ Drop any look that includes banned colors/items
+        const hasBanned = (prefs?.dislikes || []).some(banned =>
+          l.items.some(it =>
+            (it.color || "").toLowerCase().includes(banned.toLowerCase()) ||
+            (it.name || "").toLowerCase().includes(banned.toLowerCase()) ||
+            (it.category || "").toLowerCase().includes(banned.toLowerCase())
+          )
+        );
+        if (hasBanned) return false;
+
+        // ✅ Keep valid looks
         if (l.validation?.styleRules?.valid) return true;
 
-        // allow looks with <=2 errors
+        // ✅ Allow looks with <=2 errors
         return (l.validation?.styleRules?.errors || []).length <= 2;
       });
+
 
 
 
