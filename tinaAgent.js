@@ -28,7 +28,7 @@ const weatherTool = new DynamicTool({
   description: "Get current weather for a city",
   func: async (city) => {
     const url = `https://api.openweathermap.org/data/2.5/weather?units=metric&q=${encodeURIComponent(
-      city
+      city,
     )}&appid=${process.env.OPENWEATHER_API_KEY}`;
     const { data } = await axios.get(url);
     return `${data.weather?.[0]?.description}, ${Math.round(data.main.temp)}°C`;
@@ -53,31 +53,101 @@ const validateTool = new DynamicTool({
 });
 
 /* ─── Executor ─── */
-export async function runTina({ uid, city, mood, occasion }) {
+export async function runTina({
+  uid,
+  city,
+  mood,
+  occasion,
+  vibe,
+  prompt,
+  wardrobe = [],
+}) {
   const executor = await initializeAgentExecutorWithOptions(
     [wardrobeTool, weatherTool, moodTool, validateTool],
     llm,
     {
       agentType: "openai-functions",
       verbose: true,
-    }
+    },
+  );
+
+  const wardrobeJson = JSON.stringify(
+    wardrobe.map((it) => ({
+      id: it.id || "",
+      name: it.name || "",
+      category: it.category || "",
+      color: it.color || "",
+      image_url: it.image_url || "",
+      tags: it.tags || [],
+    }))
   );
 
   const input = `
-You are Tina, a fashion stylist.
+  You are Tina, a world-class AI fashion stylist.
 
-Steps you must follow:
-1. Fetch wardrobe(uid).
-2. Fetch weather(city).
-3. Fetch mood(mood).
-4. Suggest 2 outfits (3–5 items each).
-   - Always include footwear.
-   - Explain why each look works (color theory, silhouette, balance).
-5. Validate outfits using validate(outfit).
+  CONTEXT (user already provided this, do not ask again):
+  - UID: ${uid}
+  - City (weather): ${city}
+  - Mood: ${mood}
+  - Occasion: ${occasion}
+  - Vibe: ${vibe}
+  - Wardrobe (JSON array): ${wardrobeJson}
 
-Return JSON with {looks: [{title, style_note, items[]}]}.
-`;
+  TASK:
+  1. Suggest 2–3 complete outfits (3–5 items each) strictly from the wardrobe array (must use wardrobe.id).
+  2. Always include footwear if available.
+  3. Add a style_note explaining why the look works (color harmony, silhouette balance).
+  4. Validate outfits using validate(outfit).
+
+  ⚠️ CRITICAL INSTRUCTION:
+  - Return ONLY valid JSON.
+  - No markdown, no prose, no code fences.
+  - Must exactly match this schema:
+
+  {
+    "looks": [
+      {
+        "title": "Look 1",
+        "style_note": "Why this outfit works",
+        "items": [
+          { "id": "wardrobeId1" },
+          { "id": "wardrobeId2" }
+        ]
+      }
+    ]
+  }
+  `;
+
 
   const result = await executor.call({ input });
-  return result.output;
-}
+
+  console.log("🔎 Tina raw result:", result);
+  
+  let output = result.output;
+
+  // 🔍 Try deeper extraction
+  if (typeof output === "string") {
+    try {
+      output = JSON.parse(output);
+    } catch (err) {
+      console.error("❌ Could not parse Tina output:", err, output);
+      return { looks: [], error: "Invalid Tina output" };
+    }
+  }
+
+  if (output?.raw && typeof output.raw === "string") {
+    try {
+      output = JSON.parse(output.raw);
+    } catch (err) {
+      console.error("❌ Could not parse Tina raw string:", err, output.raw);
+      return { looks: [], error: "Invalid Tina raw output" };
+    }
+  }
+
+  // ✅ Normalize
+  if (!output.looks || !Array.isArray(output.looks)) {
+    return { looks: [], error: "Invalid Tina output format" };
+  }
+
+  console.log("🎯 TinaAgent final parsed output:", output);
+  return output;

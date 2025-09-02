@@ -485,21 +485,44 @@ app.post("/suggest-outfit-agent", async (req, res) => {
 
 // 🆕 Tina Agent (LangChain-powered)
 app.post("/tina-agent", async (req, res) => {
-  const { uid, city = "Delhi", mood = "powerful", occasion = "", prompt = "" } = req.body;
+  const {
+    uid,
+    city = "Delhi",
+    style_mood = "powerful",
+    occasion = "",
+    vibe = "",
+    prompt = ""
+  } = req.body;
 
   if (!uid) {
     return res.status(400).json({ error: "uid is required" });
   }
 
   try {
-    const raw = await runTina({ uid, city, mood, occasion, prompt });
+    // 1️⃣ Fetch wardrobe for this user
+    const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+    const wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // LangChain sometimes returns stringified JSON, ensure parse
+    if (wardrobeItems.length === 0) {
+      return res.status(400).json({ error: "Wardrobe empty" });
+    }
+
+    // 2️⃣ Pass wardrobe + context into Tina
+    const raw = await runTina({
+      uid,
+      city,
+      mood: style_mood,
+      occasion,
+      vibe,
+      prompt,
+      wardrobe: wardrobeItems,   // 🔑 ensure Tina sees wardrobe
+    });
+
+    // 3️⃣ Parse Tina's response safely
     let parsed;
     try {
       parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
     } catch (err) {
-      console.warn("⚠️ Failed to parse Tina output, wrapping raw:", err.message);
       parsed = { looks: [], raw };
     }
 
@@ -509,6 +532,7 @@ app.post("/tina-agent", async (req, res) => {
     res.status(500).json({ error: "Tina agent failed", details: err.message });
   }
 });
+
 
 
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
