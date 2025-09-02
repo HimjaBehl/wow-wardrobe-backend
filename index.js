@@ -7,7 +7,7 @@ console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
 
 import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
-import getTrendInsights from "./tools/getTrendInsights.js";
+const getTrendInsights = require("./tools/getTrendInsights.js");
 
 const tools = [
   getTrendInsights,
