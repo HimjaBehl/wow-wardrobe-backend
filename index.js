@@ -486,6 +486,33 @@ app.post("/suggest-outfit-agent", async (req, res) => {
   }
 });
 
+// 🆕 Tina Agent (LangChain-powered)
+app.post("/tina-agent", async (req, res) => {
+  const { uid, city = "Delhi", mood = "powerful", occasion = "", prompt = "" } = req.body;
+
+  if (!uid) {
+    return res.status(400).json({ error: "uid is required" });
+  }
+
+  try {
+    const raw = await runTina({ uid, city, mood, occasion, prompt });
+
+    // LangChain sometimes returns stringified JSON, ensure parse
+    let parsed;
+    try {
+      parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    } catch (err) {
+      console.warn("⚠️ Failed to parse Tina output, wrapping raw:", err.message);
+      parsed = { looks: [], raw };
+    }
+
+    res.json(parsed);
+  } catch (err) {
+    console.error("❌ /tina-agent error:", err);
+    res.status(500).json({ error: "Tina agent failed", details: err.message });
+  }
+});
+
 
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
