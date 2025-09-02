@@ -54,7 +54,7 @@ console.log({
 console.log('Loaded fashionTags =>', require('./lib/fashionTags'));
 
 const { harmonious }      = require("./lib/colorRules");
-const { calculateStyleScore } = require("./lib/styleScore");  
+const { calculateStyleScore } = require("./lib/styleScore");
 const { styleMoodMap } = require("./styleMoodMap");
 
 console.log("💡 Available moods:", Object.keys(styleMoodMap));
@@ -531,46 +531,46 @@ app.post("/suggest-outfit", async (req, res) => {
 
     // 4️⃣ Build strict JSON prompt
     const finalPrompt = `
-    You are Tina, an expert fashion stylist.
+You are Tina, an expert fashion stylist.
 
-    TASK: From the wardrobe list, create 2 stylish, weather-appropriate looks.
-    - Each look must have 3–5 items.
-    - Use taxonomy info (category, silhouette, fabric, attributes) to balance the outfit.
-    - Always combine at least: 1 upper/top + 1 lower/bottom (pants/skirt) OR 1 dress/jumpsuit as anchor.
-    - Optionally add 1 outerwear, and 1–2 accessories or footwear.
-    - Avoid repeating the same silhouette role twice (e.g., 2 outers).
-    - Consider fabrics and seasonal relevance (wool/velvet → winter, linen/cotton → summer).
-    - Respect user dislikes, skin tone, and favorite colors (already filtered above).
-    - User dislikes (must avoid): ${prefs?.dislikes?.join(", ") || "none"}.
-    - Skin tone: ${prefs?.skinTone || "unknown"}.
-    - Fav colors: ${prefs?.favColors?.join(", ") || "none"}.
-    - Add a "style_note" explaining why the look works (e.g. color balance, silhouette, occasion match).
-    - ❗ STRICT RULE: A valid outfit = (top + bottom + footwear) OR (dress/jumpsuit + footwear). Never return invalid outfits.
+TASK: From the wardrobe list, create 2 stylish, weather-appropriate looks.
+- Each look must have 3–5 items.
+- Use taxonomy info (category, silhouette, fabric, attributes) to balance the outfit.
+- Always combine at least: 1 upper/top + 1 lower/bottom (pants/skirt) OR 1 dress/jumpsuit as anchor.
+- Optionally add 1 outerwear, and 1–2 accessories or footwear.
+- Avoid repeating the same silhouette role twice (e.g., 2 outers).
+- Consider fabrics and seasonal relevance (wool/velvet → winter, linen/cotton → summer).
+- Respect user dislikes, skin tone, and favorite colors (already filtered above).
+- User dislikes (must avoid): ${prefs?.dislikes?.join(", ") || "none"}.
+- Skin tone: ${prefs?.skinTone || "unknown"}.
+- Fav colors: ${prefs?.favColors?.join(", ") || "none"}.
+- Add a "style_note" explaining why the look works (e.g. color balance, silhouette, occasion match).
+- ❗ STRICT RULE: A valid outfit = (top + bottom + footwear) OR (dress/jumpsuit + footwear). Never return invalid outfits.
 
-    Respond ONLY in strict JSON. No text, no markdown.
+Respond ONLY in strict JSON. No text, no markdown.
 
+{
+  "looks": [
     {
-      "looks": [
-        {
-          "title": "Look 1",
-          "style_note": "Balanced casual summer look with cotton shirt and linen trousers.",
-          "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
-        },
-        {
-          "title": "Look 2",
-          "style_note": "Elegant evening outfit with silk dress and heels.",
-          "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
-        }
-      ]
+      "title": "Look 1",
+      "style_note": "Balanced casual summer look with cotton shirt and linen trousers.",
+      "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
+    },
+    {
+      "title": "Look 2",
+      "style_note": "Elegant evening outfit with silk dress and heels.",
+      "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
     }
+  ]
+}
 
-    Occasion: ${occasion}
-    Vibe: ${vibe}
-    City: ${city}
-    ${prompt ? `Extra request: ${prompt}` : ""}
+Occasion: ${occasion}
+Vibe: ${vibe}
+City: ${city}
+${prompt ? `Extra request: ${prompt}` : ""}
 
-    Wardrobe (each line = idx|name|category|color|taxonomyPath|silhouette|fabric|attributes):
-    ${wardrobeLines}
+Wardrobe (each line = idx|name|category|color|taxonomyPath|silhouette|fabric|attributes):
+${wardrobeLines}
     `.trim();
 
 
@@ -660,8 +660,8 @@ app.post("/suggest-outfit", async (req, res) => {
         // ✅ Run validations
         const validationFB = validateLook(hydratedItems, { weather: city });
         const validationRules = validateLookAgainstRules(
-          { items: hydratedItems }, 
-          { 
+          { items: hydratedItems },
+          {
             bannedItems: (prefs?.dislikes || []),
             weather: city
           }
@@ -688,7 +688,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
       parsed.looks = parsed.looks.filter(l => {
         // allow looks that are valid OR have <= 2 soft errors
-        return l.validation.styleRules.valid || 
+        return l.validation.styleRules.valid ||
           (l.validation.styleRules.errors && l.validation.styleRules.errors.length <= 2);
       });
 
@@ -726,17 +726,13 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
 
-
-
   } catch (err) {
     console.error("❌ Error in suggest-outfit:", err);
     res.status(500).json({ error: "AI suggestion failed", message: err.message });
   }
 });
 
-
-
-// ✅ Build Tina’s Style DNA
+// ✅ Build Tina's Style DNA
 app.post("/build-style-dna", async (req, res) => {
   const { uid } = req.body;
 
@@ -759,8 +755,8 @@ app.post("/build-style-dna", async (req, res) => {
     // Create a condensed summary string
     const wardrobeList = wardrobeItems.map(i => `${i.name || "unnamed"} (${i.category})`).join(", ");
     const prompt = `
-Analyze this user’s style based on their wardrobe and preferences. 
-Summarize it in one sentence. 
+Analyze this user’s style based on their wardrobe and preferences.
+Summarize it in one sentence.
 Wardrobe: ${wardrobeList}
 Preferences: ${JSON.stringify(preferences)}
 Output just the sentence. Example: “Boho-street with bold color pops.”
@@ -892,7 +888,7 @@ app.post("/build-style-dna", async (req, res) => {
 
     // 3) prompt
     const prompt = `
-Analyze this user’s style based on their wardrobe and preferences. 
+Analyze this user’s style based on their wardrobe and preferences.
 Summarize it in one punchy sentence (no extra words).
 Wardrobe: ${wardrobeList}
 Preferences: ${JSON.stringify(preferences)}
