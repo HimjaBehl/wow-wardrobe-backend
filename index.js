@@ -733,14 +733,161 @@ ${wardrobeLines}
       });
     }
 
+  } catch (parseErr) {
+      console.error("❌ JSON parse failed:", parseErr.message, raw);
+      return res.status(200).json({
+        looks: [
+          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
+          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
+        ],
+        note: "Returned fallback look because Tina's JSON failed",
+      });
+    }
+
+    parsed = JSON.parse(raw);
+    console.log("🔎 Parsed JSON draft:", JSON.stringify(parsed, null, 2));
+
+    // 6️⃣ Hydrate indices with wardrobe items
+    const idx2item = Object.fromEntries(
+      wardrobeItems.map((it, i) => [
+        String(i),
+        {
+          id: it.id,
+          name: it.name || "Unnamed",
+          category: it.category || "",
+          color: it.color || "",
+          image_url: it.image_url || "",
+          tags: it.tags || [],
+          taxonomyPath: it.taxonomyPath || "",
+          attributes: it.attributes || {},
+          fabric: it.fabric || "",
+          silhouette: it.silhouette || "",
+          idx: String(i),
+        }
+      ])
+    );
+
+
+
+      // 7️⃣ Validate & Cleanup looks
+      // First, ensure looks array exists
+      if (!parsed.looks || !Array.isArray(parsed.looks)) {
+        console.warn("⚠️ Tina returned no valid 'looks' array.");
+        // Provide a fallback if Tina's response format is unexpected
+        parsed.looks = [
+          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
+          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
+        ];
+        parsed.note = "Fallback: Tina returned an invalid format.";
+      } else {
+        parsed.looks = parsed.looks.map(look => {
+          // Hydrate items using the idx2item map
+          let hydratedItems = (look.items || []).map(it => ({
+            ...idx2item[it.idx],
+            idx: it.idx, // keep original index for reference
+          }));
+
+          // 🧹 Cleanup rules before validation
+          // ❌ Remove duplicate bags
+          const bags = hydratedItems.filter(it => (it.category || "").toLowerCase().includes("bag"));
+          if (bags.length > 1) {
+            hydratedItems = hydratedItems.filter(it => !(it.category || "").toLowerCase().includes("bag"));
+            hydratedItems.push(bags[0]); // keep only one bag
+          }
+
+          // ❌ Remove bottoms if a dress/jumpsuit is present
+          const hasDress = hydratedItems.some(it => (it.category || "").toLowerCase().includes("dress") || (it.category || "").toLowerCase().includes("jumpsuit"));
+          if (hasDress) {
+            hydratedItems = hydratedItems.filter(it => {
+              const c = (it.category || "").toLowerCase();
+              return !(c.includes("pants") || c.includes("jeans") || c.includes("trousers") || c.includes("skirt") || c.includes("shorts"));
+            });
+          }
+
+          // ❌ Ensure footwear exists (fallback: add first available footwear)
+          const hasFootwear = hydratedItems.some(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
+          if (!hasFootwear) {
+            const footwear = wardrobeItems.find(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
+            if (footwear) hydratedItems.push(footwear);
+          }
+
+          // ✅ Run validations
+          const validationFB = validateLook(hydratedItems, { weather: city });
+          const validationRules = validateLookAgainstRules(
+            { items: hydratedItems },
+            {
+              bannedItems: (prefs?.dislikes || []),
+              weather: city
+            }
+          );
+
+          return {
+            title: look.title,
+            style_note: look.style_note || "Suggested look",
+            items: hydratedItems,
+            validation: {
+              fashionBrain: validationFB,
+              styleRules: validationRules,
+            },
+          };
+        });
+
+        // 🔎 Keep only looks that passed strict styleRules
+        parsed.looks.forEach(l => {
+          if (!l.validation.styleRules.valid) {
+            console.log("🚫 Look failed rules:", l.title, l.validation.styleRules.errors);
+          }
+        });
+
+        parsed.looks = parsed.looks.filter(l => {
+          // Allow looks with <=2 errors from styleRules for more flexibility
+          return (l.validation?.styleRules?.errors || []).length <= 2;
+        });
+      }
+
+      // 🚑 Fallback if no looks survived validation or Tina's response was empty/invalid
+      if (!parsed.looks || parsed.looks.length === 0) {
+        console.warn("⚠️ Fallback triggered: No valid looks survived Tina’s rules or response was empty.");
+
+        const fallbackItems = wardrobeItems.map((it, i) => ({
+          id: it.id,
+          name: it.name,
+          category: it.category,
+          color: it.color,
+          image_url: it.image_url,
+          tags: it.tags || [],
+          taxonomyPath: it.taxonomyPath || "",
+          attributes: it.attributes || {},
+          fabric: it.fabric || "",
+          silhouette: it.silhouette || "",
+          idx: String(i), // Ensure idx is a string for consistency
+        }));
+
+        // Create two fallback looks using the first few items
+        parsed.looks = [
+          { title: "Fallback Look 1", items: fallbackItems.slice(0, 3) },
+          { title: "Fallback Look 2", items: fallbackItems.slice(3, 6) }
+        ];
+        parsed.note = "Fallback triggered: Tina’s suggestions failed validation rules or response was invalid.";
+      }
+
+    console.log("🎨 Hydrated looks:", JSON.stringify(parsed, null, 2));
+    res.json(parsed);
+
   } catch (err) {
-    console.error("❌ JSON parse failed:", err.message, raw);
-    return res.status(200).json({
-      looks: [
-        { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
-        { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
-      ],
-      note: "Returned fallback look because Tina's JSON failed",
+    // Catch-all for any unexpected errors during processing
+    console.error("❌ Unexpected error in /suggest-outfit:", err.message);
+    res.status(500).json({
+      error: "An unexpected error occurred while suggesting outfits.",
+      message: err.message,
+      // Optionally include fallback looks here as well for robustness
+      fallback: {
+        looks: [
+          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
+          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
+        ],
+        note: "Fallback due to an unexpected server error."
+      }
     });
   }
 });
