@@ -480,9 +480,6 @@ app.post("/suggest-outfit", async (req, res) => {
 
   console.log("🟢 /suggest-outfit received:", { uid, occasion, vibe, city, prompt });
 
-  // Fetch user prefs (dislikes, skinTone, favColors)
-  const prefs = await getUserMemory(uid);
-
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
   try {
