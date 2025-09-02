@@ -724,7 +724,7 @@ ${wardrobeLines}
     console.log("🎨 Hydrated looks:", JSON.stringify(parsed, null, 2));
     res.json(parsed);
 
-
+    }
 
   } catch (err) {
     console.error("❌ Error in suggest-outfit:", err);
