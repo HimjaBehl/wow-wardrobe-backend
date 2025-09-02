@@ -1,13 +1,14 @@
-const { initializeApp, cert, getApps, getApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
-const { getStorage } = require("firebase-admin/storage");
-const serviceAccount = require("./serviceAccountKey.json");
+
+import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+import serviceAccount from "./serviceAccountKey.json" assert { type: "json" };
 
 let app;
 if (!getApps().length) {
   app = initializeApp({
     credential: cert(serviceAccount),
-     projectId: "wowapp1406",
+    projectId: "wowapp1406",
     storageBucket: "wowapp1406.firebasestorage.app",   
   });
 } else {
@@ -17,7 +18,7 @@ if (!getApps().length) {
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-module.exports = {
+export {
   db,
   storage,
 };
