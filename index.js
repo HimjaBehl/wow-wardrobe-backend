@@ -5,7 +5,6 @@ dotenv.config();
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" : "undefined");
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
 import { themeAttributes } from "./lib/themeAttributes.js";
-import { themeAttributes } from "./lib/themeAttributes.js";
 
 import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
