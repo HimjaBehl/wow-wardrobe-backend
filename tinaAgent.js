@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
 console.log("SUPABASE_ANON_KEY set?", !!process.env.SUPABASE_ANON_KEY);
@@ -229,33 +230,27 @@ export async function runTina({
     }
   }
 
-
-  if (output?.raw && typeof output.raw === "string") {
-    try { output = JSON.parse(output.raw); }
-    catch { return { looks: [], error: "Invalid Tina raw output" }; }
+  // 🔥 Fallback if no looks
+  if (!output?.looks || output.looks.length === 0) {
+    console.warn("⚠️ Tina returned no looks. Using fallback.");
+    output = {
+      looks: [
+        {
+          title: "Fallback Look",
+          style_note: "Auto-generated fallback look since Tina returned empty.",
+          items: wardrobe.slice(0, 3).map(it => ({ id: it.id })),
+          trends_used: [],
+        },
+      ],
+    };
   }
 
-  
-// 🔥 Fallback if no looks
-if (!output?.looks || output.looks.length === 0) {
-  console.warn("⚠️ Tina returned no looks. Using fallback.");
-  output = {
-    looks: [
-      {
-        title: "Fallback Look",
-        style_note: "Auto-generated fallback look since Tina returned empty.",
-        items: wardrobe.slice(0, 3).map(it => ({ id: it.id })),
-        trends_used: [],
-      },
-    ],
-  };
+  // Always ensure trends_used exists
+  output.looks = output.looks.map((look) => ({
+    ...look,
+    trends_used: look.trends_used || [],
+  }));
+
+  console.log("🎯 TinaAgent final parsed output:", output);
+  return output;
 }
-
-// Always ensure trends_used exists
-output.looks = output.looks.map((look) => ({
-  ...look,
-  trends_used: look.trends_used || [],
-}));
-
-console.log("🎯 TinaAgent final parsed output:", output);
-return output;
