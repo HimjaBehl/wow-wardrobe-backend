@@ -1,8 +1,4 @@
-
 import 'dotenv/config';
-console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
-console.log("SUPABASE_ANON_KEY set?", !!process.env.SUPABASE_ANON_KEY);
-
 import { ChatOpenAI } from "@langchain/openai";
 import { initializeAgentExecutorWithOptions } from "langchain/agents";
 import { DynamicTool } from "langchain/tools";
@@ -93,7 +89,6 @@ const trendTool = new DynamicTool({
   description: "Fetch top fashion trends related to wardrobe",
   func: async (input) => {
     try {
-      console.log("🟣 [trendTool] Query:", input);
       const embeddingResponse = await openai.embeddings.create({
         model: "text-embedding-3-small",
         input,
@@ -136,7 +131,7 @@ export async function runTina({
 
   const wardrobeJson = JSON.stringify(
     wardrobe.map((it) => ({
-      id: it.id || "",
+      id: String(it.id || ""),
       name: it.name || "",
       category: it.category || "",
       color: it.color || "",
@@ -146,7 +141,7 @@ export async function runTina({
   );
 
   const input = `
-  You are Tina, a world-class AI fashion stylist.
+  You are Tina, a world-class AI stylist.
 
   CONTEXT:
   - UID: ${uid}
@@ -154,26 +149,27 @@ export async function runTina({
   - Mood: ${mood}
   - Occasion: ${occasion}
   - Vibe: ${vibe}
-  - Wardrobe: ${wardrobeJson}
+  - Wardrobe JSON: ${wardrobeJson}
 
   TASK:
-  1. Suggest 2–3 outfits (3–5 items each) using only wardrobe items (use their id).
-  2. If wardrobe is very small, still produce at least 1 outfit.
-  3. Always include footwear if available.
-  4. For each look, call getTrendInsights on at least one item.
-     - If match, add to "trends_used".
-  5. Add style_note (color, silhouette, trend relevance).
-  6. Validate with validate(outfit).
-  7. Never return empty. If nothing works, make your best guess and still output 1 look.
+  1. Suggest **2–3 complete looks** (3–5 items each). Use wardrobe.id to reference items.
+  2. Always include footwear if available.
+  3. Each look MUST have:
+     - "title"
+     - "style_note"
+     - "items" (list of { "id": "..." })
+     - "trends_used" (list, can be empty)
+  4. If unsure, STILL return at least 1 look.
+  5. ⚠️ Do NOT ever return { "looks":[] }.
 
-  ⚠️ Return ONLY valid JSON:
+  Return ONLY valid JSON matching this schema:
   {
     "looks": [
       {
         "title": "Look 1",
         "style_note": "Why this outfit works",
         "items": [{ "id": "wardrobeId1" }, { "id": "wardrobeId2" }],
-        "trends_used": [{ "trend_id": 1, "content": "Example trend" }]
+        "trends_used": []
       }
     ]
   }
@@ -182,75 +178,44 @@ export async function runTina({
   console.log("🟢 TinaAgent input prompt:", input);
 
   const result = await executor.call({ input });
-
   console.log("🟠 TinaAgent executor raw result:", JSON.stringify(result, null, 2));
 
-  let output;
+  let output = result.output || result.returnValues?.output || result.returnValues;
 
-  // 1️⃣ Use result.output first
-  if (result.output) {
-    output = result.output;
-  }
-
-  // 2️⃣ Fallback: use returnValues.output
-  else if (result.returnValues?.output) {
-    console.log("🟢 Using returnValues.output");
-    output = result.returnValues.output;
-  }
-
-  // 3️⃣ Fallback: sometimes LangChain puts JSON in result.returnValues directly
-  else if (result.returnValues) {
-    console.log("🟢 Using entire returnValues");
-    output = result.returnValues;
-  }
-
-  // 4️⃣ If still nothing
-  else {
-    console.error("❌ No usable output found in result");
-    return { looks: [], error: "No Tina output" };
-  }
-
-  // 🔍 Parse if string
+  // Try parsing if string
   if (typeof output === "string") {
     try {
       output = JSON.parse(output);
     } catch (err) {
-      console.error("❌ Could not parse Tina output string:", output);
-      return { looks: [], error: "Invalid Tina output string" };
+      console.error("❌ JSON parse error:", err.message, output);
+      return { looks: [], error: "Bad Tina output" };
     }
   }
 
-  // 🔍 Parse if inside raw
+  // If wrapped inside .raw
   if (output?.raw && typeof output.raw === "string") {
     try {
       output = JSON.parse(output.raw);
     } catch (err) {
-      console.error("❌ Could not parse Tina raw:", output.raw);
-      return { looks: [], error: "Invalid Tina raw" };
+      console.error("❌ Could not parse raw:", output.raw);
+      return { looks: [], error: "Invalid Tina raw output" };
     }
   }
 
-  // 🔥 Fallback if no looks
-  if (!output?.looks || output.looks.length === 0) {
-    console.warn("⚠️ Tina returned no looks. Using fallback.");
+  // 🚨 Force fallback prevention
+  if (!output?.looks || !Array.isArray(output.looks) || output.looks.length === 0) {
+    console.warn("⚠️ Tina returned empty. Forcing 1 look.");
     output = {
       looks: [
         {
-          title: "Fallback Look",
-          style_note: "Auto-generated fallback look since Tina returned empty.",
-          items: wardrobe.slice(0, 3).map(it => ({ id: it.id })),
+          title: "Emergency Look",
+          style_note: "Auto-generated because Tina gave empty.",
+          items: wardrobe.slice(0, 3).map(it => ({ id: String(it.id) })),
           trends_used: [],
         },
       ],
     };
   }
 
-  // Always ensure trends_used exists
-  output.looks = output.looks.map((look) => ({
-    ...look,
-    trends_used: look.trends_used || [],
-  }));
-
-  console.log("🎯 TinaAgent final parsed output:", output);
   return output;
 }

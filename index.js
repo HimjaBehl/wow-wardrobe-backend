@@ -4,6 +4,8 @@ dotenv.config();
 
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" : "undefined");
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
+import { themeAttributes } from "./lib/themeAttributes.js";
+import { themeAttributes } from "./lib/themeAttributes.js";
 
 import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
@@ -537,7 +539,42 @@ app.post("/tina-agent", async (req, res) => {
   }
 });
 
+// ✅ Theme testing route (fetches wardrobe from Firestore)
+app.post("/theme-test", async (req, res) => {
+  try {
+    const { uid, theme, subTheme, constraints = {} } = req.body;
 
+    if (!uid || !theme || !subTheme) {
+      return res.status(400).json({ error: "uid, theme and subTheme are required" });
+    }
+
+    // 1️⃣ Fetch wardrobe from Firestore
+    const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
+    if (snapshot.empty) {
+      return res.status(404).json({ error: "Wardrobe empty for this user" });
+    }
+    const wardrobe = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // 2️⃣ Fetch theme attributes
+    const selectedTheme = themeAttributes?.[theme]?.[subTheme];
+    if (!selectedTheme) {
+      return res.status(404).json({ error: "Invalid theme or subTheme" });
+    }
+
+    // 3️⃣ Return combined result
+    res.json({
+      uid,
+      theme,
+      subTheme,
+      selectedTheme,
+      wardrobe,
+      constraints
+    });
+  } catch (err) {
+    console.error("❌ Theme-test error:", err.message);
+    res.status(500).json({ error: "Internal server error", message: err.message });
+  }
+});
 
 
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
