@@ -485,53 +485,58 @@ app.post("/suggest-outfit-agent", async (req, res) => {
 
 // 🆕 Tina Agent (LangChain-powered)
 app.post("/tina-agent", async (req, res) => {
-  const {
-    uid,
-    city = "Delhi",
-    style_mood = "powerful",
-    occasion = "",
-    vibe = "",
-    prompt = ""
-  } = req.body;
-
-  if (!uid) {
-    return res.status(400).json({ error: "uid is required" });
-  }
+  const { uid, city, mood, occasion, vibe, prompt, wardrobe } = req.body;
 
   try {
-    // 1️⃣ Fetch wardrobe for this user
-    const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
-    const wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 1️⃣ First attempt (full schema)
+    let result = await runTina({ uid, city, mood, occasion, vibe, prompt, wardrobe });
 
-    if (wardrobeItems.length === 0) {
-      return res.status(400).json({ error: "Wardrobe empty" });
+    // 2️⃣ Retry if Tina fails
+    if (!result.looks || result.looks.length === 0) {
+      console.warn("⚠️ Tina failed first attempt, retrying with simplified prompt...");
+
+      const simplePrompt = `
+      You are Tina, an AI stylist. 
+      Pick 2–3 stylish outfits from this wardrobe:
+      ${JSON.stringify(wardrobe)}
+
+      Each outfit must follow this schema:
+      {
+        "looks": [
+          {
+            "title": "Look 1",
+            "style_note": "Why it works",
+            "items": [{ "id": "wardrobeId" }]
+          }
+        ]
+      }`;
+
+      // Call LLM directly without tools
+      const { ChatOpenAI } = await import("@langchain/openai");
+      const llm = new ChatOpenAI({
+        modelName: "gpt-4o-mini",
+        temperature: 0.6,
+        openAIApiKey: process.env.OPENAI_API_KEY,
+      });
+
+      const resp = await llm.invoke(simplePrompt);
+      let fallback;
+      try {
+        fallback = JSON.parse(resp.content[0].text || resp.content);
+      } catch (err) {
+        fallback = { looks: [] };
+      }
+
+      result = fallback;
     }
 
-    // 2️⃣ Pass wardrobe + context into Tina
-    const raw = await runTina({
-      uid,
-      city,
-      mood: style_mood,
-      occasion,
-      vibe,
-      prompt,
-      wardrobe: wardrobeItems,   // 🔑 ensure Tina sees wardrobe
-    });
-
-    // 3️⃣ Parse Tina's response safely
-    let parsed;
-    try {
-      parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    } catch (err) {
-      parsed = { looks: [], raw };
-    }
-
-    res.json(parsed);
+    res.json(result);
   } catch (err) {
-    console.error("❌ /tina-agent error:", err);
-    res.status(500).json({ error: "Tina agent failed", details: err.message });
+    console.error("❌ Tina agent failed:", err);
+    res.status(500).json({ error: err.message });
   }
 });
+
 
 
 
