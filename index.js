@@ -4,7 +4,6 @@ dotenv.config();
 
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" : "undefined");
 console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
-import { themeAttributes } from "./lib/themeAttributes.js";
 
 import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
@@ -17,6 +16,7 @@ const tools = [
 import { validateLookAgainstRules } from "./lib/styleRules.js";
 // 🔮 Load fashion taxonomy
 import { taxonomy, findCategory, getAttributes } from "./lib/taxonomyUtils.js";
+import { themeAttributes } from "./lib/themeAttributes.js";
 console.log("✅ Loaded fashion taxonomy with top categories:", Object.keys(taxonomy));
 
 
