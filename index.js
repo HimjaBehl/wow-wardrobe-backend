@@ -486,57 +486,29 @@ app.post("/suggest-outfit-agent", async (req, res) => {
 
 // 🆕 Tina Agent (LangChain-powered)
 app.post("/tina-agent", async (req, res) => {
-  const { uid, city, mood, occasion, vibe, prompt, wardrobe } = req.body;
-
   try {
-    // 1️⃣ First attempt (full schema)
-    let result = await runTina({ uid, city, mood, occasion, vibe, prompt, wardrobe });
+    const { uid, city, wardrobe, subTheme } = req.body;
 
-    // 2️⃣ Retry if Tina fails
-    if (!result.looks || result.looks.length === 0) {
-      console.warn("⚠️ Tina failed first attempt, retrying with simplified prompt...");
+    console.log("🟢 /tina-agent HIT with:", {
+      uid,
+      city,
+      subTheme,
+      wardrobeCount: wardrobe?.length || 0,
+    });
 
-      const simplePrompt = `
-      You are Tina, an AI stylist. 
-      Pick 2–3 stylish outfits from this wardrobe:
-      ${JSON.stringify(wardrobe)}
-
-      Each outfit must follow this schema:
-      {
-        "looks": [
-          {
-            "title": "Look 1",
-            "style_note": "Why it works",
-            "items": [{ "id": "wardrobeId" }]
-          }
-        ]
-      }`;
-
-      // Call LLM directly without tools
-      const { ChatOpenAI } = await import("@langchain/openai");
-      const llm = new ChatOpenAI({
-        modelName: "gpt-4o-mini",
-        temperature: 0.6,
-        openAIApiKey: process.env.OPENAI_API_KEY,
-      });
-
-      const resp = await llm.invoke(simplePrompt);
-      let fallback;
-      try {
-        fallback = JSON.parse(resp.content[0].text || resp.content);
-      } catch (err) {
-        fallback = { looks: [] };
-      }
-
-      result = fallback;
+    if (!uid || !subTheme) {
+      return res.status(400).json({ error: "Missing uid or subTheme" });
     }
 
+    const result = await runTina({ uid, city, wardrobe, subTheme });
     res.json(result);
   } catch (err) {
     console.error("❌ Tina agent failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
+
 
 // ✅ Theme testing route (fetches wardrobe from Firestore)
 app.post("/theme-test", async (req, res) => {
@@ -943,10 +915,21 @@ app.post("/suggest-outfit", async (req, res) => {
       } else {
         parsed.looks = parsed.looks.map(look => {
           // Hydrate items using the idx2item map
-          let hydratedItems = (look.items || []).map(it => ({
-            ...idx2item[it.idx],
-            idx: it.idx, // keep original index for reference
-          }));
+          let hydratedItems = (look.items || []).map(it => {
+            // Match by idx if provided
+            if (it.idx && idx2item[it.idx]) {
+              return { ...idx2item[it.idx], idx: it.idx };
+            }
+
+            // Match by Firestore id if provided
+            if (it.id) {
+              const match = wardrobeItems.find(w => w.id === it.id);
+              if (match) return { ...match };
+            }
+
+            // Fallback → unknown item
+            return { id: it.id || it.idx, name: "Unknown Item" };
+          });
 
           // 🧹 Cleanup rules before validation
           // ❌ Remove duplicate bags
