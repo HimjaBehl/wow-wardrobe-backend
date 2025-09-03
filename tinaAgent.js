@@ -168,7 +168,7 @@ export async function runTina({
       {
         "title": "Look 1",
         "style_note": "Why this outfit works",
-        "items": [{ "id": "wardrobeId1" }, { "id": "wardrobeId2" }],
+        "items": [ { "idx": "0" } ],
         "trends_used": []
       }
     ]
