@@ -36,3 +36,7 @@ TASK:
 
   const model = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0.7 });
   const response = await model.invoke(input);
+
+  console.log("🎨 Tina's raw response:", response.content);
+  return response.content;
+}
