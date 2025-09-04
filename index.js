@@ -257,7 +257,6 @@ app.post("/auto-tag", async (req, res) => {
   }
 });
 
-
 // Accepts multipart/form-data with field name: "file"
 app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
   try {
@@ -282,14 +281,17 @@ app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
 
     // include original info if you want to save original in Firestore later
 return res.json({
-  ...result,
-  detectedItems: result.detected,
-  imageUrl: result.image_url,
-  original: { image_url: publicUrl, image_path: rawPath },
+      ...result,
+      detectedItems: result.detected,
+      imageUrl: result.image_url,
+      original: { image_url: publicUrl, image_path: rawPath },
+    });
+
+  } catch (err) {
+    console.error("🔥 /auto-tag-upload error:", err);
+    res.status(500).json({ error: "Auto-tagging upload failed", message: err.message });
+  }
 });
-
-    
-
 
 // ✅ Fetch wardrobe by user ID
 app.get("/wardrobe", async (req, res) => {
@@ -1037,33 +1039,7 @@ app.post("/suggest-outfit", async (req, res) => {
         note: "Returned fallback look because Tina's JSON failed",
       });
     }
-
-    parsed = JSON.parse(raw);
-    console.log("🔎 Parsed JSON draft:", JSON.stringify(parsed, null, 2));
-
-    // 6️⃣ Hydrate indices with wardrobe items
-    const idx2item = Object.fromEntries(
-      wardrobeItems.map((it, i) => [
-        String(i),
-        {
-          id: it.id,
-          name: it.name || "Unnamed",
-          category: it.category || "",
-          color: it.color || "",
-          image_url: it.image_url || "",
-          tags: it.tags || [],
-          taxonomyPath: it.taxonomyPath || "",
-          attributes: it.attributes || {},
-          fabric: it.fabric || "",
-          silhouette: it.silhouette || "",
-          idx: String(i),
-        }
-      ])
-    );
-
-
-
-      // 7️⃣ Validate & Cleanup looks
+    
       // First, ensure looks array exists
       if (!parsed.looks || !Array.isArray(parsed.looks)) {
         console.warn("⚠️ Tina returned no valid 'looks' array.");
