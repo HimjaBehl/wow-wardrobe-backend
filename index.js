@@ -265,26 +265,6 @@ app.post("/auto-tag", async (req, res) => {
 });
 
 
-    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(rawPath)}?alt=media`;
-    console.log("📤 Uploaded raw to:", publicUrl);
-
-    // Reuse the same pipeline
-    const result = await autoTagFromImageUrl(publicUrl);
-
-    return res.json({
-      ...result,
-      detectedItems: result.detected,
-      imageUrl: result.image_url,
-      original: { image_url: publicUrl, image_path: rawPath }
-    });
-
-  } catch (err) {
-    console.error("🔥 /autotag-upload error:", err);
-    res.status(500).json({ error: "Upload auto-tag failed", message: err.message });
-  }
-});
-
-
 // Accepts multipart/form-data with field name: "file"
 app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
   try {
