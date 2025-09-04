@@ -1,3 +1,9 @@
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
 import { runTina } from "./tinaAgent.js";
 import dotenv from "dotenv";
 dotenv.config();
@@ -65,11 +71,94 @@ console.log("💡 Available moods:", Object.keys(styleMoodMap));
 import cors from "cors";
 import axios from "axios";
 import path from "path";
+import multer from "multer";
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // 8MB
 import { v4 as uuidv4 } from "uuid";
 import { db, storage } from "./firebase.js";
 const bucket = storage.bucket();
 
 console.log("✅ Firebase initialized with bucket:", bucket.name);
+
+// ===== Reusable pipeline =====
+// Input: imageUrl (public). Output: { detected, image_url: cleanedUrl }
+async function autoTagFromImageUrl(imageUrl) {
+  // 1) remove.bg
+  const removeRes = await axios.post(
+    "https://api.remove.bg/v1.0/removebg",
+    new URLSearchParams({ image_url: imageUrl, size: "auto" }),
+    {
+      headers: {
+        "X-Api-Key": process.env.REMOVE_BG_API_KEY,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      responseType: "arraybuffer",
+    }
+  );
+  if (removeRes.status !== 200 || !removeRes.data) {
+    throw new Error("Background removal failed");
+  }
+
+  // 2) upload cut-out to Firebase
+  const cleanedPath = `wardrobe/removed_${Date.now()}.png`;
+  await bucket.file(cleanedPath).save(removeRes.data, {
+    contentType: "image/png",
+    public: true,
+    resumable: false,
+  });
+  const cleanedUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(cleanedPath)}?alt=media`;
+  console.log("DEBUG: cleanedUrl ->", cleanedUrl);
+
+  // 3) Ximilar
+  const tagRes = await axios.post(
+    "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
+    { records: [{ _url: cleanedUrl }] },
+    {
+      headers: {
+        Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  const objects = tagRes.data?.records?.[0]?._objects || [];
+  const detected = objects.map((obj) => {
+    const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
+    const cleanedTags = Array.from(
+      new Set(
+        rawTags
+          .map((tag) => (typeof tag === "string" ? tag.toUpperCase().replace(/^.*\//, "") : null))
+          .filter(Boolean)
+      )
+    )
+      .slice(0, 6)
+      .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
+
+    const nameRaw = obj._tags_map?.Subcategory || obj._tags_map?.Category || "TO_BE_DETERMINED";
+    const name = nameRaw.charAt(0).toUpperCase() + nameRaw.slice(1);
+    const categoryRaw = obj._tags_map?.Category || "TO_BE_DETERMINED";
+    const category = categoryRaw.charAt(0).toUpperCase() + categoryRaw.slice(1);
+    const colorRaw = obj._tags_map?.Color || "TO_BE_DETERMINED";
+    const color = colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1);
+
+    const taxonomyMatch = findCategory(nameRaw.toLowerCase());
+    const taxonomyAttributes = taxonomyMatch ? getAttributes(taxonomyMatch.subCategory) || {} : {};
+
+    return {
+      image_url: cleanedUrl,
+      image_path: cleanedPath,
+      name,
+      category,
+      color,
+      tags: cleanedTags,
+      taxonomyPath: taxonomyMatch ? `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}` : null,
+      attributes: taxonomyAttributes,
+      silhouette: guessSilhouette(name + " " + category),
+      palette: pickPalette(color),
+    };
+  });
+
+  return { detected, image_url: cleanedUrl };
+}
 
 
 // ─── WEATHER HELPER ─────────────────────────────────────────────
@@ -162,124 +251,70 @@ app.get("/", (req, res) => {
 
 // ✅ Auto-tagging
 app.post("/auto-tag", async (req, res) => {
-  const { image_url } = req.body;
+  const { image_url } = req.body || {};
   if (!image_url) return res.status(400).json({ error: "Image URL required" });
-
   try {
-    // 1️⃣ REMOVE BACKGROUND ------------------------------
-    const removeRes = await axios.post(
-      "https://api.remove.bg/v1.0/removebg",
-      new URLSearchParams({
-        image_url,
-        size: "auto",
-      }),
-      {
-        headers: {
-          "X-Api-Key": process.env.REMOVE_BG_API_KEY,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        responseType: "arraybuffer",
-      }
-    );
+    const result = await autoTagFromImageUrl(image_url);
+    return res.json(result);
 
-    if (removeRes.status !== 200 || !removeRes.data) {
-      throw new Error("Background removal failed");
-    }
-
-    // 2️⃣ Upload cut-out PNG to Firebase Storage
-    const cleanedPath = `wardrobe/removed_${Date.now()}.png`;
-    await bucket.file(cleanedPath).save(removeRes.data, {
-      contentType: "image/png",
-      public: true,
-      resumable: false,
-    });
-
-    // --- after saving cleaned image to Firebase, build cleanedUrl ---
-    const cleanedUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(cleanedPath)}?alt=media`;
-
-    // --- DEBUG: log cleanedUrl so we can check accessibility ---
-    console.log("DEBUG: cleanedUrl ->", cleanedUrl);
-
-    // --- SEND CLEANED IMAGE TO XIMILAR ---
-    const tagRes = await axios.post(
-      "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
-      { records: [{ _url: cleanedUrl }] },
-      {
-        headers: {
-          Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    // --- DEBUG: log Ximilar raw response (trimmed so console stays readable) ---
-    console.log("DEBUG -> ximilar raw response (first 2000 chars):", JSON.stringify(tagRes.data).slice(0, 2000));
-
-
-    const objects = tagRes.data?.records?.[0]?._objects || [];
-
-    const detected = objects.map((obj) => {
-      const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
-
-      const cleanedTags = Array.from(
-        new Set(
-          rawTags
-            .map((tag) =>
-              typeof tag === "string" ? tag.toUpperCase().replace(/^.*\//, "") : null
-            )
-            .filter(Boolean)
-        )
-      )
-        .slice(0, 6)
-        .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
-
-      const nameRaw = obj._tags_map?.Subcategory || obj._tags_map?.Category || "TO_BE_DETERMINED";
-      const name = nameRaw.charAt(0).toUpperCase() + nameRaw.slice(1);
-
-      const categoryRaw = obj._tags_map?.Category || "TO_BE_DETERMINED";
-      const category = categoryRaw.charAt(0).toUpperCase() + categoryRaw.slice(1);
-
-      const colorRaw = obj._tags_map?.Color || "TO_BE_DETERMINED";
-      const color = colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1);
-
-      // 👇 taxonomy lookup
-      const taxonomyMatch = findCategory(nameRaw.toLowerCase());
-      const taxonomyAttributes = taxonomyMatch
-        ? getAttributes(taxonomyMatch.subCategory) || {}
-        : {};
-
-      return {
-        image_url: cleanedUrl,
-        image_path: cleanedPath,
-        name,
-        category,
-        color,
-        tags: cleanedTags,
-        taxonomyPath: taxonomyMatch
-          ? `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}`
-          : null,
-        attributes: taxonomyAttributes,
-        silhouette: guessSilhouette(name + " " + category),
-        palette: pickPalette(color),
-      };
-
-    });
-
-    // 4️⃣ Return cut-out URL + tags
-    return res.json({ detected, image_url: cleanedUrl });
 
   } catch (err) {
-    console.error("🔥 Full error stack:", err); // 👈 logs full error to console
-    res.status(500).json({
-      error: "Auto-tagging failed",
-      message: err.message,
-      stack: err.stack,  // optional: send stack in Postman for now
-    });
+    console.error("🔥 /auto-tag error:", err);
+    res.status(500).json({ error: "Auto-tagging failed", message: err.message });
   }
 });
 
 
+    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(rawPath)}?alt=media`;
+    console.log("📤 Uploaded raw to:", publicUrl);
 
+    // Reuse the same pipeline
+    const result = await autoTagFromImageUrl(publicUrl);
+
+    return res.json({
+      ...result,
+      detectedItems: result.detected,
+      imageUrl: result.image_url,
+      original: { image_url: publicUrl, image_path: rawPath }
+    });
+
+  } catch (err) {
+    console.error("🔥 /autotag-upload error:", err);
+    res.status(500).json({ error: "Upload auto-tag failed", message: err.message });
+  }
+});
+
+
+// Accepts multipart/form-data with field name: "file"
+app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded (field must be 'file')." });
+
+    // Upload raw file buffer to Firebase to get a public URL
+    const originalName = req.file.originalname || `upload_${Date.now()}.jpg`;
+    const ext = path.extname(originalName) || ".jpg";
+    const rawPath = `wardrobe/uploads/${uuidv4()}${ext}`;
+
+    await bucket.file(rawPath).save(req.file.buffer, {
+      contentType: req.file.mimetype || "image/jpeg",
+      public: true,
+      resumable: false,
+    });
+
+    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(rawPath)}?alt=media`;
+    console.log("📤 Uploaded raw to:", publicUrl);
+
+    // Reuse the same pipeline
+    const result = await autoTagFromImageUrl(publicUrl);
+
+    // include original info if you want to save original in Firestore later
+    return res.json({ ...result, original: { image_url: publicUrl, image_path: rawPath } });
+  } catch (err) {
+    console.error("🔥 /auto-tag-upload error:", err);
+    res.status(500).json({ error: "Upload auto-tag failed", message: err.message });
+  }
+});
+    
 
 
 // ✅ Fetch wardrobe by user ID
@@ -468,6 +503,158 @@ async function getUserMemory(uid) {
   }
 }
 
+// ✅ Pinterest Analysis via Official API
+app.post("/pinterest-analysis", async (req, res) => {
+  try {
+    const { uid, theme, weather = "mild", city = "Delhi" } = req.body;
+
+    if (!uid || !theme) {
+      return res.status(400).json({ error: "uid and theme are required" });
+    }
+
+    // 1️⃣ Fetch wardrobe from Firestore
+    const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
+    if (snapshot.empty) {
+      return res.status(404).json({ error: "Wardrobe is empty" });
+    }
+    const wardrobeItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // 2️⃣ Build Pinterest search query
+    const searchQuery = `${theme} ${weather} outfits`;
+
+    // 3️⃣ Call Pinterest API (Pins search endpoint)
+    const pinterestRes = await axios.get(
+      `https://api.pinterest.com/v5/search/pins`,
+      {
+        params: { query: searchQuery, page_size: 5 },
+        headers: { Authorization: `Bearer ${process.env.PINTEREST_ACCESS_TOKEN}` }
+      }
+    );
+
+    const pins = pinterestRes.data?.items || [];
+    const imageUrls = pins.map(pin => pin.media.images.originals.url);
+
+    console.log(`📸 Found ${imageUrls.length} Pinterest images`);
+
+    // 4️⃣ Run GPT Vision on top 3–5 images
+    let pinterestAnalysis = "No analysis available";
+    if (imageUrls.length > 0) {
+      try {
+        const visionResponse = await openai.chat.completions.create({
+          model: "gpt-4o-mini", // can switch to gpt-4o for richer vision
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Analyze these "${theme}" outfit images for ${weather} weather. Extract key styling elements:
+
+1. COLOR PALETTE  
+2. CLOTHING CATEGORIES  
+3. STYLE ELEMENTS (patterns, fits, textures)  
+4. LAYERING  
+5. ACCESSORIES  
+6. WEATHER ADAPTATION  
+
+Summarize clearly.`,
+                },
+                ...imageUrls.slice(0, 5).map((url) => ({
+                  type: "image_url",
+                  image_url: { url },
+                })),
+              ],
+            },
+          ],
+        });
+
+        pinterestAnalysis =
+          visionResponse.choices?.[0]?.message?.content || "No analysis available";
+      } catch (err) {
+        console.error("❌ GPT Vision failed:", err.message);
+      }
+    }
+
+    // 5️⃣ Build outfits using wardrobe
+    const outfits = [
+      {
+        title: `${theme} Inspired Look 1`,
+        style_note: `Based on Pinterest trends and your wardrobe for ${weather} weather.`,
+        items: wardrobeItems.slice(0, 3),
+        pinterest_inspiration: pinterestAnalysis,
+        weather_suitability: weather,
+      },
+      {
+        title: `${theme} Inspired Look 2`,
+        style_note: "Alternative mix balancing comfort and trend.",
+        items: wardrobeItems.slice(3, 6),
+        pinterest_inspiration: pinterestAnalysis,
+        weather_suitability: weather,
+      },
+    ];
+
+    res.json({
+      suggestions: outfits,
+      pinterest_analysis: pinterestAnalysis,
+      search_query: searchQuery,
+      images: imageUrls,
+    });
+  } catch (err) {
+    console.error("❌ Pinterest API error:", err.message);
+    res.status(500).json({ error: "Pinterest analysis failed", details: err.message });
+  }
+});
+
+
+
+// ✅ Privacy Policy Route
+app.get("/privacy", (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Privacy Policy - WOW Wardrobe</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px; line-height: 1.6; }
+          h1, h2 { color: #b83280; }
+        </style>
+      </head>
+      <body>
+        <h1>Privacy Policy for WOW Wardrobe</h1>
+        <p><strong>Last updated:</strong> September 2025</p>
+
+        <p>WOW Wardrobe ("we", "our", "us") respects your privacy. This Privacy Policy explains how we
+        collect, use, and protect your data when you use our app.</p>
+
+        <h2>Information We Collect</h2>
+        <ul>
+          <li>Account information (Google Sign-In UID)</li>
+          <li>Wardrobe images you upload</li>
+          <li>Tags, preferences, and styling data you provide</li>
+          <li>Usage data (likes, outfit saves, planner entries)</li>
+        </ul>
+
+        <h2>How We Use Your Data</h2>
+        <ul>
+          <li>To suggest outfits tailored to your wardrobe</li>
+          <li>To improve Tina, your personal AI stylist</li>
+          <li>To enable features like wardrobe management and outfit planning</li>
+        </ul>
+
+        <h2>Data Sharing</h2>
+        <p>We do not sell or rent your data. Your data may be processed by trusted services such as
+        Firebase, OpenAI, and Ximilar to provide app functionality.</p>
+
+        <h2>Your Rights</h2>
+        <p>You can request deletion of your data anytime by contacting us at
+        <a href="mailto:support@wowwardrobe.com">support@wowwardrobe.com</a>.</p>
+
+        <h2>Contact</h2>
+        <p>If you have questions about this Privacy Policy, contact us at
+        <a href="mailto:support@wowwardrobe.com">support@wowwardrobe.com</a>.</p>
+      </body>
+    </html>
+  `);
+});
 
 // 🆕 Experimental Tina agent route
 app.post("/suggest-outfit-agent", async (req, res) => {
@@ -1036,67 +1223,7 @@ app.post("/suggest-outfit", async (req, res) => {
   }
 });
 
-// ✅ Build Tina's Style DNA
-app.post("/build-style-dna", async (req, res) => {
-  const { uid } = req.body;
 
-  if (!uid) {
-    return res.status(400).json({ error: "uid is required" });
-  }
-
-  try {
-    // Fetch wardrobe items
-    const snap = await db.collection("wardrobe")
-      .where("uid", "==", uid)
-      .get();
-
-    const wardrobeItems = snap.docs.map(d => d.data());
-
-    // Fetch preferences
-    const memDoc = await db.collection("tina_memory").doc(uid).get();
-    const preferences = memDoc.exists ? memDoc.data() : {};
-
-    // Create a condensed summary string
-    const wardrobeList = wardrobeItems.map(i => `${i.name || "unnamed"} (${i.category})`).join(", ");
-    const prompt = `
-Analyze this user’s style based on their wardrobe and preferences.
-Summarize it in one sentence.
-Wardrobe: ${wardrobeList}
-Preferences: ${JSON.stringify(preferences)}
-Output just the sentence. Example: “Boho-street with bold color pops.”
-`;
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method : "POST",
-      headers: {
-        "Content-Type" : "application/json",
-        "Authorization" : `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: "You are a fashion stylist AI." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7
-      })
-    });
-
-    const json = await response.json();
-    const reply = json.choices?.[0]?.message?.content || "No style detected.";
-
-    // Save it to memory
-    await db.collection("tina_memory").doc(uid).set(
-      { style_dna: reply }, { merge: true }
-    );
-
-    res.status(200).json({ style_dna: reply });
-
-  } catch (err) {
-    console.error("❌ Failed to build style DNA:", err.message);
-    res.status(500).json({ error: "Failed to generate style DNA" });
-  }
-});
 
 // ✅ Like (save-as-favourite) outfit
 app.post("/like-outfit", async (req, res) => {
