@@ -8,8 +8,7 @@ import { runTina } from "./tinaAgent.js";
 import dotenv from "dotenv";
 dotenv.config();
 
-console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY ? "true" : "undefined");
-console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVEBG_API_KEY);
+
 
 import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
@@ -79,36 +78,16 @@ const bucket = storage.bucket();
 
 console.log("✅ Firebase initialized with bucket:", bucket.name);
 
+// ===== Reusable pipeline (NO background removal) =====
+// Input: imageUrl (public). Output: { detected, image_url: imageUrl }
 // ===== Reusable pipeline =====
-// Input: imageUrl (public). Output: { detected, image_url: cleanedUrl }
+// Input: imageUrl (public). Output: { detected, image_url }
 async function autoTagFromImageUrl(imageUrl) {
-  // 1) remove.bg
-  const removeRes = await axios.post(
-    "https://api.remove.bg/v1.0/removebg",
-    new URLSearchParams({ image_url: imageUrl, size: "auto" }),
-    {
-      headers: {
-        "X-Api-Key": process.env.REMOVE_BG_API_KEY,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      responseType: "arraybuffer",
-    }
-  );
-  if (removeRes.status !== 200 || !removeRes.data) {
-    throw new Error("Background removal failed");
-  }
+  // ✅ Skip background removal: use the original URL directly
+  const cleanedUrl = imageUrl;
+  const cleanedPath = null;
 
-  // 2) upload cut-out to Firebase
-  const cleanedPath = `wardrobe/removed_${Date.now()}.png`;
-  await bucket.file(cleanedPath).save(removeRes.data, {
-    contentType: "image/png",
-    public: true,
-    resumable: false,
-  });
-  const cleanedUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(cleanedPath)}?alt=media`;
-  console.log("DEBUG: cleanedUrl ->", cleanedUrl);
-
-  // 3) Ximilar
+  // 1) Call Ximilar directly
   const tagRes = await axios.post(
     "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
     { records: [{ _url: cleanedUrl }] },
@@ -126,22 +105,32 @@ async function autoTagFromImageUrl(imageUrl) {
     const cleanedTags = Array.from(
       new Set(
         rawTags
-          .map((tag) => (typeof tag === "string" ? tag.toUpperCase().replace(/^.*\//, "") : null))
+          .map((tag) =>
+            typeof tag === "string"
+              ? tag.toUpperCase().replace(/^.*\//, "")
+              : null
+          )
           .filter(Boolean)
       )
     )
       .slice(0, 6)
       .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
 
-    const nameRaw = obj._tags_map?.Subcategory || obj._tags_map?.Category || "TO_BE_DETERMINED";
+    const nameRaw =
+      obj._tags_map?.Subcategory ||
+      obj._tags_map?.Category ||
+      "TO_BE_DETERMINED";
     const name = nameRaw.charAt(0).toUpperCase() + nameRaw.slice(1);
     const categoryRaw = obj._tags_map?.Category || "TO_BE_DETERMINED";
-    const category = categoryRaw.charAt(0).toUpperCase() + categoryRaw.slice(1);
+    const category =
+      categoryRaw.charAt(0).toUpperCase() + categoryRaw.slice(1);
     const colorRaw = obj._tags_map?.Color || "TO_BE_DETERMINED";
     const color = colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1);
 
     const taxonomyMatch = findCategory(nameRaw.toLowerCase());
-    const taxonomyAttributes = taxonomyMatch ? getAttributes(taxonomyMatch.subCategory) || {} : {};
+    const taxonomyAttributes = taxonomyMatch
+      ? getAttributes(taxonomyMatch.subCategory) || {}
+      : {};
 
     return {
       image_url: cleanedUrl,
@@ -150,15 +139,19 @@ async function autoTagFromImageUrl(imageUrl) {
       category,
       color,
       tags: cleanedTags,
-      taxonomyPath: taxonomyMatch ? `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}` : null,
+      taxonomyPath: taxonomyMatch
+        ? `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}`
+        : null,
       attributes: taxonomyAttributes,
       silhouette: guessSilhouette(name + " " + category),
       palette: pickPalette(color),
     };
   });
 
-  return { detected, image_url: cleanedUrl };
+  return { detected, image_url: cleanedUrl, image_path: cleanedPath };
 }
+
+
 
 
 // ─── WEATHER HELPER ─────────────────────────────────────────────
@@ -288,12 +281,13 @@ app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
     const result = await autoTagFromImageUrl(publicUrl);
 
     // include original info if you want to save original in Firestore later
-    return res.json({ ...result, original: { image_url: publicUrl, image_path: rawPath } });
-  } catch (err) {
-    console.error("🔥 /auto-tag-upload error:", err);
-    res.status(500).json({ error: "Upload auto-tag failed", message: err.message });
-  }
+return res.json({
+  ...result,
+  detectedItems: result.detected,
+  imageUrl: result.image_url,
+  original: { image_url: publicUrl, image_path: rawPath },
 });
+
     
 
 
