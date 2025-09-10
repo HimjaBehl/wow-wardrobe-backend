@@ -503,6 +503,98 @@ app.get("/wardrobe", async (req, res) => {
       }
     });
 
+// ✅ Get Staples - Return wardrobe staples with images
+app.get("/staples", async (req, res) => {
+  try {
+    console.log("📋 Fetching wardrobe staples");
+    
+    // Read staples.json file
+    const fs = await import('fs');
+    const staplesData = JSON.parse(await fs.promises.readFile('./staples.json', 'utf8'));
+    
+    console.log(`✅ Loaded ${Object.keys(staplesData).length} staple categories`);
+    
+    return res.json({
+      success: true,
+      staples: staplesData,
+      message: `Retrieved ${Object.keys(staplesData).length} wardrobe staples`
+    });
+
+  } catch (err) {
+    console.error("❌ Failed to load staples:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load wardrobe staples",
+      error: err.message
+    });
+  }
+});
+
+// ✅ Enhanced Quick Add - Manual item entry with optional image
+app.post("/quick-add", async (req, res) => {
+  const { uid, name, category, color, image_url } = req.body;
+  
+  console.log("⚡ Quick-add request:", { uid, name, category, color, has_image: !!image_url });
+  
+  if (!uid || !name) {
+    return res.status(400).json({
+      success: false,
+      message: "UID and name are required"
+    });
+  }
+
+  try {
+    // Helper function to capitalize words
+    function capitalizeWords(str) {
+      if (!str) return "";
+      return str
+        .toLowerCase()
+        .split(/[\s-/]+/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+    }
+
+    const capitalizedName = capitalizeWords(name);
+    const capitalizedCategory = capitalizeWords(category || "");
+    const capitalizedColor = capitalizeWords(color || "");
+
+    // Create tags array with name, color, and category
+    const tags = [capitalizedName, capitalizedColor, capitalizedCategory].filter(Boolean);
+
+    // Create wardrobe item with simplified structure for quick-add
+    const itemData = {
+      uid,
+      name: capitalizedName,
+      category: capitalizedCategory,
+      color: capitalizedColor,
+      image_url: image_url || null,
+      tags,
+      created_at: new Date().toISOString(),
+    };
+
+    const docRef = await db.collection("wardrobe").add(itemData);
+
+    console.log("✅ Quick-add item saved:", docRef.id);
+
+    return res.json({
+      success: true,
+      item: {
+        id: docRef.id,
+        ...itemData
+      },
+      message: "Item added successfully to wardrobe"
+    });
+
+  } catch (err) {
+    console.error("❌ Quick-add failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add item to wardrobe",
+      error: err.message
+    });
+  }
+});
+
 // ✅ Delete wardrobe item
 app.delete("/wardrobe/:id", async (req, res) => {
   const { id } = req.params;
