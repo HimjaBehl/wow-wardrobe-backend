@@ -79,77 +79,163 @@ const bucket = storage.bucket();
 
 console.log("✅ Firebase initialized with bucket:", bucket.name);
 
-// ===== Reusable pipeline (NO background removal) =====
-// Input: imageUrl (public). Output: { detected, image_url: imageUrl }
-// ===== Reusable pipeline =====
-// Input: imageUrl (public). Output: { detected, image_url }
-async function autoTagFromImageUrl(imageUrl) {
-  // ✅ Skip background removal: use the original URL directly
+// ===== Enhanced multi-object detection with cropping =====
+// Input: imageUrl (public). Output: { detected, image_url, message }
+async function autoTagFromImageUrl(imageUrl, cropObjects = false) {
+  console.log("🔍 Starting auto-tag analysis for:", imageUrl);
   const cleanedUrl = imageUrl;
   const cleanedPath = null;
 
-  // 1) Call Ximilar directly
-  const tagRes = await axios.post(
-    "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
-    { records: [{ _url: cleanedUrl }] },
-    {
-      headers: {
-        Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  try {
+    // 1) Call Ximilar detect_tags_all API
+    const tagRes = await axios.post(
+      "https://api.ximilar.com/tagging/fashion/v2/detect_tags_all",
+      { records: [{ _url: cleanedUrl }] },
+      {
+        headers: {
+          Authorization: `Token ${process.env.XIMILAR_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-  const objects = tagRes.data?.records?.[0]?._objects || [];
-  const detected = objects.map((obj) => {
-    const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
-    const cleanedTags = Array.from(
-      new Set(
-        rawTags
-          .map((tag) =>
-            typeof tag === "string"
-              ? tag.toUpperCase().replace(/^.*\//, "")
-              : null
-          )
-          .filter(Boolean)
+    const objects = tagRes.data?.records?.[0]?._objects || [];
+    console.log(`📦 Detected ${objects.length} objects in image`);
+
+    const detected = await Promise.all(objects.map(async (obj, index) => {
+      const rawTags = Array.isArray(obj._tags_simple) ? obj._tags_simple : [];
+      const cleanedTags = Array.from(
+        new Set(
+          rawTags
+            .map((tag) =>
+              typeof tag === "string"
+                ? tag.toUpperCase().replace(/^.*\//, "")
+                : null
+            )
+            .filter(Boolean)
+        )
       )
-    )
-      .slice(0, 6)
-      .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
+        .slice(0, 6)
+        .map((tag) => tag.charAt(0).toUpperCase() + tag.slice(1));
 
-    const nameRaw =
-      obj._tags_map?.Subcategory ||
-      obj._tags_map?.Category ||
-      "TO_BE_DETERMINED";
-    const name = nameRaw.charAt(0).toUpperCase() + nameRaw.slice(1);
-    const categoryRaw = obj._tags_map?.Category || "TO_BE_DETERMINED";
-    const category =
-      categoryRaw.charAt(0).toUpperCase() + categoryRaw.slice(1);
-    const colorRaw = obj._tags_map?.Color || "TO_BE_DETERMINED";
-    const color = colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1);
+      const nameRaw =
+        obj._tags_map?.Subcategory ||
+        obj._tags_map?.Category ||
+        "TO_BE_DETERMINED";
+      const name = nameRaw.charAt(0).toUpperCase() + nameRaw.slice(1);
+      const categoryRaw = obj._tags_map?.Category || "TO_BE_DETERMINED";
+      const category =
+        categoryRaw.charAt(0).toUpperCase() + categoryRaw.slice(1);
+      const colorRaw = obj._tags_map?.Color || "TO_BE_DETERMINED";
+      const color = colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1);
 
-    const taxonomyMatch = findCategory(nameRaw.toLowerCase());
-    const taxonomyAttributes = taxonomyMatch
-      ? getAttributes(taxonomyMatch.subCategory) || {}
-      : {};
+      const taxonomyMatch = findCategory(nameRaw.toLowerCase());
+      const taxonomyAttributes = taxonomyMatch
+        ? getAttributes(taxonomyMatch.subCategory) || {}
+        : {};
 
-    return {
-      image_url: cleanedUrl,
+      let croppedImageUrl = cleanedUrl;
+      let croppedImagePath = cleanedPath;
+
+      // 2) Handle cropping if requested and bounding box exists
+      if (cropObjects && obj._box && objects.length > 1) {
+        try {
+          console.log(`✂️ Cropping object ${index + 1}: ${name}`);
+          const cropResult = await cropAndSaveObject(cleanedUrl, obj._box, `${name}_${index}`);
+          if (cropResult.success) {
+            croppedImageUrl = cropResult.image_url;
+            croppedImagePath = cropResult.image_path;
+            console.log(`✅ Cropped image saved: ${croppedImageUrl}`);
+          }
+        } catch (cropErr) {
+          console.warn(`⚠️ Cropping failed for object ${index + 1}:`, cropErr.message);
+        }
+      }
+
+      return {
+        image_url: croppedImageUrl,
+        image_path: croppedImagePath,
+        name,
+        category,
+        color,
+        tags: cleanedTags,
+        taxonomyPath: taxonomyMatch
+          ? `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}`
+          : null,
+        attributes: taxonomyAttributes,
+        silhouette: guessSilhouette(name + " " + category),
+        palette: pickPalette(color),
+        confidence: obj._probability || 0.8,
+        boundingBox: obj._box || null,
+      };
+    }));
+
+    console.log(`✅ Auto-tag completed: ${detected.length} items processed`);
+    return { 
+      detected, 
+      image_url: cleanedUrl, 
       image_path: cleanedPath,
-      name,
-      category,
-      color,
-      tags: cleanedTags,
-      taxonomyPath: taxonomyMatch
-        ? `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}`
-        : null,
-      attributes: taxonomyAttributes,
-      silhouette: guessSilhouette(name + " " + category),
-      palette: pickPalette(color),
+      message: `Successfully detected ${detected.length} item(s)`
     };
-  });
 
-  return { detected, image_url: cleanedUrl, image_path: cleanedPath };
+  } catch (error) {
+    console.error("❌ Auto-tag failed:", error.message);
+    throw new Error(`Auto-tag processing failed: ${error.message}`);
+  }
+}
+
+// ===== Object cropping helper function =====
+async function cropAndSaveObject(originalImageUrl, boundingBox, objectName) {
+  try {
+    // Download original image
+    const imageResponse = await axios.get(originalImageUrl, { 
+      responseType: 'arraybuffer' 
+    });
+    const imageBuffer = Buffer.from(imageResponse.data);
+
+    // Calculate crop dimensions from bounding box
+    const { x, y, width, height } = boundingBox;
+    
+    // Crop the image using Sharp
+    const croppedBuffer = await sharp(imageBuffer)
+      .extract({
+        left: Math.round(x),
+        top: Math.round(y),
+        width: Math.round(width),
+        height: Math.round(height)
+      })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+
+    // Save cropped image to Firebase
+    const croppedPath = `wardrobe/cropped/${uuidv4()}_${objectName}.jpg`;
+    const file = bucket.file(croppedPath);
+    
+    await file.save(croppedBuffer, {
+      metadata: {
+        contentType: "image/jpeg",
+        cacheControl: "public, max-age=31536000",
+      },
+      public: true,
+      resumable: false,
+    });
+    
+    await file.makePublic();
+    const croppedUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(croppedPath)}?alt=media`;
+    
+    return {
+      success: true,
+      image_url: croppedUrl,
+      image_path: croppedPath
+    };
+
+  } catch (error) {
+    console.error("❌ Crop operation failed:", error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 }
 
 
