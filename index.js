@@ -329,36 +329,63 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ Auto-tagging
+// ✅ Enhanced Auto-tagging with multi-object support
 app.post("/auto-tag", async (req, res) => {
-  const { image_url } = req.body || {};
-  if (!image_url) return res.status(400).json({ error: "Image URL required" });
-  try {
-    const result = await autoTagFromImageUrl(image_url);
-    return res.json(result);
+  const { image_url, crop_objects = false } = req.body || {};
+  
+  if (!image_url) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "Image URL is required" 
+    });
+  }
 
+  try {
+    console.log("🔍 /auto-tag request:", { image_url, crop_objects });
+    const result = await autoTagFromImageUrl(image_url, crop_objects);
+    
+    return res.json({
+      success: true,
+      items: result.detected,
+      message: result.message,
+      meta: {
+        original_image: result.image_url,
+        total_objects: result.detected.length
+      }
+    });
 
   } catch (err) {
     console.error("🔥 /auto-tag error:", err);
-    res.status(500).json({ error: "Auto-tagging failed", message: err.message });
+    res.status(500).json({ 
+      success: false, 
+      message: "Auto-tagging failed", 
+      error: err.message 
+    });
   }
 });
 
-// Accepts multipart/form-data with field name: "file"
+// ✅ Enhanced Auto-tag Upload with multi-object support
 app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
+  const { crop_objects = true } = req.body; // Default to cropping for uploads
+  
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded (field must be 'file')." });
+      return res.status(400).json({ 
+        success: false, 
+        message: "No file uploaded (field must be 'file')" 
+      });
     }
 
-    // 🔄 AVIF/PNG/HEIC sab ko JPEG me convert + size cap
+    console.log("📸 Processing uploaded file:", req.file.originalname);
+
+    // 🔄 Convert to JPEG with optimizations
     const jpegBuffer = await sharp(req.file.buffer)
       .rotate()
       .resize({ width: 1600, withoutEnlargement: true })
       .jpeg({ quality: 88 })
       .toBuffer();
 
-    // 📤 JPEG ko Firebase me upload karo
+    // 📤 Upload to Firebase Storage
     const rawPath = `wardrobe/uploads/${uuidv4()}.jpg`;
     const file = bucket.file(rawPath);
     
@@ -371,29 +398,304 @@ app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
       resumable: false,
     });
     
-    // Make the file publicly accessible
     await file.makePublic();
-
     const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(rawPath)}?alt=media`;
-    console.log("📤 Uploaded (JPEG) to:", publicUrl);
+    console.log("📤 Uploaded to Firebase:", publicUrl);
 
-    // 🔗 Ab normal pipeline chalao (remove.bg → Ximilar)
-    const result = await autoTagFromImageUrl(publicUrl);
+    // 🔗 Enhanced auto-tagging with multi-object detection
+    const result = await autoTagFromImageUrl(publicUrl, crop_objects);
 
-    // ✅ CA ko yahi shape chahiye
     return res.json({
-      ...result,
-      detectedItems: result.detected,
-      imageUrl: result.image_url,
-      original: { image_url: publicUrl, image_path: rawPath },
+      success: true,
+      items: result.detected,
+      message: result.message,
+      meta: {
+        original_image: publicUrl,
+        original_path: rawPath,
+        total_objects: result.detected.length,
+        cropping_enabled: crop_objects
+      }
     });
 
   } catch (err) {
     const payload = err?.response?.data || err?.message || String(err);
     console.error("🔥 /auto-tag-upload error:", payload);
     return res.status(500).json({
-      error: "Upload auto-tag failed",
-      message: typeof payload === "string" ? payload : JSON.stringify(payload),
+      success: false,
+      message: "Upload auto-tag failed",
+      error: typeof payload === "string" ? payload : JSON.stringify(payload),
+    });
+  }
+});
+
+// ✅ Quick Add - Manual item entry without image
+app.post("/quick-add", async (req, res) => {
+  const { uid, name, category, color } = req.body;
+  
+  console.log("⚡ Quick-add request:", { uid, name, category, color });
+  
+  if (!uid || !name) {
+    return res.status(400).json({
+      success: false,
+      message: "UID and name are required"
+    });
+  }
+
+  try {
+    // Helper function to capitalize words
+    function capitalizeWords(str) {
+      if (!str) return "";
+      return str
+        .toLowerCase()
+        .split(/[\s-/]+/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+    }
+
+    const capitalizedName = capitalizeWords(name);
+    const capitalizedCategory = capitalizeWords(category || "");
+    const capitalizedColor = capitalizeWords(color || "");
+
+    // Auto-generate basic tags from name and category
+    const autoTags = [capitalizedName, capitalizedCategory, capitalizedColor]
+      .filter(Boolean)
+      .filter(tag => tag.length > 2);
+    
+    // Add some common fabric tags if detected in name
+    const knownFabrics = ["Cotton", "Linen", "Denim", "Silk", "Wool", "Nylon", "Polyester", "Chiffon"];
+    const detectedFabric = knownFabrics.find(fabric => 
+      capitalizedName.toLowerCase().includes(fabric.toLowerCase())
+    );
+    if (detectedFabric) autoTags.push(detectedFabric);
+
+    const fabric = detectedFabric || "Unknown";
+
+    // Taxonomy enrichment
+    const taxonomyMatch = findCategory(capitalizedName.toLowerCase());
+    const taxonomyAttributes = taxonomyMatch
+      ? getAttributes(taxonomyMatch.subCategory) || {}
+      : {};
+
+    // Create wardrobe item
+    const docRef = await db.collection("wardrobe").add({
+      uid,
+      name: capitalizedName,
+      category: capitalizedCategory,
+      color: capitalizedColor,
+      tags: autoTags,
+      fabric,
+      primaryTag: capitalizedName,
+      taxonomyPath: taxonomyMatch
+        ? `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}`
+        : null,
+      attributes: taxonomyAttributes,
+      silhouette: guessSilhouette(capitalizedName + " " + capitalizedCategory),
+      palette: pickPalette(capitalizedColor),
+      image_url: null, // No image for quick-add
+      image_path: null,
+      created_at: new Date().toISOString(),
+    });
+
+    console.log("✅ Quick-add item saved:", docRef.id);
+
+    return res.json({
+      success: true,
+      item: {
+        id: docRef.id,
+        uid,
+        name: capitalizedName,
+        category: capitalizedCategory,
+        color: capitalizedColor,
+        tags: autoTags,
+        fabric,
+        created_at: new Date().toISOString()
+      },
+      message: "Item added successfully to wardrobe"
+    });
+
+  } catch (err) {
+    console.error("❌ Quick-add failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add item to wardrobe",
+      error: err.message
+    });
+  }
+});
+
+// ✅ Search Product - Find items using external search
+app.post("/search-product", async (req, res) => {
+  const { uid, query } = req.body;
+  
+  console.log("🔍 Product search request:", { uid, query });
+  
+  if (!uid || !query) {
+    return res.status(400).json({
+      success: false,
+      message: "UID and search query are required"
+    });
+  }
+
+  try {
+    // For now, using mock search results - you can replace with SerpAPI/Google Shopping
+    const mockSearchResults = [
+      {
+        title: `${query} - Premium Quality`,
+        description: `High-quality ${query} available in multiple colors`,
+        image_url: "https://via.placeholder.com/400x400/E5E5E5/333333?text=" + encodeURIComponent(query),
+        price: "$29.99",
+        source: "Mock Store",
+        url: "#"
+      },
+      {
+        title: `Designer ${query}`,
+        description: `Elegant ${query} perfect for any occasion`,
+        image_url: "https://via.placeholder.com/400x400/F0F0F0/666666?text=" + encodeURIComponent("Designer " + query),
+        price: "$49.99",
+        source: "Fashion Boutique",
+        url: "#"
+      },
+      {
+        title: `Casual ${query}`,
+        description: `Comfortable everyday ${query}`,
+        image_url: "https://via.placeholder.com/400x400/FAFAFA/999999?text=" + encodeURIComponent("Casual " + query),
+        price: "$19.99",
+        source: "Everyday Wear",
+        url: "#"
+      }
+    ];
+
+    // TODO: Replace with actual SerpAPI or Google Shopping integration
+    // Example SerpAPI call (uncomment when you have API key):
+    /*
+    const serpRes = await axios.get("https://serpapi.com/search", {
+      params: {
+        engine: "google_shopping",
+        q: query + " clothing",
+        api_key: process.env.SERPAPI_KEY,
+        num: 10
+      }
+    });
+    const realResults = serpRes.data.shopping_results || [];
+    */
+
+    console.log(`🛍️ Found ${mockSearchResults.length} search results for: ${query}`);
+
+    return res.json({
+      success: true,
+      items: mockSearchResults,
+      message: `Found ${mockSearchResults.length} products for "${query}"`,
+      meta: {
+        query,
+        uid,
+        search_type: "mock", // Change to "serpapi" when implemented
+        total_results: mockSearchResults.length
+      }
+    });
+
+  } catch (err) {
+    console.error("❌ Product search failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Product search failed",
+      error: err.message
+    });
+  }
+});
+
+// ✅ Save Search Result - Add selected search result to wardrobe
+app.post("/save-search-result", async (req, res) => {
+  const { uid, product } = req.body;
+  
+  console.log("💾 Save search result request:", { uid, product_title: product?.title });
+  
+  if (!uid || !product) {
+    return res.status(400).json({
+      success: false,
+      message: "UID and product data are required"
+    });
+  }
+
+  try {
+    // Extract product info and auto-tag it
+    const productImageUrl = product.image_url;
+    
+    if (productImageUrl && !productImageUrl.includes("placeholder")) {
+      // If real product image, use auto-tagging
+      try {
+        const tagResult = await autoTagFromImageUrl(productImageUrl, false);
+        
+        if (tagResult.detected.length > 0) {
+          // Save the first detected item
+          const detectedItem = tagResult.detected[0];
+          const docRef = await db.collection("wardrobe").add({
+            ...detectedItem,
+            uid,
+            source: "search",
+            original_search: product.title,
+            price: product.price || null,
+            store: product.source || null,
+            created_at: new Date().toISOString(),
+          });
+
+          console.log("✅ Search result saved with auto-tagging:", docRef.id);
+
+          return res.json({
+            success: true,
+            item: { id: docRef.id, ...detectedItem },
+            message: "Product saved to wardrobe with auto-tagging"
+          });
+        }
+      } catch (tagErr) {
+        console.warn("⚠️ Auto-tagging failed, saving manually:", tagErr.message);
+      }
+    }
+
+    // Fallback: manual saving without auto-tagging
+    function capitalizeWords(str) {
+      if (!str) return "";
+      return str
+        .toLowerCase()
+        .split(/[\s-/]+/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+    }
+
+    const name = capitalizeWords(product.title || "Product");
+    const docRef = await db.collection("wardrobe").add({
+      uid,
+      name,
+      category: "TO_BE_DETERMINED",
+      color: "TO_BE_DETERMINED",
+      tags: [name],
+      image_url: product.image_url || null,
+      image_path: null,
+      source: "search",
+      original_search: product.title,
+      price: product.price || null,
+      store: product.source || null,
+      created_at: new Date().toISOString(),
+    });
+
+    console.log("✅ Search result saved manually:", docRef.id);
+
+    return res.json({
+      success: true,
+      item: {
+        id: docRef.id,
+        name,
+        image_url: product.image_url,
+        source: "search"
+      },
+      message: "Product saved to wardrobe"
+    });
+
+  } catch (err) {
+    console.error("❌ Save search result failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save product to wardrobe",
+      error: err.message
     });
   }
 });
