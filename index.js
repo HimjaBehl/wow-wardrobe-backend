@@ -274,11 +274,19 @@ app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
 
     // 📤 JPEG ko Firebase me upload karo
     const rawPath = `wardrobe/uploads/${uuidv4()}.jpg`;
-    await bucket.file(rawPath).save(jpegBuffer, {
-      contentType: "image/jpeg",
+    const file = bucket.file(rawPath);
+    
+    await file.save(jpegBuffer, {
+      metadata: {
+        contentType: "image/jpeg",
+        cacheControl: "public, max-age=31536000",
+      },
       public: true,
       resumable: false,
     });
+    
+    // Make the file publicly accessible
+    await file.makePublic();
 
     const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(rawPath)}?alt=media`;
     console.log("📤 Uploaded (JPEG) to:", publicUrl);
