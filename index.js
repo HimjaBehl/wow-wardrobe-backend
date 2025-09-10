@@ -324,6 +324,7 @@ console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY);
 // This endpoint is handled by the working staples endpoint below
 
 // ✅ Search Product via SerpAPI
+// ✅ Search Product via SerpAPI (normalized for frontend)
 app.post("/search-product", async (req, res) => {
   const { query } = req.body;
   if (!query) return res.status(400).json({ error: "Query is required" });
@@ -337,19 +338,24 @@ app.post("/search-product", async (req, res) => {
       },
     });
 
-    const images =
+    // 🔹 Normalize into "products" list
+    const products =
       serpRes.data.images_results?.slice(0, 6).map((img) => ({
-        title: img.title,
-        url: img.original,
+        name: img.title || "Unnamed Product",
+        image_url: img.original || img.thumbnail,
         thumbnail: img.thumbnail,
+        category: "Search", // fallback
+        color: "Unknown",   // fallback
+        source: img.link || null,
       })) || [];
 
-    res.json({ success: true, images });
+    res.json({ success: true, products });
   } catch (err) {
     console.error("❌ /search-product failed:", err.message);
     res.status(500).json({ error: "Search failed" });
   }
 });
+
 
 
 // ✅ Root route
