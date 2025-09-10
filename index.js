@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -260,27 +261,33 @@ app.post("/auto-tag", async (req, res) => {
 // Accepts multipart/form-data with field name: "file"
 app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded (field must be 'file')." });
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded (field must be 'file')." });
+    }
 
-    // Upload raw file buffer to Firebase to get a public URL
-    const originalName = req.file.originalname || `upload_${Date.now()}.jpg`;
-    const ext = path.extname(originalName) || ".jpg";
-    const rawPath = `wardrobe/uploads/${uuidv4()}${ext}`;
+    // 🔄 AVIF/PNG/HEIC sab ko JPEG me convert + size cap
+    const jpegBuffer = await sharp(req.file.buffer)
+      .rotate()
+      .resize({ width: 1600, withoutEnlargement: true })
+      .jpeg({ quality: 88 })
+      .toBuffer();
 
-    await bucket.file(rawPath).save(req.file.buffer, {
-      contentType: req.file.mimetype || "image/jpeg",
+    // 📤 JPEG ko Firebase me upload karo
+    const rawPath = `wardrobe/uploads/${uuidv4()}.jpg`;
+    await bucket.file(rawPath).save(jpegBuffer, {
+      contentType: "image/jpeg",
       public: true,
       resumable: false,
     });
 
     const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(rawPath)}?alt=media`;
-    console.log("📤 Uploaded raw to:", publicUrl);
+    console.log("📤 Uploaded (JPEG) to:", publicUrl);
 
-    // Reuse the same pipeline
+    // 🔗 Ab normal pipeline chalao (remove.bg → Ximilar)
     const result = await autoTagFromImageUrl(publicUrl);
 
-    // include original info if you want to save original in Firestore later
-return res.json({
+    // ✅ CA ko yahi shape chahiye
+    return res.json({
       ...result,
       detectedItems: result.detected,
       imageUrl: result.image_url,
@@ -288,10 +295,15 @@ return res.json({
     });
 
   } catch (err) {
-    console.error("🔥 /auto-tag-upload error:", err);
-    res.status(500).json({ error: "Auto-tagging upload failed", message: err.message });
+    const payload = err?.response?.data || err?.message || String(err);
+    console.error("🔥 /auto-tag-upload error:", payload);
+    return res.status(500).json({
+      error: "Upload auto-tag failed",
+      message: typeof payload === "string" ? payload : JSON.stringify(payload),
+    });
   }
 });
+
 
 // ✅ Fetch wardrobe by user ID
 app.get("/wardrobe", async (req, res) => {
@@ -408,6 +420,132 @@ app.delete("/wardrobe/:id", async (req, res) => {
   } catch (err) {
     console.error("❌ Error deleting item:", err.message);
     res.status(500).json({ error: "Failed to delete wardrobe item" });
+  }
+});
+
+// ✅ Update wardrobe item
+app.put("/wardrobe/:id", async (req, res) => {
+  const { id } = req.params;
+  const { uid, name, category, color, tags } = req.body;
+  
+  if (!id) return res.status(400).json({ error: "Item ID is required" });
+  if (!uid) return res.status(400).json({ error: "UID is required" });
+
+  try {
+    // First verify the item belongs to the user
+    const docRef = db.collection("wardrobe").doc(id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+    
+    const itemData = doc.data();
+    if (itemData.uid !== uid) {
+      return res.status(403).json({ error: "Not authorized to update this item" });
+    }
+
+    // Helper function to capitalize words (same as in POST route)
+    function capitalizeWords(str) {
+      return str
+        .toLowerCase()
+        .split(/[\s-/]+/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+    }
+
+    // Build update object with only provided fields
+    const updateData = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (name !== undefined) {
+      updateData.name = capitalizeWords(name);
+      updateData.primaryTag = capitalizeWords(name);
+    }
+    if (category !== undefined) {
+      updateData.category = capitalizeWords(category);
+    }
+    if (color !== undefined) {
+      updateData.color = capitalizeWords(color);
+    }
+    if (tags !== undefined) {
+      const capitalizedTags = Array.isArray(tags) ? tags.map(capitalizeWords) : [];
+      updateData.tags = capitalizedTags;
+      
+      // Update fabric if tags include known fabrics
+      const knownFabrics = [
+        "Cotton", "Linen", "Denim", "Silk", "Wool", 
+        "Nylon", "Polyester", "Chiffon",
+      ];
+      const fabric = capitalizedTags.find((tag) => knownFabrics.includes(tag)) || itemData.fabric || "Unknown";
+      updateData.fabric = fabric;
+    }
+
+    // Update taxonomy if name changed
+    if (name !== undefined) {
+      const taxonomyMatch = findCategory(capitalizeWords(name).toLowerCase());
+      if (taxonomyMatch) {
+        updateData.taxonomyPath = `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}`;
+        updateData.attributes = getAttributes(taxonomyMatch.subCategory) || {};
+      }
+    }
+
+    await docRef.update(updateData);
+    res.status(200).json({ message: "Item updated", id });
+  } catch (err) {
+    console.error("❌ Error updating item:", err.message);
+    res.status(500).json({ error: "Failed to update wardrobe item" });
+  }
+});
+
+// ✅ Bulk delete wardrobe items
+app.post("/wardrobe/bulk-delete", async (req, res) => {
+  const { uid, ids } = req.body;
+  
+  if (!uid) return res.status(400).json({ error: "UID is required" });
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "IDs array is required and must not be empty" });
+  }
+
+  try {
+    // Verify all items belong to the user before deleting any
+    const itemRefs = ids.map(id => db.collection("wardrobe").doc(id));
+    const itemDocs = await Promise.all(itemRefs.map(ref => ref.get()));
+    
+    // Check if all items exist and belong to the user
+    const invalidItems = [];
+    const validRefs = [];
+    
+    itemDocs.forEach((doc, index) => {
+      if (!doc.exists) {
+        invalidItems.push({ id: ids[index], reason: "not found" });
+      } else if (doc.data().uid !== uid) {
+        invalidItems.push({ id: ids[index], reason: "not authorized" });
+      } else {
+        validRefs.push(itemRefs[index]);
+      }
+    });
+
+    if (invalidItems.length > 0) {
+      return res.status(400).json({ 
+        error: "Some items could not be deleted", 
+        invalidItems 
+      });
+    }
+
+    // Delete all valid items in a batch
+    const batch = db.batch();
+    validRefs.forEach(ref => batch.delete(ref));
+    await batch.commit();
+
+    res.status(200).json({ 
+      message: "Bulk delete complete", 
+      count: validRefs.length 
+    });
+  } catch (err) {
+    console.error("❌ Error bulk deleting items:", err.message);
+    res.status(500).json({ error: "Failed to bulk delete wardrobe items" });
   }
 });
 
@@ -1173,6 +1311,43 @@ app.post("/suggest-outfit", async (req, res) => {
   }
 });
 
+// ✅ Toggle wardrobe favorite
+app.post("/toggle-favorite", async (req, res) => {
+  const { uid, itemId, isFavorite } = req.body;
+  if (!uid || !itemId) {
+    return res.status(400).json({ error: "uid and itemId are required" });
+  }
+
+  try {
+    await db.collection("wardrobe").doc(itemId).update({
+      isFavorite: !!isFavorite,
+      updated_at: new Date().toISOString(),
+    });
+    res.json({ message: "Favorite updated" });
+  } catch (err) {
+    console.error("❌ toggle-favorite failed:", err.message);
+    res.status(500).json({ error: "Failed to toggle favorite" });
+  }
+});
+
+// ✅ Mark wardrobe item as worn
+app.post("/mark-worn", async (req, res) => {
+  const { uid, itemId, lastWorn } = req.body;
+  if (!uid || !itemId || !lastWorn) {
+    return res.status(400).json({ error: "uid, itemId, lastWorn are required" });
+  }
+
+  try {
+    await db.collection("wardrobe").doc(itemId).update({
+      lastWorn,
+      updated_at: new Date().toISOString(),
+    });
+    res.json({ message: "Item marked as worn" });
+  } catch (err) {
+    console.error("❌ mark-worn failed:", err.message);
+    res.status(500).json({ error: "Failed to mark item as worn" });
+  }
+});
 
 
 // ✅ Like (save-as-favourite) outfit
