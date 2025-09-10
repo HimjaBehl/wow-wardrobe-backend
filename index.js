@@ -426,32 +426,49 @@ app.get("/wardrobe", async (req, res) => {
 
 
 
-// ✅ Get Staples - Return wardrobe staples with images
+// ✅ Get Staples - Load directly from Firebase Storage
 app.get("/staples", async (req, res) => {
   try {
-    console.log("📋 Fetching wardrobe staples");
-    
-    // Read staples.json file
-    const fs = await import('fs');
-    const staplesData = JSON.parse(await fs.promises.readFile('./staples.json', 'utf8'));
-    
-    console.log(`✅ Loaded ${Object.keys(staplesData).length} staple categories`);
-    
-    return res.json({
-      success: true,
-      staples: staplesData,
-      message: `Retrieved ${Object.keys(staplesData).length} wardrobe staples`
-    });
+    console.log("📋 Fetching wardrobe staples from Firebase");
 
+    // List all files inside the "staples/" folder in Firebase
+    const [files] = await bucket.getFiles({ prefix: "staples/" });
+
+    if (!files.length) {
+      return res.json({ success: true, staples: {}, message: "No staples found" });
+    }
+
+    const staples = {};
+
+    for (const file of files) {
+      const fileName = file.name.split("/").pop(); // e.g. tshirt_white.jpg
+      if (!fileName) continue;
+
+      const [base, color] = fileName.replace(/\.[^/.]+$/, "").split("_"); // "tshirt_white" → ["tshirt","white"]
+      const prettyName = base.charAt(0).toUpperCase() + base.slice(1);
+      const prettyColor = color ? color.charAt(0).toUpperCase() + color.slice(1) : "Default";
+
+      // Public URL
+      const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
+
+      if (!staples[prettyName]) {
+        staples[prettyName] = { category: prettyName, variants: [] };
+      }
+
+      staples[prettyName].variants.push({
+        color: prettyColor,
+        image_url: url
+      });
+    }
+
+    console.log(`✅ Found staples:`, Object.keys(staples));
+    res.json({ success: true, staples });
   } catch (err) {
-    console.error("❌ Failed to load staples:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load wardrobe staples",
-      error: err.message
-    });
+    console.error("❌ Failed to fetch staples:", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 // ✅ Enhanced Quick Add - Manual item entry with optional image
 app.post("/quick-add", async (req, res) => {
