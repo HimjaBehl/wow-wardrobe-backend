@@ -323,6 +323,34 @@ console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY);
 // ✅ Quick Add Staples - Fixed syntax
 // This endpoint is handled by the working staples endpoint below
 
+// ✅ Search Product via SerpAPI
+app.post("/search-product", async (req, res) => {
+  const { query } = req.body;
+  if (!query) return res.status(400).json({ error: "Query is required" });
+
+  try {
+    const serpRes = await axios.get("https://serpapi.com/search.json", {
+      params: {
+        q: query,
+        tbm: "isch", // image search
+        api_key: process.env.SERPAPI_KEY,
+      },
+    });
+
+    const images =
+      serpRes.data.images_results?.slice(0, 6).map((img) => ({
+        title: img.title,
+        url: img.original,
+        thumbnail: img.thumbnail,
+      })) || [];
+
+    res.json({ success: true, images });
+  } catch (err) {
+    console.error("❌ /search-product failed:", err.message);
+    res.status(500).json({ error: "Search failed" });
+  }
+});
+
 
 // ✅ Root route
 app.get("/", (req, res) => {
