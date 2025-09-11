@@ -1016,27 +1016,32 @@ app.post("/suggest-outfit", async (req, res) => {
 
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
-  console.log("👕 Fetch wardrobe for UID:", uid);
-  console.log("📦 Wardrobe size (snapshot):", snap.size);
-  snap.forEach((doc) => {
-    console.log("➡️ Wardrobe item:", doc.id, doc.data().name, "uid=", doc.data().uid);
-  });
+  
 
 
   // Prefetch user preferences & a basic wardrobe snapshot (we still expose function to fetch full)
   const prefs = await getUserMemory(uid).catch(() => ({}));
 
-  try {
-    // Prefetch raw snapshot (used for fallbacks and get_wardrobe implementation)
-    const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
-    if (snap.empty) {
-      console.warn("⚠️ Wardrobe empty, returning test items");
-      return res.json({
-        looks: [
-          { title: "Debug Look", style_note: "No wardrobe but forced", items: [] }
-        ]
+    try {
+      // 🔥 fetch wardrobe snapshot FIRST
+      const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+
+      console.log("👕 Fetch wardrobe for UID:", uid);
+      console.log("📦 Wardrobe size (snapshot):", snap.size);
+
+      snap.forEach((doc) => {
+        console.log("➡️ Wardrobe item:", doc.id, doc.data().name, "uid=", doc.data().uid);
       });
-    }
+
+      if (snap.empty) {
+        console.warn("⚠️ Wardrobe empty, returning test items");
+        return res.json({
+          looks: [
+            { title: "Debug Look", style_note: "No wardrobe but forced", items: [] }
+          ]
+        });
+      }
+
 
     let rawWardrobe = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
