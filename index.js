@@ -1253,10 +1253,24 @@ app.post("/suggest-outfit", async (req, res) => {
     const data = await response.json();
     const raw = data.choices?.[0]?.message?.content || "{}";
     console.log("🟢 Raw LLM Output:", raw);
+
     let parsed;
     try {
       parsed = JSON.parse(raw);
       console.log("🔎 Parsed JSON draft:", JSON.stringify(parsed, null, 2));
+    } catch (parseErr) {
+      console.error("❌ JSON parse failed:", parseErr.message, raw);
+
+      // 🚑 Fallback immediately if parse fails
+      return res.status(200).json({
+        looks: [
+          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
+          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
+        ],
+        note: "Fallback: Tina’s response invalid, so generated simple looks."
+      });
+    }
+
 
       // 6️⃣ Hydrate indices with wardrobe items
       const idx2item = Object.fromEntries(
@@ -1281,7 +1295,8 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
 
-    if (parsed.looks && Array.isArray(parsed.looks)) {
+    if (parsed.looks && Array.isArray(parsed.looks) && parsed.looks.length > 0) {
+
       parsed.looks = parsed.looks.map(look => {
         let hydratedItems = (look.items || []).map(it => ({
           ...idx2item[it.idx],
@@ -1531,6 +1546,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
     console.log("🎨 Hydrated looks:", JSON.stringify(parsed, null, 2));
     res.json(parsed);
+
 
   } catch (err) {
     // Catch-all for any unexpected errors during processing

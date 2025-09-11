@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@langchain/core": "^0.3.75",
     "@langchain/openai": "^0.5.16",
     "@supabase/supabase-js": "^2.56.1",
     "@types/node": "^22.13.11",
