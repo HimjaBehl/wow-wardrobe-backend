@@ -1192,17 +1192,35 @@ app.post("/suggest-outfit", async (req, res) => {
     const finalPrompt = `
     You are Tina, a top-tier personal stylist who balances color theory, silhouette harmony, and fashion trends.
 
-    TASK: Create 2 stylish, weather-appropriate outfits for the user.
-    - Each look = 3–5 items (must be valid).
-    - Base rules:
-      * Outfit = (top + bottom + footwear) OR (dress/jumpsuit + footwear).
-      * Use taxonomy info (category, silhouette, fabric, attributes).
-      * Mix silhouettes (fitted + oversized, anchor pieces, balance layers).
-      * Ensure color harmony; explain if it contrasts or complements.
-      * Seasonal fabrics only (cotton/linen/silk in summer; wool/leather/velvet in winter).
-      * Respect dislikes and banned items strictly.
-      * Consider body type and skin tone for better flattery.
-      * Optionally weave in mood hints.
+    TASK: You are Tina, a professional personal stylist.  
+Generate 2 polished outfits that follow **fashion styling logic**.  
+
+📌 Core styling rules (you must enforce, not the server):
+- Outfit must be **complete**:
+  * Either (Top + Bottom + Footwear + Optional Outerwear/Accessories)  
+  * Or (Dress/Jumpsuit + Footwear + Optional Outerwear/Accessories)  
+- Always ensure balance of **silhouette** (fitted + loose, anchor + support).  
+- Always ensure **color harmony** (complementary, analogous, or neutral balance).  
+- Fabrics must match the **season/weather**.  
+- Never leave an outfit missing a top or bottom.  
+- Never include duplicates (e.g., two bags, multiple footwear).  
+- Respect user dislikes and banned colors/items strictly.  
+- Make it wearable for the occasion + vibe.  
+
+📌 Output requirements:
+- 2 looks only.  
+- Each look has 3–5 items.  
+- For each look, include:
+  * "title" → fun, short name  
+  * "style_note" → why this look works  
+  * "items" → array of item indices from wardrobe sample  
+
+📌 Important:
+- Do not invent clothing outside wardrobe.  
+- Do not return partial outfits.  
+- If wardrobe is too small, explain in style_note.  
+
+
 
     CONTEXT:
     - Occasion: ${occasion || "unspecified"}
@@ -1303,29 +1321,7 @@ app.post("/suggest-outfit", async (req, res) => {
           idx: it.idx,
         }));
 
-        // 🧹 Cleanup rules before validation
-        // ❌ Remove duplicate bags
-        const bags = hydratedItems.filter(it => (it.category || "").toLowerCase().includes("bag"));
-        if (bags.length > 1) {
-          hydratedItems = hydratedItems.filter(it => !(it.category || "").toLowerCase().includes("bag"));
-          hydratedItems.push(bags[0]); // keep only one bag
-        }
-
-        // ❌ Remove bottoms if a dress/jumpsuit is present
-        const hasDress = hydratedItems.some(it => (it.category || "").toLowerCase().includes("dress") || (it.category || "").toLowerCase().includes("jumpsuit"));
-        if (hasDress) {
-          hydratedItems = hydratedItems.filter(it => {
-            const c = (it.category || "").toLowerCase();
-            return !(c.includes("pants") || c.includes("jeans") || c.includes("trousers") || c.includes("skirt") || c.includes("shorts"));
-          });
-        }
-
-        // ❌ Ensure footwear exists (fallback: add first available footwear)
-        const hasFootwear = hydratedItems.some(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
-        if (!hasFootwear) {
-          const footwear = wardrobeItems.find(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
-          if (footwear) hydratedItems.push(footwear);
-        }
+        
 
         // ✅ Run validations
         const validationFB = validateLook(hydratedItems, { weather: city });
@@ -1449,7 +1445,7 @@ app.post("/suggest-outfit", async (req, res) => {
             // Fallback → unknown item
             return { id: it.id || it.idx, name: "Unknown Item" };
           });
-
+          /*
           // 🧹 Cleanup rules before validation
           // ❌ Remove duplicate bags
           const bags = hydratedItems.filter(it => (it.category || "").toLowerCase().includes("bag"));
@@ -1473,6 +1469,7 @@ app.post("/suggest-outfit", async (req, res) => {
             const footwear = wardrobeItems.find(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
             if (footwear) hydratedItems.push(footwear);
           }
+          */
 
           // ✅ Run validations
           const validationFB = validateLook(hydratedItems, { weather: city });
