@@ -1421,16 +1421,6 @@ app.post("/suggest-outfit", async (req, res) => {
       });
     }
 
-  } catch (parseErr) {
-      console.error("❌ JSON parse failed:", parseErr.message, raw);
-      return res.status(200).json({
-        looks: [
-          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
-          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
-        ],
-        note: "Returned fallback look because Tina's JSON failed",
-      });
-    }
     
       // First, ensure looks array exists
       if (!parsed.looks || !Array.isArray(parsed.looks)) {
@@ -1546,7 +1536,6 @@ app.post("/suggest-outfit", async (req, res) => {
 
     console.log("🎨 Hydrated looks:", JSON.stringify(parsed, null, 2));
     res.json(parsed);
-
 
   } catch (err) {
     // Catch-all for any unexpected errors during processing
