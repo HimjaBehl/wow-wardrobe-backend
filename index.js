@@ -1087,6 +1087,155 @@ app.post("/theme-test", async (req, res) => {
   }
 });
 
+/* ─── AI Stylist : Suggest outfit (Updated Tina) ─────────────────────────── */
+app.post("/suggest-outfit", async (req, res) => {
+  console.log("HIT /suggest-outfit", { ts: new Date().toISOString() });
+
+  const { uid, occasion = "", vibe = "", city = "Delhi" } = req.body || {};
+  const prefs = await getUserMemory(uid);
+
+  const weatherString = await getWeather(city) || "unknown weather";
+  const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
+
+  if (!uid) return res.status(400).json({ error: "uid is required" });
+
+  try {
+    // 1️⃣ Fetch wardrobe
+    let snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+    if (snap.empty) return res.status(400).json({ error: "Wardrobe empty" });
+
+    let wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // 🚫 Pre-filter dislikes
+    if (prefs?.dislikes?.length) {
+      const bans = prefs.dislikes.map(b => b.toLowerCase());
+      wardrobeItems = wardrobeItems.filter(it => {
+        const n = (it.name || "").toLowerCase();
+        const c = (it.category || "").toLowerCase();
+        const col = (it.color || "").toLowerCase();
+        return !bans.some(b => n.includes(b) || c.includes(b) || col.includes(b));
+      });
+    }
+
+    if (wardrobeItems.length < 3) {
+      return res.status(400).json({ error: "Not enough items in wardrobe" });
+    }
+
+    // 🔹 Seasonal fabric filtering
+    const season = weatherString.includes("°C") && parseInt(weatherString) < 18 ? "winter" : "summer";
+    wardrobeItems = wardrobeItems.filter(it => {
+      if (!it.attributes?.Material) return true;
+      const materials = it.attributes.Material.map(m => m.toLowerCase());
+      if (season === "summer") return materials.some(m => ["cotton", "linen", "silk"].includes(m));
+      if (season === "winter") return materials.some(m => ["wool", "leather", "velvet"].includes(m));
+      return true;
+    });
+
+    // 2️⃣ Compact wardrobe sample
+    const sample = wardrobeItems.slice(0, 50).map((it, idx) => ({
+      idx,
+      name: it.name || "Unnamed",
+      category: it.category || "",
+      color: it.color || "",
+      taxonomyPath: it.taxonomyPath || "",
+      attributes: it.attributes || {},
+      fabric: it.fabric || "",
+      silhouette: it.silhouette || silhouetteRole(it.name || it.category),
+      image_url: it.image_url || "",
+    }));
+
+    const wardrobeLines = sample.map(w => {
+      const attrs = Object.entries(w.attributes || {})
+        .map(([k, v]) => `${k}:${v}`)
+        .join(", ");
+      return `${w.idx}|${w.name}|${w.category}|${w.color}|${w.taxonomyPath}|${w.silhouette}|${w.fabric}|${attrs}`;
+    }).join("\n");
+
+    // 3️⃣ Build stylist prompt
+    const finalPrompt = `
+You are Tina, a top-tier AI personal stylist.  
+Your job is to generate 2 polished outfits using only the wardrobe provided.  
+
+🎨 Styling Rules:
+- Outfit must be **complete**:
+  * Top + Bottom + Footwear (+ optional Outerwear/Accessories)
+  * OR Dress/Jumpsuit + Footwear (+ optional Outerwear/Accessories)
+- Always include footwear.
+- Never give 2 bags.
+- Never mix bottoms with a dress/jumpsuit.
+- Balance silhouette: pair fitted + loose, anchor + support.
+- Ensure **color harmony** (complementary, analogous, or neutral balance).
+- Fabrics must match the **season/weather**.
+- Respect dislikes: ${prefs?.dislikes?.join(", ") || "none"}.
+- Consider skin tone: ${prefs?.skinTone || "unknown"} and favorite colors: ${prefs?.favColors?.join(", ") || "none"}.
+- Make it wearable for Occasion: "${occasion}", Vibe: "${vibe}" in ${city} (${weatherString}).
+
+📌 Output requirements:
+- Generate exactly 2 looks.
+- Each look has 3–5 items.
+- Use wardrobe indices.
+- Format = strict JSON:
+{
+  "looks": [
+    {
+      "title": "Fun Brunch Look",
+      "style_note": "Why this works (silhouette, colors, vibe, weather).",
+      "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
+    },
+    {
+      "title": "Evening Chic",
+      "style_note": "Why this works.",
+      "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
+    }
+  ]
+}
+
+Wardrobe (each line = idx|name|category|color|taxonomyPath|silhouette|fabric|attributes):
+${wardrobeLines}
+`.trim();
+
+    // 4️⃣ Call OpenAI
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: finalPrompt }],
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content || "{}";
+    console.log("🟢 Raw Tina Output:", raw);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return res.status(200).json({ looks: [], note: "Parse failed, Tina response invalid." });
+    }
+
+    // 5️⃣ Hydrate with wardrobe details
+    const idx2item = Object.fromEntries(
+      wardrobeItems.map((it, i) => [String(i), it])
+    );
+
+    parsed.looks = (parsed.looks || []).map(look => ({
+      ...look,
+      items: (look.items || []).map(it => idx2item[it.idx]).filter(Boolean),
+    }));
+
+    res.json(parsed);
+
+  } catch (err) {
+    console.error("❌ Error in /suggest-outfit:", err.message);
+    res.status(500).json({ error: "Failed to suggest outfits", message: err.message });
+  }
+});
 
 /* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
 app.post("/suggest-outfit", async (req, res) => {
@@ -1208,45 +1357,33 @@ Generate 2 polished outfits that follow **fashion styling logic**.
 - Make it wearable for the occasion + vibe.  
 
 📌 Output requirements:
-- 2 looks only.  
-- Each look has 3–5 items.  
-- For each look, include:
-  * "title" → fun, short name  
-  * "style_note" → why this look works  
-  * "items" → array of item indices from wardrobe sample  
+- Generate exactly 2 looks.  
+- Each look must have 3–5 items.  
+- Valid outfits only:
+  * Top + Bottom + Footwear (+ optional Outerwear/Accessories)  
+  * OR Dress/Jumpsuit + Footwear (+ optional Outerwear/Accessories)  
+- Never give 2 bags.  
+- Never give bottoms with a dress/jumpsuit.  
+- Always include footwear.  
+- Use only wardrobe items provided.  
+- If not enough wardrobe variety, explain in style_note but still output valid looks.  
 
-📌 Important:
-- Do not invent clothing outside wardrobe.  
-- Do not return partial outfits.  
-- If wardrobe is too small, explain in style_note.  
-
-
-
-    CONTEXT:
-    - Occasion: ${occasion || "unspecified"}
-    - Vibe: ${vibe || "unspecified"} → mood hints: ${moodHints.join(", ") || "none"}
-    - Weather in ${city}: ${weatherString}
-    - User dislikes: ${prefs?.dislikes?.join(", ") || "none"}
-    - Skin tone: ${prefs?.skinTone || "unknown"}
-    - Fav colors: ${prefs?.favColors?.join(", ") || "none"}
-    - Body type: ${prefs?.bodyType || "unknown"}
-    - Wardrobe validation summary: ${JSON.stringify(fbCheck)}
-
-    RESPONSE FORMAT: strict JSON only
+📌 Response format (strict JSON):
+{
+  "looks": [
     {
-      "looks": [
-        {
-          "title": "Look 1",
-          "style_note": "Explain WHY this look works (color harmony, silhouette balance, weather fit, mood fit).",
-          "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
-        },
-        {
-          "title": "Look 2",
-          "style_note": "Explain WHY this look works.",
-          "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
-        }
-      ]
+      "title": "Chic Brunch Look",
+      "style_note": "Why this works: silhouette balance, colors, weather fit, vibe.",
+      "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
+    },
+    {
+      "title": "Evening Party Look",
+      "style_note": "Why this works.",
+      "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
     }
+  ]
+}
+
 
     Wardrobe (each line = idx|name|category|color|taxonomyPath|silhouette|fabric|attributes):
     ${wardrobeLines}
