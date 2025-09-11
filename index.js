@@ -4,7 +4,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-import { runTina } from "./tinaAgent.js";
+
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -14,9 +14,6 @@ import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
 import getTrendInsights from "./tools/getTrendInsights.js";
 
-const tools = [
-  getTrendInsights,
-];
 
 import { validateLookAgainstRules } from "./lib/styleRules.js";
 // 🔮 Load fashion taxonomy
@@ -1009,685 +1006,390 @@ app.get("/privacy", (req, res) => {
   `);
 });
 
-// 🆕 Experimental Tina agent route
-app.post("/suggest-outfit-agent", async (req, res) => {
-  const { uid, city = "Delhi", mood = "powerful", occasion = "" } = req.body;
 
-  try {
-    const result = await runTina({ uid, city, mood, occasion });
-
-    // Tina currently returns JSON as string → parse before sending to frontend
-    res.json(JSON.parse(result));
-  } catch (err) {
-    console.error("❌ Tina agent error:", err);
-    res.status(500).json({ error: "Tina agent failed", details: err.message });
-  }
-});
-
-// 🆕 Tina Agent (LangChain-powered)
-app.post("/tina-agent", async (req, res) => {
-  try {
-    const { uid, city, wardrobe, subTheme } = req.body;
-
-    console.log("🟢 /tina-agent HIT with:", {
-      uid,
-      city,
-      subTheme,
-      wardrobeCount: wardrobe?.length || 0,
-    });
-
-    if (!uid || !subTheme) {
-      return res.status(400).json({ error: "Missing uid or subTheme" });
-    }
-
-    const result = await runTina({ uid, city, wardrobe, subTheme });
-    res.json(result);
-  } catch (err) {
-    console.error("❌ Tina agent failed:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-
-// ✅ Theme testing route (fetches wardrobe from Firestore)
-app.post("/theme-test", async (req, res) => {
-  try {
-    const { uid, theme, subTheme, constraints = {} } = req.body;
-
-    if (!uid || !theme || !subTheme) {
-      return res.status(400).json({ error: "uid, theme and subTheme are required" });
-    }
-
-    // 1️⃣ Fetch wardrobe from Firestore
-    const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
-    if (snapshot.empty) {
-      return res.status(404).json({ error: "Wardrobe empty for this user" });
-    }
-    const wardrobe = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    // 2️⃣ Fetch theme attributes
-    const selectedTheme = themeAttributes?.[theme]?.[subTheme];
-    if (!selectedTheme) {
-      return res.status(404).json({ error: "Invalid theme or subTheme" });
-    }
-
-    // 3️⃣ Return combined result
-    res.json({
-      uid,
-      theme,
-      subTheme,
-      selectedTheme,
-      wardrobe,
-      constraints
-    });
-  } catch (err) {
-    console.error("❌ Theme-test error:", err.message);
-    res.status(500).json({ error: "Internal server error", message: err.message });
-  }
-});
-
-/* ─── AI Stylist : Suggest outfit (Updated Tina) ─────────────────────────── */
+// ─── Updated /suggest-outfit route: tool-calling agent loop ─────────────────
 app.post("/suggest-outfit", async (req, res) => {
-  console.log("HIT /suggest-outfit", { ts: new Date().toISOString() });
-
-  const { uid, occasion = "", vibe = "", city = "Delhi" } = req.body || {};
-  const prefs = await getUserMemory(uid);
-
-  const weatherString = await getWeather(city) || "unknown weather";
-  const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
-
-  if (!uid) return res.status(400).json({ error: "uid is required" });
-
-  try {
-    // 1️⃣ Fetch wardrobe
-    let snap = await db.collection("wardrobe").where("uid", "==", uid).get();
-    if (snap.empty) return res.status(400).json({ error: "Wardrobe empty" });
-
-    let wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    // 🚫 Pre-filter dislikes
-    if (prefs?.dislikes?.length) {
-      const bans = prefs.dislikes.map(b => b.toLowerCase());
-      wardrobeItems = wardrobeItems.filter(it => {
-        const n = (it.name || "").toLowerCase();
-        const c = (it.category || "").toLowerCase();
-        const col = (it.color || "").toLowerCase();
-        return !bans.some(b => n.includes(b) || c.includes(b) || col.includes(b));
-      });
-    }
-
-    if (wardrobeItems.length < 3) {
-      return res.status(400).json({ error: "Not enough items in wardrobe" });
-    }
-
-    // 🔹 Seasonal fabric filtering
-    const season = weatherString.includes("°C") && parseInt(weatherString) < 18 ? "winter" : "summer";
-    wardrobeItems = wardrobeItems.filter(it => {
-      if (!it.attributes?.Material) return true;
-      const materials = it.attributes.Material.map(m => m.toLowerCase());
-      if (season === "summer") return materials.some(m => ["cotton", "linen", "silk"].includes(m));
-      if (season === "winter") return materials.some(m => ["wool", "leather", "velvet"].includes(m));
-      return true;
-    });
-
-    // 2️⃣ Compact wardrobe sample
-    const sample = wardrobeItems.slice(0, 50).map((it, idx) => ({
-      idx,
-      name: it.name || "Unnamed",
-      category: it.category || "",
-      color: it.color || "",
-      taxonomyPath: it.taxonomyPath || "",
-      attributes: it.attributes || {},
-      fabric: it.fabric || "",
-      silhouette: it.silhouette || silhouetteRole(it.name || it.category),
-      image_url: it.image_url || "",
-    }));
-
-    const wardrobeLines = sample.map(w => {
-      const attrs = Object.entries(w.attributes || {})
-        .map(([k, v]) => `${k}:${v}`)
-        .join(", ");
-      return `${w.idx}|${w.name}|${w.category}|${w.color}|${w.taxonomyPath}|${w.silhouette}|${w.fabric}|${attrs}`;
-    }).join("\n");
-
-    // 3️⃣ Build stylist prompt
-    const finalPrompt = `
-You are Tina, a top-tier AI personal stylist.  
-Your job is to generate 2 polished outfits using only the wardrobe provided.  
-
-🎨 Styling Rules:
-- Outfit must be **complete**:
-  * Top + Bottom + Footwear (+ optional Outerwear/Accessories)
-  * OR Dress/Jumpsuit + Footwear (+ optional Outerwear/Accessories)
-- Always include footwear.
-- Never give 2 bags.
-- Never mix bottoms with a dress/jumpsuit.
-- Balance silhouette: pair fitted + loose, anchor + support.
-- Ensure **color harmony** (complementary, analogous, or neutral balance).
-- Fabrics must match the **season/weather**.
-- Respect dislikes: ${prefs?.dislikes?.join(", ") || "none"}.
-- Consider skin tone: ${prefs?.skinTone || "unknown"} and favorite colors: ${prefs?.favColors?.join(", ") || "none"}.
-- Make it wearable for Occasion: "${occasion}", Vibe: "${vibe}" in ${city} (${weatherString}).
-
-📌 Output requirements:
-- Generate exactly 2 looks.
-- Each look has 3–5 items.
-- Use wardrobe indices.
-- Format = strict JSON:
-{
-  "looks": [
-    {
-      "title": "Fun Brunch Look",
-      "style_note": "Why this works (silhouette, colors, vibe, weather).",
-      "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
-    },
-    {
-      "title": "Evening Chic",
-      "style_note": "Why this works.",
-      "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
-    }
-  ]
-}
-
-Wardrobe (each line = idx|name|category|color|taxonomyPath|silhouette|fabric|attributes):
-${wardrobeLines}
-`.trim();
-
-    // 4️⃣ Call OpenAI
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: finalPrompt }],
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content || "{}";
-    console.log("🟢 Raw Tina Output:", raw);
-
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return res.status(200).json({ looks: [], note: "Parse failed, Tina response invalid." });
-    }
-
-    // 5️⃣ Hydrate with wardrobe details
-    const idx2item = Object.fromEntries(
-      wardrobeItems.map((it, i) => [String(i), it])
-    );
-
-    parsed.looks = (parsed.looks || []).map(look => ({
-      ...look,
-      items: (look.items || []).map(it => idx2item[it.idx]).filter(Boolean),
-    }));
-
-    res.json(parsed);
-
-  } catch (err) {
-    console.error("❌ Error in /suggest-outfit:", err.message);
-    res.status(500).json({ error: "Failed to suggest outfits", message: err.message });
-  }
-});
-
-/* ─── AI Stylist : Suggest outfit ─────────────────────────────────────── */
-app.post("/suggest-outfit", async (req, res) => {
-  console.log("HIT /suggest-outfit", { ts: new Date().toISOString() });
+  console.log("HIT /suggest-outfit (agent) ", { ts: new Date().toISOString() });
 
   const { uid, occasion = "", vibe = "", city = "Delhi", prompt = "" } = req.body || {};
-  const prefs = await getUserMemory(uid);
-
-  const weatherString = await getWeather(city) || "unknown weather";
-  const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
-
-  console.log("🟢 /suggest-outfit received:", { uid, occasion, vibe, city, prompt });
-
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
+  // Prefetch user preferences & a basic wardrobe snapshot (we still expose function to fetch full)
+  const prefs = await getUserMemory(uid).catch(() => ({}));
+
   try {
-    // 1️⃣ Fetch wardrobe
-    let snap = await db.collection("wardrobe").where("uid", "==", uid).get();
-    console.log("📦 Querying wardrobe for UID:", uid);
-    console.log("📦 Found items count:", snap.size);
-    snap.forEach(doc => console.log("➡️ Doc:", doc.id, doc.data()));
-
+    // Prefetch raw snapshot (used for fallbacks and get_wardrobe implementation)
+    const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
     if (snap.empty) return res.status(400).json({ error: "Wardrobe empty" });
+    let rawWardrobe = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    let wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    // 🚫 Pre-filter banned items & colors so Tina never sees them
+    // Prefilter based on dislikes (so Tina never sees banned items unless she explicitly asked for full)
     if (prefs?.dislikes?.length) {
       const bans = prefs.dislikes.map(b => b.toLowerCase());
-      const beforeCount = wardrobeItems.length;
-
-      wardrobeItems = wardrobeItems.filter(it => {
+      rawWardrobe = rawWardrobe.filter(it => {
         const n = (it.name || "").toLowerCase();
         const c = (it.category || "").toLowerCase();
         const col = (it.color || "").toLowerCase();
         return !bans.some(b => n.includes(b) || c.includes(b) || col.includes(b));
       });
-
-      const afterCount = wardrobeItems.length;
-      console.log(`🛑 Prefiltered wardrobe: removed ${beforeCount - afterCount} items due to dislikes:`, prefs.dislikes);
     }
 
+    // Small helper to map wardrobe to compact sample (idx strings)
+    function buildSampleFromList(list = [], max = 50) {
+      return list.slice(0, max).map((it, idx) => ({
+        idx: String(idx),
+        id: it.id,
+        name: it.name || "Unnamed",
+        category: it.category || "",
+        color: it.color || "",
+        taxonomyPath: it.taxonomyPath || "",
+        attributes: it.attributes || {},
+        fabric: it.fabric || "",
+        silhouette: it.silhouette || "",
+        image_url: it.image_url || "",
+      }));
+    }
 
+    // Server-side tool implementations
+    async function fn_getWeather({ city: ct }) {
+      const weather = await getWeather(ct || city).catch(() => null);
+      return { city: ct || city, weather: weather || "unknown" };
+    }
 
+    async function fn_getWardrobe({ uid: toolUid, max = 50, include_raw = false }) {
+      // If tool asked for explicit uid or raw set, obey; otherwise use the prefetched filtered rawWardrobe
+      const targetUid = toolUid || uid;
+      if (include_raw) {
+        // fetch full raw (no prefilter)
+        const fullSnap = await db.collection("wardrobe").where("uid", "==", targetUid).get();
+        const fullList = fullSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return { items: buildSampleFromList(fullList, max), count: fullList.length };
+      }
+      return { items: buildSampleFromList(rawWardrobe, max), count: rawWardrobe.length };
+    }
 
-
-
-    if (wardrobeItems.length < 3) {
-      console.warn("⚠️ Not enough items survived filtering, falling back to raw wardrobe snapshot");
-
-      // fallback → reload wardrobe without seasonal/dislike filters
-      wardrobeItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      if (wardrobeItems.length < 3) {
-        return res.status(400).json({ error: "Wardrobe really has less than 3 items." });
+    async function fn_getTrends({ query = vibe || "general", source = "pinterest", limit = 5 }) {
+      try {
+        // getTrendInsights is a tool you already imported. If it expects args adjust accordingly.
+        const trends = await getTrendInsights({ query, source, limit }).catch(e => null);
+        // normalize response
+        return { query, source, trends: trends || [] };
+      } catch (err) {
+        return { query, source, trends: [] };
       }
     }
 
-
-    // 🔹 Seasonal fabric filtering using taxonomy attributes
-    const season = "summer"; // later auto-detect via getWeather(city)
-    wardrobeItems = wardrobeItems.filter(it => {
-      if (!it.attributes?.Material) return true;
-      const materials = it.attributes.Material.map(m => m.toLowerCase());
-
-      if (season === "summer") {
-        return materials.some(m => ["cotton", "linen", "silk"].includes(m));
-      }
-      if (season === "winter") {
-        return materials.some(m => ["wool", "leather", "velvet"].includes(m));
-      }
-      return true;
-    });
-
-    console.log("👗 Final wardrobe count after filtering:", wardrobeItems.length);
-    wardrobeItems.forEach(it => console.log(" -", it.name, it.category, it.color));
-
-    // 3️⃣ Prepare compact wardrobe sample
-    const sample = wardrobeItems.slice(0, 50).map((it, idx) => ({
-      idx,
-      name: it.name || "Unnamed",
-      category: it.category || "",
-      color: it.color || "",
-      taxonomyPath: it.taxonomyPath || "",
-      attributes: it.attributes || {},
-      fabric: it.fabric || "",
-      silhouette: it.silhouette || "",
-      image_url: it.image_url || "",
-    }));
-
-
-    const wardrobeLines = sample.map(w => {
-      const attrs = Object.entries(w.attributes || {})
-        .map(([k, v]) => `${k}:${v}`)
-        .join(", ");
-      return `${w.idx}|${w.name}|${w.category}|${w.color}|${w.taxonomyPath}|${w.silhouette}|${w.fabric}|${attrs}`;
-    }).join("\n");
-
-    // 🧠 Validate wardrobe with fashionBrain
-    const fbCheck = validateLook(wardrobeItems, { weather: city });
-
-    // 4️⃣ Build strict JSON prompt
-    const finalPrompt = `
-    You are Tina, a top-tier personal stylist who balances color theory, silhouette harmony, and fashion trends.
-
-    TASK: You are Tina, a professional personal stylist.  
-Generate 2 polished outfits that follow **fashion styling logic**.  
-
-📌 Core styling rules (you must enforce, not the server):
-- Outfit must be **complete**:
-  * Either (Top + Bottom + Footwear + Optional Outerwear/Accessories)  
-  * Or (Dress/Jumpsuit + Footwear + Optional Outerwear/Accessories)  
-- Always ensure balance of **silhouette** (fitted + loose, anchor + support).  
-- Always ensure **color harmony** (complementary, analogous, or neutral balance).  
-- Fabrics must match the **season/weather**.  
-- Never leave an outfit missing a top or bottom.  
-- Never include duplicates (e.g., two bags, multiple footwear).  
-- Respect user dislikes and banned colors/items strictly.  
-- Make it wearable for the occasion + vibe.  
-
-📌 Output requirements:
-- Generate exactly 2 looks.  
-- Each look must have 3–5 items.  
-- Valid outfits only:
-  * Top + Bottom + Footwear (+ optional Outerwear/Accessories)  
-  * OR Dress/Jumpsuit + Footwear (+ optional Outerwear/Accessories)  
-- Never give 2 bags.  
-- Never give bottoms with a dress/jumpsuit.  
-- Always include footwear.  
-- Use only wardrobe items provided.  
-- If not enough wardrobe variety, explain in style_note but still output valid looks.  
-
-📌 Response format (strict JSON):
-{
-  "looks": [
-    {
-      "title": "Chic Brunch Look",
-      "style_note": "Why this works: silhouette balance, colors, weather fit, vibe.",
-      "items": [ { "idx": "0" }, { "idx": "1" }, { "idx": "2" } ]
-    },
-    {
-      "title": "Evening Party Look",
-      "style_note": "Why this works.",
-      "items": [ { "idx": "3" }, { "idx": "4" }, { "idx": "5" } ]
-    }
-  ]
-}
-
-
-    Wardrobe (each line = idx|name|category|color|taxonomyPath|silhouette|fabric|attributes):
-    ${wardrobeLines}
-    `.trim();
-
-
-
-    // 5️⃣ Call OpenAI
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: finalPrompt }],
-        response_format: { type: "json_object" }, // 🔑 ensures valid JSON
-      }),
-    });
-
-    const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content || "{}";
-    console.log("🟢 Raw LLM Output:", raw);
-
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-      console.log("🔎 Parsed JSON draft:", JSON.stringify(parsed, null, 2));
-    } catch (parseErr) {
-      console.error("❌ JSON parse failed:", parseErr.message, raw);
-
-      // 🚑 Fallback immediately if parse fails
-      return res.status(200).json({
-        looks: [
-          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
-          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
-        ],
-        note: "Fallback: Tina’s response invalid, so generated simple looks."
-      });
-    }
-
-
-      // 6️⃣ Hydrate indices with wardrobe items
-      const idx2item = Object.fromEntries(
-        wardrobeItems.map((it, i) => [
-          String(i),
-          {
-            id: it.id,
-            name: it.name || "Unnamed",
-            category: it.category || "",
-            color: it.color || "",
-            image_url: it.image_url || "",
-            tags: it.tags || [],
-            taxonomyPath: it.taxonomyPath || "",
-            attributes: it.attributes || {},
-            fabric: it.fabric || "",
-            silhouette: it.silhouette || "",
-            idx: String(i),
-          }
-        ])
-      );
-
-
-
-
-    if (parsed.looks && Array.isArray(parsed.looks) && parsed.looks.length > 0) {
-
-      parsed.looks = parsed.looks.map(look => {
-        let hydratedItems = (look.items || []).map(it => ({
-          ...idx2item[it.idx],
-          idx: it.idx,
+    async function fn_validateLook({ items = [], weather: w = city }) {
+      try {
+        // hydrate minimal structure for validate functions
+        const hydrated = items.map(it => ({
+          id: it.id,
+          name: it.name,
+          category: it.category,
+          color: it.color,
+          taxonomyPath: it.taxonomyPath,
+          attributes: it.attributes,
+          fabric: it.fabric,
+          silhouette: it.silhouette,
         }));
 
-        
+        const fashionBrainResult = validateLook(hydrated, { weather: w });
+        const styleRulesResult = validateLookAgainstRules({ items: hydrated }, { bannedItems: (prefs?.dislikes || []), weather: w });
+        return { fashionBrainResult, styleRulesResult };
+      } catch (err) {
+        return { error: err?.message || String(err) };
+      }
+    }
 
-        // ✅ Run validations
-        const validationFB = validateLook(hydratedItems, { weather: city });
-        const validationRules = validateLookAgainstRules(
-          { items: hydratedItems },
-          {
-            bannedItems: (prefs?.dislikes || []),
-            weather: city
-          }
-        );
-
-        return {
-          title: look.title,
-          style_note: look.style_note || "Suggested look",
-          items: hydratedItems,
-          validation: {
-            fashionBrain: validationFB,
-            styleRules: validationRules,
+    // function definitions passed to the model (JSON Schema)
+    const functions = [
+      {
+        name: "get_weather",
+        description: "Return weather string for a city (used to decide fabrics & layers).",
+        parameters: {
+          type: "object",
+          properties: {
+            city: { type: "string", description: "City name (e.g., Delhi)" }
           },
-        };
-      });
-
-
-      // 🔎 Keep only looks that passed strict styleRules
-      parsed.looks.forEach(l => {
-        if (!l.validation.styleRules.valid) {
-          console.log("🚫 Look failed rules:", l.title, l.validation.styleRules.errors);
+          required: []
         }
+      },
+      {
+        name: "get_wardrobe",
+        description: "Return user's wardrobe items. Use idx strings for items.",
+        parameters: {
+          type: "object",
+          properties: {
+            uid: { type: "string" },
+            max: { type: "number" },
+            include_raw: { type: "boolean", description: "If true, fetch full unfiltered wardrobe" }
+          },
+          required: []
+        }
+      },
+      {
+        name: "get_trends",
+        description: "Fetch trend inspiration or palette hints for a given query/vibe.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            source: { type: "string" },
+            limit: { type: "number" }
+          },
+          required: []
+        }
+      },
+      {
+        name: "validate_look",
+        description: "Validate a proposed look (array of items) against style rules and return the structured validation.",
+        parameters: {
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              items: { type: "object" }
+            },
+            weather: { type: "string" }
+          },
+          required: ["items"]
+        }
+      }
+    ];
+
+    // Build initial messages: system + user with context
+    const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
+    const systemMsg = {
+      role: "system",
+      content:
+        "You are Tina, an autonomous AI stylist. You can call tools to get wardrobe, weather, trends or validate your drafts. " +
+        "Your job: produce EXACTLY 2 polished looks (valid outfits) using only wardrobe items or explain if impossible. You may call functions to fetch wardrobe, weather, trends, and validate looks. Do stepwise reasoning by calling functions where needed. Final output must be STRICT JSON with `looks` array as documented."
+    };
+
+    const userMsg = {
+      role: "user",
+      content: JSON.stringify({
+        task: "Generate 2 polished outfits",
+        uid,
+        occasion,
+        vibe,
+        vibe_hints: moodHints,
+        weather_hint: city,
+        prefs,
+        instructions: [
+          "Outfit must be complete: Top+Bottom+Footwear OR Dress/Jumpsuit+Footwear (3-5 items)",
+          "Ensure silhouette balance, color harmony, and season-appropriate fabrics",
+          "Respect user dislikes and banned colors/items strictly",
+          "Do not invent items outside the wardrobe; use idx strings from get_wardrobe",
+          "If wardrobe lacks variety, explain in style_note but still output valid looks"
+        ],
+        response_format: {
+          type: "json",
+          schema: {
+            looks: [
+              {
+                title: "string",
+                style_note: "string",
+                items: [{ idx: "string" }]
+              }
+            ]
+          }
+        }
+      }, null, 2)
+    };
+
+    // Initialize message stream
+    const messages = [systemMsg, userMsg];
+
+    // Agent loop: model may ask to call a function; execute and feed result back. Limit iterations.
+    let finalAssistantContent = null;
+    const maxRounds = 4;
+    for (let round = 0; round < maxRounds; round++) {
+      console.log(`🧭 Agent loop round ${round + 1}`);
+
+      const openaiResp = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages,
+          functions,
+          function_call: "auto",
+          temperature: 0.25,
+          max_tokens: 1000,
+        }),
       });
 
-      parsed.looks = parsed.looks.filter(l => {
-        // ✅ Drop any look that includes banned colors/items
-        const hasBanned = (prefs?.dislikes || []).some(banned =>
-          l.items.some(it =>
-            (it.color || "").toLowerCase().includes(banned.toLowerCase()) ||
-            (it.name || "").toLowerCase().includes(banned.toLowerCase()) ||
-            (it.category || "").toLowerCase().includes(banned.toLowerCase())
-          )
-        );
-        if (hasBanned) return false;
-
-        // ✅ Keep valid looks
-        if (l.validation?.styleRules?.valid) return true;
-
-        // ✅ Allow looks with <=2 errors
-        return (l.validation?.styleRules?.errors || []).length <= 2;
-      });
-
-
-
-
-      // 🚑 Fallback if nothing survived
-      if (!parsed.looks.length) {
-        console.warn("⚠️ Fallback triggered: No valid looks survived Tina’s rules");
-
-        const fallbackItems = wardrobeItems.map((it, i) => ({
-
-          id: it.id,
-          name: it.name,
-          category: it.category,
-          color: it.color,
-          image_url: it.image_url,
-          tags: it.tags || [],
-          taxonomyPath: it.taxonomyPath || "",
-          attributes: it.attributes || {},
-          fabric: it.fabric || "",
-          silhouette: it.silhouette || "",
-          idx: String(i),
-        }));
-
-        parsed.looks = [
-          { title: "Fallback Look 1", items: fallbackItems.slice(0, 3) },
-          { title: "Fallback Look 2", items: fallbackItems.slice(3, 6) }
-        ];
-        parsed.note = "Fallback triggered: Tina’s suggestions failed validation rules.";
+      const data = await openaiResp.json();
+      const choice = data.choices?.[0];
+      if (!choice) {
+        console.warn("No choice from OpenAI");
+        break;
       }
 
+      const msg = choice.message;
+      // If model asked to call a function
+      if (msg?.function_call) {
+        const fnName = msg.function_call.name;
+        const fnArgsRaw = msg.function_call.arguments || "{}";
+        let fnArgs;
+        try {
+          fnArgs = JSON.parse(fnArgsRaw);
+        } catch (e) {
+          fnArgs = {};
+        }
 
+        console.log(`🛠 Model requested function: ${fnName}`, fnArgs);
 
+        // Execute server-side function
+        let fnResult;
+        try {
+          if (fnName === "get_weather") {
+            fnResult = await fn_getWeather(fnArgs);
+          } else if (fnName === "get_wardrobe") {
+            fnResult = await fn_getWardrobe(fnArgs);
+          } else if (fnName === "get_trends") {
+            fnResult = await fn_getTrends(fnArgs);
+          } else if (fnName === "validate_look") {
+            fnResult = await fn_validateLook(fnArgs);
+          } else {
+            fnResult = { error: `Unknown function: ${fnName}` };
+          }
+        } catch (err) {
+          fnResult = { error: err?.message || String(err) };
+        }
 
+        // Append model function call and function result as messages
+        messages.push({
+          role: "assistant",
+          content: null,
+          function_call: { name: fnName, arguments: JSON.stringify(fnArgs) },
+        });
 
+        messages.push({
+          role: "function",
+          name: fnName,
+          content: JSON.stringify(fnResult),
+        });
 
-    console.log("🎨 Hydrated looks:", JSON.stringify(parsed, null, 2));
-    res.json(parsed);
+        // Continue to next iteration so model can reason with function result
+        continue;
+      }
 
-    } else {
-      return res.status(200).json({
+      // If assistant returned content (not a function call) — treat as final candidate
+      if (msg?.content) {
+        finalAssistantContent = msg.content;
+        console.log("🟢 Assistant returned content. Ending loop.");
+        break;
+      }
+
+      // Otherwise break to avoid infinite loops
+      console.log("No function_call & no content - breaking agent loop");
+      break;
+    } // end for loop
+
+    // Try to parse the final assistant content as JSON (strict)
+    let parsed;
+    if (!finalAssistantContent) {
+      console.warn("⚠️ Agent returned nothing. Using fallback simple looks.");
+      // fallback simple looks using first items
+      const fallbackItems = buildSampleFromList(rawWardrobe, 10);
+      parsed = {
         looks: [
-          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
-          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
+          { title: "Fallback Look 1", style_note: "Auto fallback: insufficient agent output", items: fallbackItems.slice(0, 3).map(it => ({ idx: it.idx })) },
+          { title: "Fallback Look 2", style_note: "Auto fallback", items: fallbackItems.slice(3, 6).map(it => ({ idx: it.idx })) }
         ],
-        note: "No valid looks found",
-      });
+        note: "Agent did not produce final JSON, fallback applied."
+      };
+    } else {
+      try {
+        parsed = JSON.parse(finalAssistantContent);
+      } catch (err) {
+        // attempt to extract JSON object substring
+        const jsonMatch = finalAssistantContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch (e2) {
+            parsed = null;
+          }
+        } else {
+          parsed = null;
+        }
+      }
+
+      if (!parsed) {
+        console.warn("⚠️ Could not parse assistant JSON. Returning fallback.");
+        const fallbackItems = buildSampleFromList(rawWardrobe, 10);
+        parsed = {
+          looks: [
+            { title: "Fallback Look 1", style_note: "Fallback because parsing failed", items: fallbackItems.slice(0, 3).map(it => ({ idx: it.idx })) },
+            { title: "Fallback Look 2", style_note: "Fallback because parsing failed", items: fallbackItems.slice(3, 6).map(it => ({ idx: it.idx })) }
+          ],
+          note: "Fallback: Tina's response couldn't be parsed as JSON."
+        };
+      }
     }
 
-    
-      // First, ensure looks array exists
-      if (!parsed.looks || !Array.isArray(parsed.looks)) {
-        console.warn("⚠️ Tina returned no valid 'looks' array.");
-        // Provide a fallback if Tina's response format is unexpected
-        parsed.looks = [
-          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
-          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
-        ];
-        parsed.note = "Fallback: Tina returned an invalid format.";
-      } else {
-        parsed.looks = parsed.looks.map(look => {
-          // Hydrate items using the idx2item map
-          let hydratedItems = (look.items || []).map(it => {
-            // Match by idx if provided
-            if (it.idx && idx2item[it.idx]) {
-              return { ...idx2item[it.idx], idx: it.idx };
-            }
+    // Hydrate parsed.looks items into full item objects using the available wardrobe (prefer filtered rawWardrobe)
+    const idx2item = Object.fromEntries(
+      buildSampleFromList(rawWardrobe, 100).map((it) => [String(it.idx), it])
+    );
 
-            // Match by Firestore id if provided
-            if (it.id) {
-              const match = wardrobeItems.find(w => w.id === it.id);
-              if (match) return { ...match };
-            }
+    parsed.looks = (parsed.looks || []).map((look) => {
+      const hydrated = (look.items || []).map((it) => {
+        // prefer idx mapping
+        if (it.idx && idx2item[it.idx]) return { ...idx2item[it.idx] };
+        // allow id match
+        if (it.id) {
+          const match = rawWardrobe.find(r => r.id === it.id);
+          if (match) return { ...match };
+        }
+        return { id: it.id || it.idx || "unknown", name: it.name || "Unknown Item", category: it.category || "", color: it.color || "" };
+      });
 
-            // Fallback → unknown item
-            return { id: it.id || it.idx, name: "Unknown Item" };
-          });
-          /*
-          // 🧹 Cleanup rules before validation
-          // ❌ Remove duplicate bags
-          const bags = hydratedItems.filter(it => (it.category || "").toLowerCase().includes("bag"));
-          if (bags.length > 1) {
-            hydratedItems = hydratedItems.filter(it => !(it.category || "").toLowerCase().includes("bag"));
-            hydratedItems.push(bags[0]); // keep only one bag
-          }
+      // server-side validation of hydrated look
+      const validationFB = validateLook(hydrated, { weather: city });
+      const validationRules = validateLookAgainstRules({ items: hydrated }, { bannedItems: (prefs?.dislikes || []), weather: city });
 
-          // ❌ Remove bottoms if a dress/jumpsuit is present
-          const hasDress = hydratedItems.some(it => (it.category || "").toLowerCase().includes("dress") || (it.category || "").toLowerCase().includes("jumpsuit"));
-          if (hasDress) {
-            hydratedItems = hydratedItems.filter(it => {
-              const c = (it.category || "").toLowerCase();
-              return !(c.includes("pants") || c.includes("jeans") || c.includes("trousers") || c.includes("skirt") || c.includes("shorts"));
-            });
-          }
+      return {
+        title: look.title || "Untitled Look",
+        style_note: look.style_note || "",
+        items: hydrated,
+        validation: { fashionBrain: validationFB, styleRules: validationRules }
+      };
+    });
 
-          // ❌ Ensure footwear exists (fallback: add first available footwear)
-          const hasFootwear = hydratedItems.some(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
-          if (!hasFootwear) {
-            const footwear = wardrobeItems.find(it => (it.category || "").toLowerCase().includes("footwear") || (it.category || "").toLowerCase().includes("shoe"));
-            if (footwear) hydratedItems.push(footwear);
-          }
-          */
+    // Final filter: keep looks that are valid or have <=2 errors
+    parsed.looks = parsed.looks.filter(l => {
+      if (!l.validation?.styleRules) return true;
+      if (l.validation.styleRules.valid) return true;
+      return (l.validation.styleRules.errors || []).length <= 2;
+    });
 
-          // ✅ Run validations
-          const validationFB = validateLook(hydratedItems, { weather: city });
-          const validationRules = validateLookAgainstRules(
-            { items: hydratedItems },
-            {
-              bannedItems: (prefs?.dislikes || []),
-              weather: city
-            }
-          );
+    // If none survived, fallback to simple combinations
+    if (!parsed.looks || parsed.looks.length === 0) {
+      console.warn("⚠️ No valid looks after validation — building fallback looks");
+      const fallbackItems = buildSampleFromList(rawWardrobe, 10);
+      parsed.looks = [
+        { title: "Fallback Look 1", style_note: "Auto fallback", items: fallbackItems.slice(0, 3) },
+        { title: "Fallback Look 2", style_note: "Auto fallback", items: fallbackItems.slice(3, 6) }
+      ];
+      parsed.note = parsed.note ? parsed.note + " | All looks failed validation. Fallback used." : "All looks failed validation. Fallback used.";
+    }
 
-          return {
-            title: look.title,
-            style_note: look.style_note || "Suggested look",
-            items: hydratedItems,
-            validation: {
-              fashionBrain: validationFB,
-              styleRules: validationRules,
-            },
-          };
-        });
-
-        // 🔎 Keep only looks that passed strict styleRules
-        parsed.looks.forEach(l => {
-          if (!l.validation.styleRules.valid) {
-            console.log("🚫 Look failed rules:", l.title, l.validation.styleRules.errors);
-          }
-        });
-
-        parsed.looks = parsed.looks.filter(l => {
-          // Allow looks with <=2 errors from styleRules for more flexibility
-          return (l.validation?.styleRules?.errors || []).length <= 2;
-        });
-      }
-
-      // 🚑 Fallback if no looks survived validation or Tina's response was empty/invalid
-      if (!parsed.looks || parsed.looks.length === 0) {
-        console.warn("⚠️ Fallback triggered: No valid looks survived Tina’s rules or response was empty.");
-
-        const fallbackItems = wardrobeItems.map((it, i) => ({
-          id: it.id,
-          name: it.name,
-          category: it.category,
-          color: it.color,
-          image_url: it.image_url,
-          tags: it.tags || [],
-          taxonomyPath: it.taxonomyPath || "",
-          attributes: it.attributes || {},
-          fabric: it.fabric || "",
-          silhouette: it.silhouette || "",
-          idx: String(i), // Ensure idx is a string for consistency
-        }));
-
-        // Create two fallback looks using the first few items
-        parsed.looks = [
-          { title: "Fallback Look 1", items: fallbackItems.slice(0, 3) },
-          { title: "Fallback Look 2", items: fallbackItems.slice(3, 6) }
-        ];
-        parsed.note = "Fallback triggered: Tina’s suggestions failed validation rules or response was invalid.";
-      }
-
-    console.log("🎨 Hydrated looks:", JSON.stringify(parsed, null, 2));
-    res.json(parsed);
+    console.log("🎨 Final parsed looks:", JSON.stringify(parsed, null, 2));
+    return res.json(parsed);
 
   } catch (err) {
-    // Catch-all for any unexpected errors during processing
-    console.error("❌ Unexpected error in /suggest-outfit:", err.message);
-    res.status(500).json({
-      error: "An unexpected error occurred while suggesting outfits.",
-      message: err.message,
-      // Optionally include fallback looks here as well for robustness
-      fallback: {
-        looks: [
-          { title: "Fallback Look 1", items: wardrobeItems.slice(0, 3) },
-          { title: "Fallback Look 2", items: wardrobeItems.slice(3, 6) }
-        ],
-        note: "Fallback due to an unexpected server error."
-      }
-    });
+    console.error("❌ /suggest-outfit (agent) error:", err);
+    return res.status(500).json({ error: "Tina agent failed", message: err?.message || String(err) });
   }
 });
+// ───────────────────────────────────────────────────────────────────────────
 
 // ✅ Toggle wardrobe favorite
 app.post("/toggle-favorite", async (req, res) => {
@@ -1858,11 +1560,7 @@ Preferences: ${JSON.stringify(preferences)}
 
 
 
-// ✅ Error handling middleware
-app.use((err, req, res, next) => {
-  console.error("🔥 Unhandled Middleware Error:", err.message);
-  res.status(500).json({ error: "Internal server error", message: err.message });
-});
+
 
 // ✅ Global error handlers
 process.on("uncaughtException", (err) => {
