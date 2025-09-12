@@ -1059,28 +1059,29 @@ app.post("/suggest-outfit", async (req, res) => {
     // Small helper to map wardrobe to compact sample (idx strings)
       function buildSampleFromList(list = [], max = 50) {
         return list.slice(0, max).map((it, idx) => {
+          // fallback silhouette
           const silhouetteGuess =
-            it.silhouette || guessSilhouette((it.name || "") + " " + (it.category || ""));
-          const paletteGuess = it.palette || pickPalette(it.color || "");
+            it.silhouette ||
+            guessSilhouette((it.name || "") + " " + (it.category || ""));
+          // fallback palette
+          const paletteGuess = it.palette || pickPalette(it.color || "") || "Neutral";
 
-          const sample = {
+          return {
             idx: String(idx),
             id: it.id,
-            name: it.name || "Unnamed",
+            name: it.name || `Item ${idx}`,
             category: it.category || "Misc",
             color: it.color || "Unknown",
             taxonomyPath: it.taxonomyPath || "",
             attributes: it.attributes || {},
             fabric: it.fabric || "Unknown",
-            silhouette: silhouetteGuess,
+            silhouette: silhouetteGuess || "misc",
             palette: paletteGuess,
             image_url: it.image_url || "",
           };
-
-          console.log("🧵 Hydrated wardrobe item:", sample);
-          return sample;
         });
       }
+
 
 
 
@@ -1430,12 +1431,13 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
 
-    // Final filter: keep looks that are valid or have <=2 errors
-    parsed.looks = parsed.looks.filter(l => {
-      if (!l.validation?.styleRules) return true;
-      if (l.validation.styleRules.valid) return true;
-      return (l.validation.styleRules.errors || []).length <= 2;
-    });
+      // Final filter: keep looks, even if invalid — just warn
+      parsed.looks = parsed.looks.map(l => {
+        if (!l.validation?.styleRules?.valid) {
+          l.style_note += " | ⚠️ This look may not follow all rules.";
+        }
+        return l;
+      });
 
     // If none survived, fallback to simple combinations
     if (!parsed.looks || parsed.looks.length === 0) {
