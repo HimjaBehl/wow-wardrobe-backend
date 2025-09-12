@@ -1078,6 +1078,8 @@ app.post("/suggest-outfit", async (req, res) => {
         };
       });
 
+      console.log("🪞 Normalized wardrobe sample (first 5):", rawWardrobe.slice(0, 5));
+
 
     // Prefilter based on dislikes (so Tina never sees banned items unless she explicitly asked for full)
     if (prefs?.dislikes?.length) {
@@ -1093,32 +1095,8 @@ app.post("/suggest-outfit", async (req, res) => {
     // Small helper to map wardrobe to compact sample (idx strings)
       function buildSampleFromList(list = [], max = 50) {
         return list.slice(0, max).map((it, idx) => {
-          const rawName = it.name || "";
-          const rawCategory = it.category || "";
-
-          // 🔑 Normalize category into stylist-friendly buckets
-          let cleanCategory = rawCategory.replace(/^Clothing\//i, ""); // e.g. Clothing/Upper → Upper
-          const lcCat = cleanCategory.toLowerCase();
-
-          if (lcCat.includes("upper") || lcCat.includes("top") || lcCat.includes("shirt") || lcCat.includes("blouse")) {
-            cleanCategory = "Top";
-          } else if (lcCat.includes("lower") || lcCat.includes("pants") || lcCat.includes("trouser") || lcCat.includes("skirt") || lcCat.includes("jeans")) {
-            cleanCategory = "Bottom";
-          } else if (lcCat.includes("dress") || lcCat.includes("jumpsuit") || lcCat.includes("overall")) {
-            cleanCategory = "Dress";
-          } else if (lcCat.includes("shoe") || lcCat.includes("boot") || lcCat.includes("sandal") || lcCat.includes("heel")) {
-            cleanCategory = "Footwear";
-          } else if (lcCat === "search" || lcCat.includes("bag") || lcCat.includes("accessor")) {
-            cleanCategory = "Accessory";
-          } else {
-            cleanCategory = "Misc";
-          }
-
-          // Normalize name → avoid “Clothing/Upper” type junk
-          let cleanName = rawName;
-          if (/clothing\/upper/i.test(cleanName)) cleanName = "Top";
-          if (/clothing\/lower/i.test(cleanName)) cleanName = "Bottom";
-          if (/clothing\/dresses?/i.test(cleanName)) cleanName = "Dress";
+          const cleanName = it.name || "Unnamed";
+          const cleanCategory = it.category || "Misc"; // trust normalization done earlier
 
           const silhouetteGuess = it.silhouette || guessSilhouette(cleanName + " " + cleanCategory);
           const paletteGuess = it.palette || pickPalette(it.color || "");
@@ -1126,7 +1104,7 @@ app.post("/suggest-outfit", async (req, res) => {
           const sample = {
             idx: String(idx),
             id: it.id,
-            name: cleanName || "Unnamed",
+            name: cleanName,
             category: cleanCategory,
             color: it.color || "Unknown",
             taxonomyPath: it.taxonomyPath || "",
@@ -1141,6 +1119,7 @@ app.post("/suggest-outfit", async (req, res) => {
           return sample;
         });
       }
+
 
 
 
@@ -1502,7 +1481,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
       // Always allow looks to pass even if missing perfect balance
       parsed.looks = (parsed.looks || []).map(look => {
-        if (!look.items || look.items.length < 2) {
+        if (!look.items || look.items.length < 1) {
           // auto-fill with first wardrobe items if too small
           look.items = buildSampleFromList(rawWardrobe, 3);
           look.style_note += " | ⚠️ Auto-filled due to missing items.";
