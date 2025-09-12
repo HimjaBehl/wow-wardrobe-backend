@@ -1043,7 +1043,41 @@ app.post("/suggest-outfit", async (req, res) => {
       }
 
 
-    let rawWardrobe = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      let rawWardrobe = snap.docs.map(d => {
+        const data = d.data();
+
+        // Normalize category
+        let cleanCategory = (data.category || "").replace(/^Clothing\//i, "");
+        const lcCat = cleanCategory.toLowerCase();
+
+        if (lcCat.includes("upper") || lcCat.includes("top") || lcCat.includes("shirt") || lcCat.includes("blouse")) {
+          cleanCategory = "Top";
+        } else if (lcCat.includes("lower") || lcCat.includes("pants") || lcCat.includes("trouser") || lcCat.includes("skirt") || lcCat.includes("jeans")) {
+          cleanCategory = "Bottom";
+        } else if (lcCat.includes("dress") || lcCat.includes("jumpsuit") || lcCat.includes("overall")) {
+          cleanCategory = "Dress";
+        } else if (lcCat.includes("shoe") || lcCat.includes("boot") || lcCat.includes("sandal") || lcCat.includes("heel")) {
+          cleanCategory = "Footwear";
+        } else if (lcCat === "search" || lcCat.includes("bag") || lcCat.includes("accessor")) {
+          cleanCategory = "Accessory";
+        } else {
+          cleanCategory = "Misc";
+        }
+
+        // Normalize name (avoid Clothing/Upper junk)
+        let cleanName = data.name || "";
+        if (/clothing\/upper/i.test(cleanName)) cleanName = "Top";
+        if (/clothing\/lower/i.test(cleanName)) cleanName = "Bottom";
+        if (/clothing\/dresses?/i.test(cleanName)) cleanName = "Dress";
+
+        return {
+          id: d.id,
+          ...data,
+          name: cleanName,
+          category: cleanCategory,
+        };
+      });
+
 
     // Prefilter based on dislikes (so Tina never sees banned items unless she explicitly asked for full)
     if (prefs?.dislikes?.length) {
