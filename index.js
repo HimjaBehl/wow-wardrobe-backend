@@ -1059,28 +1059,41 @@ app.post("/suggest-outfit", async (req, res) => {
     // Small helper to map wardrobe to compact sample (idx strings)
       function buildSampleFromList(list = [], max = 50) {
         return list.slice(0, max).map((it, idx) => {
-          // Normalize name/category
           const rawName = it.name || "";
           const rawCategory = it.category || "";
 
+          // 🔑 Normalize category into stylist-friendly buckets
           let cleanCategory = rawCategory.replace(/^Clothing\//i, ""); // e.g. Clothing/Upper → Upper
-          if (cleanCategory.toLowerCase() === "search") cleanCategory = "Accessory";
+          const lcCat = cleanCategory.toLowerCase();
 
+          if (lcCat.includes("upper") || lcCat.includes("top") || lcCat.includes("shirt") || lcCat.includes("blouse")) {
+            cleanCategory = "Top";
+          } else if (lcCat.includes("lower") || lcCat.includes("pants") || lcCat.includes("trouser") || lcCat.includes("skirt") || lcCat.includes("jeans")) {
+            cleanCategory = "Bottom";
+          } else if (lcCat.includes("dress") || lcCat.includes("jumpsuit") || lcCat.includes("overall")) {
+            cleanCategory = "Dress";
+          } else if (lcCat.includes("shoe") || lcCat.includes("boot") || lcCat.includes("sandal") || lcCat.includes("heel")) {
+            cleanCategory = "Footwear";
+          } else if (lcCat === "search" || lcCat.includes("bag") || lcCat.includes("accessor")) {
+            cleanCategory = "Accessory";
+          } else {
+            cleanCategory = "Misc";
+          }
+
+          // Normalize name → avoid “Clothing/Upper” type junk
           let cleanName = rawName;
-          if (cleanName.toLowerCase().includes("clothing/upper")) cleanName = "Top";
-          if (cleanName.toLowerCase().includes("clothing/lower")) cleanName = "Bottom";
-          if (cleanName.toLowerCase().includes("clothing/dresses")) cleanName = "Dress";
+          if (/clothing\/upper/i.test(cleanName)) cleanName = "Top";
+          if (/clothing\/lower/i.test(cleanName)) cleanName = "Bottom";
+          if (/clothing\/dresses?/i.test(cleanName)) cleanName = "Dress";
 
-          const silhouetteGuess =
-            it.silhouette || guessSilhouette(cleanName + " " + cleanCategory);
-
+          const silhouetteGuess = it.silhouette || guessSilhouette(cleanName + " " + cleanCategory);
           const paletteGuess = it.palette || pickPalette(it.color || "");
 
           const sample = {
             idx: String(idx),
             id: it.id,
             name: cleanName || "Unnamed",
-            category: cleanCategory || "Misc",
+            category: cleanCategory,
             color: it.color || "Unknown",
             taxonomyPath: it.taxonomyPath || "",
             attributes: it.attributes || {},
@@ -1094,6 +1107,7 @@ app.post("/suggest-outfit", async (req, res) => {
           return sample;
         });
       }
+
 
 
 
