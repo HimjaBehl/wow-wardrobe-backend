@@ -64,7 +64,7 @@ import { styleMoodMap } from "./styleMoodMap.js";
 console.log("💡 Available moods:", Object.keys(styleMoodMap));
 
 
-import cors from "cors";
+
 import axios from "axios";
 import path from "path";
 import multer from "multer";
@@ -276,6 +276,9 @@ console.log("🧠 OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
 function safeLower(txt) {
   return typeof txt === "string" ? txt.toLowerCase() : "";
 }
+
+import cors from "cors";
+app.use(cors({ origin: "*" }));  // temporarily allow all origins
 
 function isColorGoodForSkinTone(color = "", skinTone = "") {
   const warmTones = ["olive", "mustard", "rust", "coral", "maroon", "gold", "peach", "warm beige"];
