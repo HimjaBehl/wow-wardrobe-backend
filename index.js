@@ -1300,8 +1300,21 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
 
-      // Initialize message stream
-      const messages = [systemMsg, userMsg];
+      // 🔥 Force wardrobe fetch before agent loop
+      
+
+      const messages = [
+        systemMsg,
+        {
+          role: "function",
+          name: "get_wardrobe",
+          content: JSON.stringify({ items: wardrobeSample, count: wardrobeSample.length })
+        },
+        userMsg
+      ];
+
+      console.log("👜 Forced wardrobe injected into messages:", wardrobeSample.length, "items");
+
 
       // 🔍 DEBUG: log what Tina is given as input
       console.log("🪞 Tina agent INPUT snapshot >>>");
