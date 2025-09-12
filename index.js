@@ -1261,6 +1261,7 @@ app.post("/suggest-outfit", async (req, res) => {
       };
 
 
+
       const wardrobeSample = buildSampleFromList(rawWardrobe, 20);
 
       const userMsg = {
@@ -1275,9 +1276,12 @@ app.post("/suggest-outfit", async (req, res) => {
           prefs,
           wardrobe_preview: wardrobeSample,   // 🔥 force-feed snapshot
           instructions: [
-            "You MUST ONLY use wardrobe items provided by the get_wardrobe tool.",
+            "You MUST ONLY use wardrobe items provided by the get_wardrobe tool OR from wardrobe_preview.",
             "Every outfit item MUST be referenced by its `idx` string.",
-            "Do NOT output item names, categories, or ids directly — only use idx."
+            "Do NOT output item names, categories, or ids directly — only use idx.",
+            "Valid outfit structure: (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
+            "Each outfit must have 3–5 items, complete, no missing pieces.",
+            "If the wardrobe is too small, still output JSON with looks but explain in style_note."
           ],
           response_format: {
             type: "json",
@@ -1293,6 +1297,7 @@ app.post("/suggest-outfit", async (req, res) => {
           }
         }, null, 2)
       };
+
 
 
       // Initialize message stream
