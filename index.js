@@ -1059,12 +1059,11 @@ app.post("/suggest-outfit", async (req, res) => {
     // Small helper to map wardrobe to compact sample (idx strings)
       function buildSampleFromList(list = [], max = 50) {
         return list.slice(0, max).map((it, idx) => {
-          // Auto-fill silhouette and palette if missing
           const silhouetteGuess =
             it.silhouette || guessSilhouette((it.name || "") + " " + (it.category || ""));
           const paletteGuess = it.palette || pickPalette(it.color || "");
 
-          return {
+          const sample = {
             idx: String(idx),
             id: it.id,
             name: it.name || "Unnamed",
@@ -1077,8 +1076,12 @@ app.post("/suggest-outfit", async (req, res) => {
             palette: paletteGuess,
             image_url: it.image_url || "",
           };
+
+          console.log("🧵 Hydrated wardrobe item:", sample);
+          return sample;
         });
       }
+
 
 
     // Server-side tool implementations
