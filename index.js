@@ -1057,20 +1057,29 @@ app.post("/suggest-outfit", async (req, res) => {
     }
 
     // Small helper to map wardrobe to compact sample (idx strings)
-    function buildSampleFromList(list = [], max = 50) {
-      return list.slice(0, max).map((it, idx) => ({
-        idx: String(idx),
-        id: it.id,
-        name: it.name || "Unnamed",
-        category: it.category || "",
-        color: it.color || "",
-        taxonomyPath: it.taxonomyPath || "",
-        attributes: it.attributes || {},
-        fabric: it.fabric || "",
-        silhouette: it.silhouette || "",
-        image_url: it.image_url || "",
-      }));
-    }
+      function buildSampleFromList(list = [], max = 50) {
+        return list.slice(0, max).map((it, idx) => {
+          // Auto-fill silhouette and palette if missing
+          const silhouetteGuess =
+            it.silhouette || guessSilhouette((it.name || "") + " " + (it.category || ""));
+          const paletteGuess = it.palette || pickPalette(it.color || "");
+
+          return {
+            idx: String(idx),
+            id: it.id,
+            name: it.name || "Unnamed",
+            category: it.category || "Misc",
+            color: it.color || "Unknown",
+            taxonomyPath: it.taxonomyPath || "",
+            attributes: it.attributes || {},
+            fabric: it.fabric || "Unknown",
+            silhouette: silhouetteGuess,
+            palette: paletteGuess,
+            image_url: it.image_url || "",
+          };
+        });
+      }
+
 
     // Server-side tool implementations
     async function fn_getWeather({ city: ct }) {
