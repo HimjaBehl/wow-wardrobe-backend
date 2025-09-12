@@ -1373,29 +1373,36 @@ app.post("/suggest-outfit", async (req, res) => {
       buildSampleFromList(rawWardrobe, 100).map((it) => [String(it.idx), it])
     );
 
-    parsed.looks = (parsed.looks || []).map((look) => {
-      const hydrated = (look.items || []).map((it) => {
-        // prefer idx mapping
-        if (it.idx && idx2item[it.idx]) return { ...idx2item[it.idx] };
-        // allow id match
-        if (it.id) {
-          const match = rawWardrobe.find(r => r.id === it.id);
-          if (match) return { ...match };
-        }
-        return { id: it.id || it.idx || "unknown", name: it.name || "Unknown Item", category: it.category || "", color: it.color || "" };
+      parsed.looks = (parsed.looks || []).map((look, i) => {
+        const hydrated = (look.items || []).map((it) => {
+          if (it.idx && idx2item[it.idx]) return { ...idx2item[it.idx] };
+          if (it.id) {
+            const match = rawWardrobe.find(r => r.id === it.id);
+            if (match) return { ...match };
+          }
+          return { id: it.id || it.idx || "unknown", name: it.name || "Unknown Item", category: it.category || "", color: it.color || "" };
+        });
+
+        // 🔍 Debug logs
+        console.log(`🔍 Hydrated look #${i + 1}:`, hydrated);
+
+        const validationFB = validateLook(hydrated, { weather: city });
+        const validationRules = validateLookAgainstRules(
+          { items: hydrated },
+          { bannedItems: (prefs?.dislikes || []), weather: city }
+        );
+
+        // 🧪 Debug logs
+        console.log(`🧪 Validation for look #${i + 1}:`, { validationFB, validationRules });
+
+        return {
+          title: look.title || `Untitled Look ${i + 1}`,
+          style_note: look.style_note || "",
+          items: hydrated,
+          validation: { fashionBrain: validationFB, styleRules: validationRules }
+        };
       });
 
-      // server-side validation of hydrated look
-      const validationFB = validateLook(hydrated, { weather: city });
-      const validationRules = validateLookAgainstRules({ items: hydrated }, { bannedItems: (prefs?.dislikes || []), weather: city });
-
-      return {
-        title: look.title || "Untitled Look",
-        style_note: look.style_note || "",
-        items: hydrated,
-        validation: { fashionBrain: validationFB, styleRules: validationRules }
-      };
-    });
 
     // Final filter: keep looks that are valid or have <=2 errors
     parsed.looks = parsed.looks.filter(l => {
