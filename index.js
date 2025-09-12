@@ -1211,12 +1211,13 @@ app.post("/suggest-outfit", async (req, res) => {
         weather_hint: city,
         prefs,
         instructions: [
-          "Outfit must be complete: Top+Bottom+Footwear OR Dress/Jumpsuit+Footwear (3-5 items)",
-          "Ensure silhouette balance, color harmony, and season-appropriate fabrics",
-          "Respect user dislikes and banned colors/items strictly",
-          "Do not invent items outside the wardrobe; use idx strings from get_wardrobe",
-          "If wardrobe lacks variety, explain in style_note but still output valid looks"
+          "Every outfit MUST ONLY use wardrobe items returned by get_wardrobe.",
+          "Each item MUST be referenced with its `idx` field (string). Example: { idx: \"0\" }",
+          "Do NOT output item names, ids, or categories directly. Only use idx.",
+          "Outfit must be complete: Top+Bottom+Footwear OR Dress/Jumpsuit+Footwear (3-5 items).",
+          "If not enough items, explain in style_note but still output valid JSON with idx values."
         ],
+
         response_format: {
           type: "json",
           schema: {
