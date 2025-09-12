@@ -10,8 +10,35 @@ dotenv.config();
 
 
 
+
 import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
+import cors from "cors";
+
+const app = express();
+
+// ✅ JSON body parser
+app.use(express.json({ limit: "2mb" }));
+
+// ✅ CORS setup
+const allowedOrigins = [
+  "https://himja.app.n8n.cloud",          // n8n cloud
+  "https://wow-wardrobe-ui-himjabehl.replit.app", // your frontend UI
+  "http://localhost:3000"                 // local dev
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS not allowed from this origin: " + origin));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 import getTrendInsights from "./tools/getTrendInsights.js";
 
 
@@ -260,15 +287,8 @@ async function getWeather(city = "Delhi") {
 // ────────────────────────────────────────────────────────────────
 
 const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
-const app = express(); // 👈 this was missing
-// manual CORS headers (no extra packages)
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*"); // allow any origin
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
-  next();
-});
+
+
 
 console.log("🔑 XIMILAR_API_KEY loaded:", !!process.env.XIMILAR_API_KEY);
 console.log("🧠 OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
@@ -277,16 +297,11 @@ function safeLower(txt) {
   return typeof txt === "string" ? txt.toLowerCase() : "";
 }
 
-import cors from "cors";
 
-app.use(cors({
-  origin: [
-    "https://himja.app.n8n.cloud",   // allow your n8n
-    "https://wow-wardrobe-ui-himjabehl.replit.app" // allow your frontend
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+
+
+
+
 
 
 function isColorGoodForSkinTone(color = "", skinTone = "") {
@@ -313,8 +328,7 @@ function isColorGoodForSkinTone(color = "", skinTone = "") {
 
 
 
-app.use(cors());
-app.use(express.json({ limit: "2mb" })); // keep your existing call, or replace with this
+
 
 app.get("/health", (req, res) => {
   res.status(200).json({
