@@ -1193,12 +1193,16 @@ app.post("/suggest-outfit", async (req, res) => {
 
     // Build initial messages: system + user with context
     const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
-    const systemMsg = {
-      role: "system",
-      content:
-        "You are Tina, an autonomous AI stylist. You can call tools to get wardrobe, weather, trends or validate your drafts. " +
-        "Your job: produce EXACTLY 2 polished looks (valid outfits) using only wardrobe items or explain if impossible. You may call functions to fetch wardrobe, weather, trends, and validate looks. Do stepwise reasoning by calling functions where needed. Final output must be STRICT JSON with `looks` array as documented."
-    };
+      const systemMsg = {
+        role: "system",
+        content:
+          "You are Tina, an autonomous AI stylist. You can call tools to get wardrobe, weather, trends or validate your drafts. " +
+          "Your ONLY valid way to reference clothing is via the wardrobe idx values returned by get_wardrobe. " +
+          "STRICT RULE: Every outfit must use idx values only (example: {\"idx\":\"0\"}). " +
+          "If you cannot find enough items, still output idx for whatever exists and explain the limitation in style_note. " +
+          "Never return empty items arrays."
+      };
+
 
     const userMsg = {
       role: "user",
@@ -1211,11 +1215,12 @@ app.post("/suggest-outfit", async (req, res) => {
         weather_hint: city,
         prefs,
         instructions: [
-          "Every outfit MUST ONLY use wardrobe items returned by get_wardrobe.",
-          "Each item MUST be referenced with its `idx` field (string). Example: { idx: \"0\" }",
-          "Do NOT output item names, ids, or categories directly. Only use idx.",
-          "Outfit must be complete: Top+Bottom+Footwear OR Dress/Jumpsuit+Footwear (3-5 items).",
-          "If not enough items, explain in style_note but still output valid JSON with idx values."
+          "You MUST ONLY use wardrobe items provided by the get_wardrobe tool.",
+          "Every outfit item MUST be referenced by its `idx` string. Example: { \"idx\": \"0\" }",
+          "Do NOT output item names, categories, or ids directly — only use idx.",
+          "Valid outfit structure: (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
+          "Each outfit must have 3–5 items, complete, no missing pieces.",
+          "If the wardrobe is too small, still output JSON with looks but explain in style_note."
         ],
 
         response_format: {
@@ -1326,6 +1331,8 @@ app.post("/suggest-outfit", async (req, res) => {
       break;
     } // end for loop
 
+      console.log("📝 Tina raw assistant content:", finalAssistantContent);
+
     // Try to parse the final assistant content as JSON (strict)
     let parsed;
     if (!finalAssistantContent) {
@@ -1375,13 +1382,31 @@ app.post("/suggest-outfit", async (req, res) => {
     );
 
       parsed.looks = (parsed.looks || []).map((look, i) => {
+        // 🛑 Fallback: if Tina gave no items, inject random sample
+        if (!look.items || look.items.length === 0) {
+          console.warn(`⚠️ Look ${i+1} had no items, applying fallback.`);
+          const fallbackItems = buildSampleFromList(rawWardrobe, 3);
+          look.items = fallbackItems.map(it => ({ idx: it.idx }));
+          look.style_note = (look.style_note || "") + " | Fallback items auto-inserted.";
+        }
+
         const hydrated = (look.items || []).map((it) => {
           if (it.idx && idx2item[it.idx]) return { ...idx2item[it.idx] };
+
+          // 🔄 fallback: try to match by name if Tina mistakenly outputs names
+          if (it.name) {
+            const match = rawWardrobe.find(r =>
+              (r.name || "").toLowerCase() === it.name.toLowerCase()
+            );
+            if (match) return { ...match };
+          }
+
           if (it.id) {
             const match = rawWardrobe.find(r => r.id === it.id);
             if (match) return { ...match };
           }
-          return { id: it.id || it.idx || "unknown", name: it.name || "Unknown Item", category: it.category || "", color: it.color || "" };
+
+          return { id: it.id || it.idx || "unknown", name: it.name || "Unknown Item" };
         });
 
         // 🔍 Debug logs
@@ -1393,7 +1418,6 @@ app.post("/suggest-outfit", async (req, res) => {
           { bannedItems: (prefs?.dislikes || []), weather: city }
         );
 
-        // 🧪 Debug logs
         console.log(`🧪 Validation for look #${i + 1}:`, { validationFB, validationRules });
 
         return {
@@ -1403,6 +1427,7 @@ app.post("/suggest-outfit", async (req, res) => {
           validation: { fashionBrain: validationFB, styleRules: validationRules }
         };
       });
+
 
 
     // Final filter: keep looks that are valid or have <=2 errors
