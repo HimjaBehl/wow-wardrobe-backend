@@ -1026,13 +1026,16 @@ app.post("/suggest-outfit", async (req, res) => {
       // 🔥 fetch wardrobe snapshot FIRST
       const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
 
+
       console.log("👕 Fetch wardrobe for UID:", uid);
-      console.log("📦 Wardrobe size (snapshot):", snap.size);
+      console.log("📦 Snapshot empty?", snap.empty, "size:", snap.size);
 
       snap.forEach((doc) => {
-        console.log("➡️ Wardrobe item:", doc.id, doc.data().name, "uid=", doc.data().uid);
+        const d = doc.data();
+        console.log("➡️ Wardrobe doc:", doc.id, "| uid:", d.uid, "| name:", d.name, "| category:", d.category);
       });
-
+      
+    
       if (snap.empty) {
         console.warn("⚠️ Wardrobe empty, returning test items");
         return res.json({
