@@ -1261,39 +1261,39 @@ app.post("/suggest-outfit", async (req, res) => {
       };
 
 
-    const userMsg = {
-      role: "user",
-      content: JSON.stringify({
-        task: "Generate 2 polished outfits",
-        uid,
-        occasion,
-        vibe,
-        vibe_hints: moodHints,
-        weather_hint: city,
-        prefs,
-        instructions: [
-          "You MUST ONLY use wardrobe items provided by the get_wardrobe tool.",
-          "Every outfit item MUST be referenced by its `idx` string. Example: { \"idx\": \"0\" }",
-          "Do NOT output item names, categories, or ids directly — only use idx.",
-          "Valid outfit structure: (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
-          "Each outfit must have 3–5 items, complete, no missing pieces.",
-          "If the wardrobe is too small, still output JSON with looks but explain in style_note."
-        ],
+      const wardrobeSample = buildSampleFromList(rawWardrobe, 20);
 
-        response_format: {
-          type: "json",
-          schema: {
-            looks: [
-              {
-                title: "string",
-                style_note: "string",
-                items: [{ idx: "string" }]
-              }
-            ]
+      const userMsg = {
+        role: "user",
+        content: JSON.stringify({
+          task: "Generate 2 polished outfits",
+          uid,
+          occasion,
+          vibe,
+          vibe_hints: moodHints,
+          weather_hint: city,
+          prefs,
+          wardrobe_preview: wardrobeSample,   // 🔥 force-feed snapshot
+          instructions: [
+            "You MUST ONLY use wardrobe items provided by the get_wardrobe tool.",
+            "Every outfit item MUST be referenced by its `idx` string.",
+            "Do NOT output item names, categories, or ids directly — only use idx."
+          ],
+          response_format: {
+            type: "json",
+            schema: {
+              looks: [
+                {
+                  title: "string",
+                  style_note: "string",
+                  items: [{ idx: "string" }]
+                }
+              ]
+            }
           }
-        }
-      }, null, 2)
-    };
+        }, null, 2)
+      };
+
 
       // Initialize message stream
       const messages = [systemMsg, userMsg];
