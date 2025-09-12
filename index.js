@@ -1059,26 +1059,39 @@ app.post("/suggest-outfit", async (req, res) => {
     // Small helper to map wardrobe to compact sample (idx strings)
       function buildSampleFromList(list = [], max = 50) {
         return list.slice(0, max).map((it, idx) => {
-          // fallback silhouette
-          const silhouetteGuess =
-            it.silhouette ||
-            guessSilhouette((it.name || "") + " " + (it.category || ""));
-          // fallback palette
-          const paletteGuess = it.palette || pickPalette(it.color || "") || "Neutral";
+          // Normalize name/category
+          const rawName = it.name || "";
+          const rawCategory = it.category || "";
 
-          return {
+          let cleanCategory = rawCategory.replace(/^Clothing\//i, ""); // e.g. Clothing/Upper → Upper
+          if (cleanCategory.toLowerCase() === "search") cleanCategory = "Accessory";
+
+          let cleanName = rawName;
+          if (cleanName.toLowerCase().includes("clothing/upper")) cleanName = "Top";
+          if (cleanName.toLowerCase().includes("clothing/lower")) cleanName = "Bottom";
+          if (cleanName.toLowerCase().includes("clothing/dresses")) cleanName = "Dress";
+
+          const silhouetteGuess =
+            it.silhouette || guessSilhouette(cleanName + " " + cleanCategory);
+
+          const paletteGuess = it.palette || pickPalette(it.color || "");
+
+          const sample = {
             idx: String(idx),
             id: it.id,
-            name: it.name || `Item ${idx}`,
-            category: it.category || "Misc",
+            name: cleanName || "Unnamed",
+            category: cleanCategory || "Misc",
             color: it.color || "Unknown",
             taxonomyPath: it.taxonomyPath || "",
             attributes: it.attributes || {},
             fabric: it.fabric || "Unknown",
-            silhouette: silhouetteGuess || "misc",
+            silhouette: silhouetteGuess,
             palette: paletteGuess,
             image_url: it.image_url || "",
           };
+
+          console.log("🧵 Hydrated wardrobe item:", sample);
+          return sample;
         });
       }
 
@@ -1437,6 +1450,16 @@ app.post("/suggest-outfit", async (req, res) => {
           l.style_note += " | ⚠️ This look may not follow all rules.";
         }
         return l;
+      });
+
+      // Always allow looks to pass even if missing perfect balance
+      parsed.looks = (parsed.looks || []).map(look => {
+        if (!look.items || look.items.length < 2) {
+          // auto-fill with first wardrobe items if too small
+          look.items = buildSampleFromList(rawWardrobe, 3);
+          look.style_note += " | ⚠️ Auto-filled due to missing items.";
+        }
+        return look;
       });
 
     // If none survived, fallback to simple combinations
