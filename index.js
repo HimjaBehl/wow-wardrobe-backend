@@ -278,7 +278,16 @@ function safeLower(txt) {
 }
 
 import cors from "cors";
-app.use(cors({ origin: "*" }));  // temporarily allow all origins
+
+app.use(cors({
+  origin: [
+    "https://himja.app.n8n.cloud",   // allow your n8n
+    "https://wow-wardrobe-ui-himjabehl.replit.app" // allow your frontend
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 
 function isColorGoodForSkinTone(color = "", skinTone = "") {
   const warmTones = ["olive", "mustard", "rust", "coral", "maroon", "gold", "peach", "warm beige"];
