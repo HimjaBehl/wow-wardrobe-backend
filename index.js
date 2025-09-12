@@ -1078,7 +1078,17 @@ app.post("/suggest-outfit", async (req, res) => {
         };
       });
 
-      console.log("🪞 Normalized wardrobe sample (first 5):", rawWardrobe.slice(0, 5));
+      // 🔍 DEBUG: show wardrobe normalization results
+      console.log("🪞 Normalized wardrobe sample (first 5):",
+        rawWardrobe.slice(0, 5).map(it => ({
+          id: it.id,
+          name: it.name,
+          category: it.category,
+          color: it.color,
+          tags: it.tags
+        }))
+      );
+      console.log("📊 Total wardrobe items normalized:", rawWardrobe.length);
 
 
     // Prefilter based on dislikes (so Tina never sees banned items unless she explicitly asked for full)
@@ -1116,7 +1126,13 @@ app.post("/suggest-outfit", async (req, res) => {
           };
 
           console.log("🧵 Hydrated wardrobe item:", sample);
+          // 🔍 DEBUG log
+          if (idx < 5) {
+            console.log("🎽 buildSampleFromList item:", sample);
+          }
+
           return sample;
+
         });
       }
 
@@ -1279,8 +1295,16 @@ app.post("/suggest-outfit", async (req, res) => {
       }, null, 2)
     };
 
-    // Initialize message stream
-    const messages = [systemMsg, userMsg];
+      // Initialize message stream
+      const messages = [systemMsg, userMsg];
+
+      // 🔍 DEBUG: log what Tina is given as input
+      console.log("🪞 Tina agent INPUT snapshot >>>");
+      console.log("Occasion:", occasion, "| Vibe:", vibe, "| City:", city);
+      console.log("Prefs:", JSON.stringify(prefs, null, 2));
+      console.log("Wardrobe snapshot (first 5):", await fn_getWardrobe({ uid, max: 5 }));
+      console.log("🪞 End Tina agent INPUT <<<");
+
 
     // Agent loop: model may ask to call a function; execute and feed result back. Limit iterations.
     let finalAssistantContent = null;
