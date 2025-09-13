@@ -471,7 +471,12 @@ app.get("/wardrobe", async (req, res) => {
   try {
     console.log("🔎 Fetch wardrobe for UID:", JSON.stringify(cleanUid));
 
-    const snapshot = await db.collection("wardrobe").where("uid", "==", cleanUid).get();
+    // 🔥 Look inside nested wardrobe collection for this UID
+    const snapshot = await db
+      .collection("wardrobe")
+      .doc(cleanUid)
+      .collection("wardrobe")
+      .get();
 
     console.log("📦 Docs found:", snapshot.size);
     snapshot.forEach((doc) => {
