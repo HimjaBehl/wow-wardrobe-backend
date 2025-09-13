@@ -459,17 +459,24 @@ app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
 });
 
 
-// ✅ Fetch wardrobe by user ID
+// ✅ Fetch wardrobe by user ID (with logging + .trim())
 app.get("/wardrobe", async (req, res) => {
   const { uid } = req.query;
-  if (!uid) return res.status(400).json({ error: "UID is required" });
+  const cleanUid = (uid || "").trim();
+
+  if (!cleanUid) {
+    return res.status(400).json({ error: "UID is required" });
+  }
 
   try {
-    const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
+    console.log("🔎 Fetch wardrobe for UID:", JSON.stringify(cleanUid));
+
+    const snapshot = await db.collection("wardrobe").where("uid", "==", cleanUid).get();
 
     console.log("📦 Docs found:", snapshot.size);
     snapshot.forEach((doc) => {
-      console.log("➡️ Doc:", doc.id, doc.data());
+      const d = doc.data();
+      console.log("➡️ Doc:", doc.id, "| uid:", d.uid, "| name:", d.name, "| category:", d.category);
     });
 
     const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -479,6 +486,7 @@ app.get("/wardrobe", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch wardrobe", message: err.message });
   }
 });
+
 
 
 
