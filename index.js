@@ -459,31 +459,35 @@ app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
 });
 
 
-// ✅ Fetch wardrobe by user ID (with logging + .trim())
+// ✅ Fetch wardrobe by user ID
 app.get("/wardrobe", async (req, res) => {
-  const { uid } = req.query;
-  const cleanUid = (uid || "").trim();
-
-  console.log("🔍 RAW UID from request:", uid);
-  console.log("🔍 CLEANED UID:", cleanUid);
-
-  if (!cleanUid) {
-    return res.status(400).json({ error: "UID is required" });
-  }
-
   try {
-    const snapshot = await db.collection("wardrobe")
-      .where("uid", "==", cleanUid)
-      .get();
+    let { uid } = req.query;
+    uid = (uid || "").trim();
 
-    console.log("📦 Docs found:", snapshot.size);
+    if (!uid) {
+      return res.status(400).json({ error: "UID is required" });
+    }
 
-    res.json(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    console.log("📥 Incoming UID:", JSON.stringify(uid));
+
+    // 🔍 Fetch all docs first
+    const snapshot = await db.collection("wardrobe").get();
+
+    // ✅ Filter in JS (avoids Firestore hidden char issues)
+    const items = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(doc => (doc.uid || "").trim() === uid);
+
+    console.log("📦 Docs found:", items.length);
+    res.json(items);
+
   } catch (err) {
     console.error("❌ Fetch wardrobe error:", err.message);
-    res.status(500).json({ error: "Failed to fetch wardrobe" });
+    res.status(500).json({ error: err.message });
   }
 });
+
 
 // ✅ Debug route to list all wardrobe docs
 app.get("/debug-wardrobe", async (req, res) => {
