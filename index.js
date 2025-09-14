@@ -464,31 +464,43 @@ app.get("/wardrobe", async (req, res) => {
   const { uid } = req.query;
   const cleanUid = (uid || "").trim();
 
+  console.log("🔍 RAW UID from request:", uid);
+  console.log("🔍 CLEANED UID:", cleanUid);
+
   if (!cleanUid) {
     return res.status(400).json({ error: "UID is required" });
   }
 
   try {
-    console.log("🔎 Fetch wardrobe for UID:", JSON.stringify(cleanUid));
-
-    // 🔥 Look inside nested wardrobe collection for this UID
-    const snapshot = await db
-      .collection("wardrobe")
-      .doc(cleanUid)
-      .collection("wardrobe")
+    const snapshot = await db.collection("wardrobe")
+      .where("uid", "==", cleanUid)
       .get();
 
     console.log("📦 Docs found:", snapshot.size);
-    snapshot.forEach((doc) => {
-      const d = doc.data();
-      console.log("➡️ Doc:", doc.id, "| uid:", d.uid, "| name:", d.name, "| category:", d.category);
-    });
 
-    const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    res.json(items);
+    res.json(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   } catch (err) {
     console.error("❌ Fetch wardrobe error:", err.message);
-    res.status(500).json({ error: "Failed to fetch wardrobe", message: err.message });
+    res.status(500).json({ error: "Failed to fetch wardrobe" });
+  }
+});
+
+// ✅ Debug route to list all wardrobe docs
+app.get("/debug-wardrobe", async (req, res) => {
+  try {
+    const snapshot = await db.collection("wardrobe").get();
+    const items = snapshot.docs.map(doc => ({
+      id: doc.id,
+      uid: doc.data().uid,
+      name: doc.data().name,
+      category: doc.data().category
+    }));
+
+    console.log("🧾 DEBUG wardrobe items:", items);
+    res.json(items);
+  } catch (err) {
+    console.error("❌ Debug wardrobe failed:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
