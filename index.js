@@ -1803,6 +1803,20 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error", message: err?.message });
 });
 
+
+
+// ✅ New Fashion Basics route
+app.get("/fashion-basics", (req, res) => {
+  try {
+    const basics = JSON.parse(fs.readFileSync("fashion_basics.json", "utf-8"));
+    res.json(basics);
+  } catch (error) {
+    console.error("Error reading fashion_basics.json:", error);
+    res.status(500).json({ error: "Unable to fetch fashion basics" });
+  }
+});
+
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });

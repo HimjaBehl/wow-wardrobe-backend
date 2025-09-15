@@ -1,0 +1,29 @@
+{
+  "basics": [
+    {
+      "principle": "Silhouette Balance",
+      "rule": "Balance fitted and loose clothing to create harmony in your outfit.",
+      "example": "Pair wide-leg pants with a fitted top."
+    },
+    {
+      "principle": "Color Harmony",
+      "rule": "Use complementary or analogous colors for cohesion.",
+      "example": "Combine a pastel blue blouse with beige trousers."
+    },
+    {
+      "principle": "Layering",
+      "rule": "Layer light pieces over structured garments for depth and versatility.",
+      "example": "Wear a denim jacket over a sundress."
+    },
+    {
+      "principle": "Proportion",
+      "rule": "Mix short and long pieces to create interesting proportions.",
+      "example": "Style a cropped blazer with high-waisted trousers."
+    },
+    {
+      "principle": "Seasonal Adaptation",
+      "rule": "Choose fabrics and textures according to the weather.",
+      "example": "Opt for linen shirts in summer and wool coats in winter."
+    }
+  ]
+}
