@@ -1808,7 +1808,7 @@ app.use((err, req, res, next) => {
 // ✅ New Fashion Basics route
 app.get("/fashion-basics", (req, res) => {
   try {
-    const basics = JSON.parse(fs.readFileSync("fashion_basics.json", "utf-8"));
+    const basics = JSON.parse(fs.readFileSync("fashionbasics.json", "utf-8"));
     res.json(basics);
   } catch (error) {
     console.error("Error reading fashion_basics.json:", error);
