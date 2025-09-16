@@ -512,25 +512,27 @@ app.get("/debug-wardrobe", async (req, res) => {
 
 
 
-// ✅ Get Staples - Load directly from Firebase Storage
+// ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
 app.get("/staples", async (req, res) => {
   try {
-    console.log("📋 Fetching wardrobe staples from Firebase");
+    const { gender = "male" } = req.query; // default to male if not passed
+    console.log(`📋 Fetching wardrobe staples for gender: ${gender}`);
 
-    // List all files inside the "staples/" folder in Firebase
-    const [files] = await bucket.getFiles({ prefix: "staples/" });
+    // List all files inside the "staples {gender}/" folder in Firebase
+    const [files] = await bucket.getFiles({ prefix: `staples ${gender}/` });
 
     if (!files.length) {
-      return res.json({ success: true, staples: {}, message: "No staples found" });
+      return res.json({ success: true, staples: {}, message: `No staples found for ${gender}` });
     }
 
     const staples = {};
 
     for (const file of files) {
-      const fileName = file.name.split("/").pop(); // e.g. tshirt_white.jpg
+      const fileName = file.name.split("/").pop(); // e.g. Black_Trousers.jpg
       if (!fileName) continue;
 
-      const [base, color] = fileName.replace(/\.[^/.]+$/, "").split("_"); // "tshirt_white" → ["tshirt","white"]
+      // Split name into base + color (optional)
+      const [base, color] = fileName.replace(/\.[^/.]+$/, "").split("_");
       const prettyName = base.charAt(0).toUpperCase() + base.slice(1);
       const prettyColor = color ? color.charAt(0).toUpperCase() + color.slice(1) : "Default";
 
@@ -543,17 +545,18 @@ app.get("/staples", async (req, res) => {
 
       staples[prettyName].variants.push({
         color: prettyColor,
-        image_url: url
+        image_url: url,
       });
     }
 
-    console.log(`✅ Found staples:`, Object.keys(staples));
+    console.log(`✅ Found staples for ${gender}:`, Object.keys(staples));
     res.json({ success: true, staples });
   } catch (err) {
     console.error("❌ Failed to fetch staples:", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 // ✅ Enhanced Quick Add - Manual item entry with optional image
