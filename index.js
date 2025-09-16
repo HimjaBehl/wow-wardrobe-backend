@@ -512,42 +512,40 @@ app.get("/debug-wardrobe", async (req, res) => {
 
 
 
-// ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
-app.get("/staples", async (req, res) => {
-  try {
-    const { gender = "male" } = req.query; // default to male if not passed
-    console.log(`📋 Fetching wardrobe staples for gender: ${gender}`);
+      // ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
+      app.get("/staples", async (req, res) => {
+        try {
+          const { gender } = req.query;
+          if (!gender) return res.status(400).json({ error: "gender is required (male or female)" });
 
-    // List all files inside the "staples {gender}/" folder in Firebase
-    const [files] = await bucket.getFiles({ prefix: `staples ${gender}/` });
+          console.log(`📋 Fetching staples for gender: ${gender}`);
 
-    if (!files.length) {
-      return res.json({ success: true, staples: {}, message: `No staples found for ${gender}` });
-    }
+          // List all files inside the "staples {gender}/" folder
+          const prefix = `staples ${gender.toLowerCase()}/`;
+          const [files] = await bucket.getFiles({ prefix });
 
-    const staples = {};
+          if (!files.length) {
+            return res.json({ success: true, staples: [], message: `No staples found for ${gender}` });
+          }
 
-    for (const file of files) {
-      const fileName = file.name.split("/").pop(); // e.g. Black_Trousers.jpg
-      if (!fileName) continue;
+          // Build staples list
+          const staples = await Promise.all(
+            files
+              .filter((f) => !f.name.endsWith("/")) // skip empty folders
+              .map(async (file) => {
+                const fileName = file.name.split("/").pop().replace(/\.[^/.]+$/, "");
+                const prettyName = fileName.replace(/_/g, " ");
+                const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
 
-      // Split name into base + color (optional)
-      const [base, color] = fileName.replace(/\.[^/.]+$/, "").split("_");
-      const prettyName = base.charAt(0).toUpperCase() + base.slice(1);
-      const prettyColor = color ? color.charAt(0).toUpperCase() + color.slice(1) : "Default";
+                return {
+                  name: prettyName,
+                  category: "Staple",
+                  variants: [{ color: "Default", image_url: url }]
+                };
+              })
+          );
 
-      // Public URL
-      const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
-
-      if (!staples[prettyName]) {
-        staples[prettyName] = { category: prettyName, variants: [] };
-      }
-
-      staples[prettyName].variants.push({
-        color: prettyColor,
-        image_url: url,
-      });
-    }
+          
 
     console.log(`✅ Found staples for ${gender}:`, Object.keys(staples));
     res.json({ success: true, staples });
