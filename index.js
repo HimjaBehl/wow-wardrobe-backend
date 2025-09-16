@@ -1150,16 +1150,7 @@ app.post("/suggest-outfit", async (req, res) => {
       console.log("📊 Total wardrobe items normalized:", rawWardrobe.length);
 
 
-    // Prefilter based on dislikes (so Tina never sees banned items unless she explicitly asked for full)
-    if (prefs?.dislikes?.length) {
-      const bans = prefs.dislikes.map(b => b.toLowerCase());
-      rawWardrobe = rawWardrobe.filter(it => {
-        const n = (it.name || "").toLowerCase();
-        const c = (it.category || "").toLowerCase();
-        const col = (it.color || "").toLowerCase();
-        return !bans.some(b => n.includes(b) || c.includes(b) || col.includes(b));
-      });
-    }
+    
 
     // Small helper to map wardrobe to compact sample (idx strings)
       function buildSampleFromList(list = [], max = 50) {
@@ -1332,6 +1323,9 @@ app.post("/suggest-outfit", async (req, res) => {
           vibe,
           vibe_hints: moodHints,
           weather_hint: city,
+          gender: female,
+          bodyShape: pear,
+          complexion: warm,
           prefs,
           wardrobe_preview: wardrobeSample,   // 🔥 force-feed snapshot
           instructions: [
@@ -1695,14 +1689,16 @@ app.post("/plan-outfit", async (req, res) => {
 
 // ✅ Save onboarding preferences
 app.post("/onboarding", async (req, res) => {
-  const { uid, dislikes = [], bodyType = "", skinTone = "", favColors = [] } = req.body;
+const { uid, gender = "", bodyShape = "", complexion = "" } = req.body;
+
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
   try {
     await db.collection("tina_memory").doc(uid).set(
-      { dislikes, bodyType, skinTone, favColors, updated_at: new Date().toISOString() },
+      { gender, bodyShape, complexion, updated_at: new Date().toISOString() },
       { merge: true }
     );
+
     res.status(200).json({ message: "Preferences saved successfully" });
   } catch (err) {
     console.error("❌ Failed to save onboarding:", err.message);
