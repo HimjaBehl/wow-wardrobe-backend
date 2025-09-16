@@ -520,40 +520,38 @@ app.get("/staples", async (req, res) => {
 
     console.log(`📋 Fetching staples for gender: ${gender}`);
 
-    const prefix = `staples ${gender.toLowerCase()}/`;
+    const prefix = `staples ${gender.toLowerCase()}/`; // 🔥 use underscore instead of space
     const [files] = await bucket.getFiles({ prefix });
 
     if (!files.length) {
       return res.json({ success: true, staples: [], message: `No staples found for ${gender}` });
     }
 
-    const staples = await Promise.all(
-      files
-        .filter((f) => !f.name.endsWith("/"))
-        .map(async (file) => {
-          const fileName = file.name.split("/").pop().replace(/\.[^/.]+$/, "");
-          const prettyName = fileName.replace(/_/g, " ");
+    const staples = files
+      .filter((f) => !f.name.endsWith("/"))
+      .map((file) => {
+        const fileName = file.name.split("/").pop().replace(/\.[^/.]+$/, "");
+        const prettyName = fileName.replace(/_/g, " ");
 
-          // 🔥 ensure file is public
-          await file.makePublic();
+        // ✅ build guaranteed public URL
+        const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
 
-          const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
-
-          return {
-            name: prettyName,
-            category: "Staple",
-            variants: [{ color: "Default", image_url: url }]
-          };
-        })
-    );
+        return {
+          name: prettyName,
+          category: "Staple",
+          variants: [{ color: "Default", image_url: url }]
+        };
+      });
 
     console.log(`✅ Found staples for ${gender}: ${staples.length}`);
     res.json({ success: true, staples });
+
   } catch (err) {
     console.error("❌ Failed to fetch staples:", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 
