@@ -520,7 +520,7 @@ app.get("/staples", async (req, res) => {
 
     console.log(`📋 Fetching staples for gender: ${gender}`);
 
-    const prefix = `staples ${gender.toLowerCase()}/`; // 🔥 use underscore instead of space
+    const prefix = `staples_${gender.toLowerCase()}/`; // 🔥 use underscore instead of space
     const [files] = await bucket.getFiles({ prefix });
 
     if (!files.length) {
