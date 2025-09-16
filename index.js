@@ -515,17 +515,20 @@ app.get("/debug-wardrobe", async (req, res) => {
 // ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
 app.get("/staples", async (req, res) => {
   const gender = req.query.gender || "male"; 
-  const bucketName = "wowapp1406.appspot.com";  // your Firebase bucket
+  const bucketName = "wowapp1406.appspot.com";  
   const folder = gender === "female" ? "staples_female" : "staples_male";
 
   try {
     const [files] = await bucket.getFiles({ prefix: folder + "/" });
     const staples = files.map((file) => {
+      const fileName = file.name.split("/").pop(); // e.g. "Black Belt.webp"
+      const displayName = fileName.replace(/\.[^/.]+$/, ""); // e.g. "Black Belt"
+
       const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(file.name)}?alt=media`;
+
       return {
-        name: file.name.split("/").pop().replace(/\.[^/.]+$/, ""), // strip extension
-        image_url: publicUrl,
-        category: "Staple",  // you can refine this
+        name: displayName,
+        category: "Staple",
         variants: [
           { color: "Default", image_url: publicUrl }
         ]
