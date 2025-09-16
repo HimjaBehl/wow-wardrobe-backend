@@ -514,43 +514,31 @@ app.get("/debug-wardrobe", async (req, res) => {
 
 // ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
 app.get("/staples", async (req, res) => {
+  const gender = req.query.gender || "male"; 
+  const bucketName = "wowapp1406.appspot.com";  // your Firebase bucket
+  const folder = gender === "female" ? "staples_female" : "staples_male";
+
   try {
-    const { gender } = req.query;
-    if (!gender) return res.status(400).json({ error: "gender is required (male or female)" });
+    const [files] = await bucket.getFiles({ prefix: folder + "/" });
+    const staples = files.map((file) => {
+      const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(file.name)}?alt=media`;
+      return {
+        name: file.name.split("/").pop().replace(/\.[^/.]+$/, ""), // strip extension
+        image_url: publicUrl,
+        category: "Staple",  // you can refine this
+        variants: [
+          { color: "Default", image_url: publicUrl }
+        ]
+      };
+    });
 
-    console.log(`📋 Fetching staples for gender: ${gender}`);
-
-    const prefix = `staples_${gender.toLowerCase()}/`; // 🔥 use underscore instead of space
-    const [files] = await bucket.getFiles({ prefix });
-
-    if (!files.length) {
-      return res.json({ success: true, staples: [], message: `No staples found for ${gender}` });
-    }
-
-    const staples = files
-      .filter((f) => !f.name.endsWith("/"))
-      .map((file) => {
-        const fileName = file.name.split("/").pop().replace(/\.[^/.]+$/, "");
-        const prettyName = fileName.replace(/_/g, " ");
-
-        // ✅ build guaranteed public URL
-        const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
-
-        return {
-          name: prettyName,
-          category: "Staple",
-          variants: [{ color: "Default", image_url: url }]
-        };
-      });
-
-    console.log(`✅ Found staples for ${gender}: ${staples.length}`);
     res.json({ success: true, staples });
-
   } catch (err) {
-    console.error("❌ Failed to fetch staples:", err.message);
+    console.error("Error fetching staples:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 
