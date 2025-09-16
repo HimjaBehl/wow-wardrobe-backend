@@ -21,19 +21,19 @@
       "example": "Style a cropped blazer with high-waisted trousers."
     },
     {
-      "principle": "Seasonal Adaptation",
-      "rule": "Choose fabrics and coverage according to weather and season.",
-      "example": "Opt for linen shirts in summer and wool coats in winter."
-    },
-    {
-      "principle": "Top + Bottom Pairing",
-      "rule": "Every complete outfit should include at least one top and one bottom unless it’s a dress or jumpsuit.",
-      "example": "A shirt with jeans, or a single-piece dress with accessories."
+      "principle": "Seasonal Dressing",
+      "rule": "Adapt fabrics and coverage based on temperature and season.",
+      "example": "At 30°C+, choose cotton, linen, or chiffon. Below 18°C, layer with sweaters, coats, or jackets."
     },
     {
       "principle": "Occasion Appropriateness",
-      "rule": "Select clothing that fits the social or cultural setting.",
-      "example": "Formal suit for work, cocktail dress for a party, athleisure for workouts."
+      "rule": "Select outfits that match the event or social setting.",
+      "example": "Dinner → smart-casual with polished shoes; Wedding → formal wear; Brunch → relaxed but stylish."
+    },
+    {
+      "principle": "Completeness",
+      "rule": "A complete outfit requires a top and bottom (or a dress/jumpsuit), plus footwear, and optionally 1–2 accessories.",
+      "example": "White tee + jeans + sneakers + a watch."
     },
     {
       "principle": "Footwear Match",
@@ -42,28 +42,18 @@
     },
     {
       "principle": "Accessory Balance",
-      "rule": "Use accessories to elevate without overwhelming the look.",
-      "example": "Pair a minimal chain necklace with a bold dress, or a statement bag with neutral basics."
+      "rule": "Accessories should elevate without overwhelming the outfit.",
+      "example": "Pair a statement bag with simple basics, or minimal jewelry with a bold dress."
+    },
+    {
+      "principle": "Texture & Contrast",
+      "rule": "Mix textures or contrast formal/casual pieces for depth and visual interest.",
+      "example": "Silk blouse with denim, or sneakers with a structured dress."
     },
     {
       "principle": "Color Accent",
-      "rule": "Limit bold accent colors to one or two items per look.",
-      "example": "A red bag with a monochrome outfit, or bright shoes with a neutral palette."
-    },
-    {
-      "principle": "Texture Play",
-      "rule": "Mix textures for depth, but avoid too many competing fabrics.",
-      "example": "Pair a silk blouse with denim, or a knit sweater with leather trousers."
-    },
-    {
-      "principle": "Contrast",
-      "rule": "Contrast can create visual interest — mix casual with formal, hard with soft.",
-      "example": "Style sneakers with a flowy dress, or a blazer over ripped jeans."
-    },
-    {
-      "principle": "Completeness",
-      "rule": "A full look = core clothing (top/bottom or dress), footwear, and optionally 1–2 accessories.",
-      "example": "White tee + jeans + sneakers + watch."
+      "rule": "Limit bold accent colors to one or two items per outfit.",
+      "example": "Red bag with a monochrome outfit, or bright shoes with neutral basics."
     }
   ]
 }
