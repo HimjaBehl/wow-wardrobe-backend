@@ -512,48 +512,49 @@ app.get("/debug-wardrobe", async (req, res) => {
 
 
 
-      // ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
-      app.get("/staples", async (req, res) => {
-        try {
-          const { gender } = req.query;
-          if (!gender) return res.status(400).json({ error: "gender is required (male or female)" });
+// ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
+app.get("/staples", async (req, res) => {
+  try {
+    const { gender } = req.query;
+    if (!gender) return res.status(400).json({ error: "gender is required (male or female)" });
 
-          console.log(`📋 Fetching staples for gender: ${gender}`);
+    console.log(`📋 Fetching staples for gender: ${gender}`);
 
-          // List all files inside the "staples {gender}/" folder
-          const prefix = `staples ${gender.toLowerCase()}/`;
-          const [files] = await bucket.getFiles({ prefix });
+    const prefix = `staples ${gender.toLowerCase()}/`;
+    const [files] = await bucket.getFiles({ prefix });
 
-          if (!files.length) {
-            return res.json({ success: true, staples: [], message: `No staples found for ${gender}` });
-          }
+    if (!files.length) {
+      return res.json({ success: true, staples: [], message: `No staples found for ${gender}` });
+    }
 
-          // Build staples list
-          const staples = await Promise.all(
-            files
-              .filter((f) => !f.name.endsWith("/")) // skip empty folders
-              .map(async (file) => {
-                const fileName = file.name.split("/").pop().replace(/\.[^/.]+$/, "");
-                const prettyName = fileName.replace(/_/g, " ");
-                const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
+    const staples = await Promise.all(
+      files
+        .filter((f) => !f.name.endsWith("/"))
+        .map(async (file) => {
+          const fileName = file.name.split("/").pop().replace(/\.[^/.]+$/, "");
+          const prettyName = fileName.replace(/_/g, " ");
 
-                return {
-                  name: prettyName,
-                  category: "Staple",
-                  variants: [{ color: "Default", image_url: url }]
-                };
-              })
-          );
+          // 🔥 ensure file is public
+          await file.makePublic();
 
-          
+          const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
 
-    console.log(`✅ Found staples for ${gender}:`, Object.keys(staples));
+          return {
+            name: prettyName,
+            category: "Staple",
+            variants: [{ color: "Default", image_url: url }]
+          };
+        })
+    );
+
+    console.log(`✅ Found staples for ${gender}: ${staples.length}`);
     res.json({ success: true, staples });
   } catch (err) {
     console.error("❌ Failed to fetch staples:", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 
