@@ -520,20 +520,28 @@ app.get("/staples", async (req, res) => {
 
   try {
     const [files] = await bucket.getFiles({ prefix: folder + "/" });
-    const staples = files.map((file) => {
-      const fileName = file.name.split("/").pop(); // e.g. "Black Belt.webp"
-      const displayName = fileName.replace(/\.[^/.]+$/, ""); // e.g. "Black Belt"
+    const staples = await Promise.all(
+      files.map(async (file) => {
+        const fileName = file.name.split("/").pop();
+        const displayName = fileName.replace(/\.[^/.]+$/, "");
 
-      const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(file.name)}?alt=media`;
+        // ✅ Get signed URL (browser-friendly)
+        const [signedUrl] = await file.getSignedUrl({
+          action: "read",
+          expires: "03-01-2030", // pick a far future expiry
+        });
 
-      return {
-        name: displayName,
-        category: "Staple",
-        variants: [
-          { color: "Default", image_url: publicUrl }
-        ]
-      };
-    });
+
+        return {
+          name: displayName,
+          category: "Staple",
+          variants: [
+            { color: "Default", image_url: signedUrl }
+          ]
+        };
+      })
+    );
+
 
     res.json({ success: true, staples });
   } catch (err) {
