@@ -1311,7 +1311,8 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
 
-      const wardrobeSample = buildSampleFromList(rawWardrobe, 20);
+      const wardrobeSample = buildSampleFromList(rawWardrobe, rawWardrobe.length);
+
 
       const userMsg = {
         role: "user",
