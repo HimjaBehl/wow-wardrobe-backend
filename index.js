@@ -1362,7 +1362,10 @@ complexion: prefs.complexion || "",
           wardrobe_preview: wardrobeSample,   // 🔥 force-feed snapshot
           instructions: [
             "You MUST ONLY use wardrobe items provided by the get_wardrobe tool OR from wardrobe_preview.",
-            "Every outfit item MUST be referenced by its `idx` string.",
+            "Every outfit item MUST ONLY be referenced by its `idx` string. 
+NEVER invent names or ids. 
+Do NOT output item names, categories, or ids directly — only use idx values provided in wardrobe_preview.",
+
             "Do NOT output item names, categories, or ids directly — only use idx.",
             "Valid outfit structure: (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
             "Each outfit must have 3–5 items, complete, no missing pieces.",
@@ -1554,6 +1557,14 @@ if (!finalAssistantContent) {
         }
 
         const hydrated = (look.items || []).map((it) => {
+  // 🚫 Drop hallucinated items (only accept idx that exists in idx2item)
+  if (!it.idx || !idx2item[it.idx]) {
+    console.warn("❌ Dropping hallucinated item:", it);
+    return null;
+  }
+  return { ...idx2item[it.idx] };
+}).filter(Boolean);
+
           if (it.idx && idx2item[it.idx]) return { ...idx2item[it.idx] };
 
           // 🔄 fallback: try to match by name if Tina mistakenly outputs names
