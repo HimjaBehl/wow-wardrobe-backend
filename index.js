@@ -1060,6 +1060,8 @@ app.post("/suggest-outfit", async (req, res) => {
 
   // Prefetch user preferences & a basic wardrobe snapshot (we still expose function to fetch full)
   const prefs = await getUserMemory(uid).catch(() => ({}));
+const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
+
 
     try {
       // 🔥 fetch wardrobe snapshot FIRST
@@ -1314,10 +1316,12 @@ RULES:
 2. Outfits must balance silhouette (e.g. loose top + fitted bottom).
 3. Outfits must harmonize colors using warm/cool palettes.
 4. Always include footwear unless it is clear from the look (like jumpsuits with built-in style).
-5. Respect user’s gender, bodyShape, complexion, and dislikes.
-6. Blend wardrobe items with trend inspiration where possible.
-7. Avoid repeating same exact outfit the user liked recently.
-8. Only suggest outfits appropriate for the occasion:
+5. Respect user’s gender, bodyShape, complexion, dislikes, and style summary.
+6. Never suggest items, colors, or fabrics listed in dislikes.
+7. Boost categories/colors the user often likes (from style summary).
+8. Blend wardrobe items with trend inspiration where possible.
+9. Avoid repeating same exact outfit the user liked recently.
+10. Only suggest outfits appropriate for the occasion:
    - Brunch/day: dresses, skirts, shorts, casual tops, casual footwear
    - Office: blouses, trousers, blazers, formal shoes
    - Party: dresses, skirts, heels, statement accessories
@@ -1356,8 +1360,11 @@ console.log("👤 User prefs from onboarding:", prefs);
           gender: prefs.gender || "",
 bodyShape: prefs.bodyShape || "",
 complexion: prefs.complexion || "",
-          prefs,
-          wardrobe_preview: wardrobeSample,   // 🔥 force-feed snapshot
+dislikes: prefs.dislikes || [],
+style_summary: styleSummary || "",
+prefs,
+wardrobe_preview: wardrobeSample,
+   // 🔥 force-feed snapshot
           instructions: [
             "You MUST ONLY use wardrobe items provided by the get_wardrobe tool OR from wardrobe_preview.",
             "Every outfit item MUST ONLY be referenced by its `idx` string. NEVER invent names or ids. Do NOT output item names, categories, or ids directly — only use idx values provided in wardrobe_preview.",
@@ -1740,15 +1747,17 @@ app.post("/plan-outfit", async (req, res) => {
 
 // ✅ Save onboarding preferences
 app.post("/onboarding", async (req, res) => {
-const { uid, gender = "", bodyShape = "", complexion = "" } = req.body;
+const { uid, gender = "", bodyShape = "", complexion = "", dislikes = [] } = req.body;
+
 
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
   try {
     await db.collection("tina_memory").doc(uid).set(
-      { gender, bodyShape, complexion, updated_at: new Date().toISOString() },
-      { merge: true }
-    );
+  { gender, bodyShape, complexion, dislikes, updated_at: new Date().toISOString() },
+  { merge: true }
+);
+
 
     res.status(200).json({ message: "Preferences saved successfully" });
   } catch (err) {
