@@ -1489,7 +1489,8 @@ complexion: prefs.complexion || "",
     // Try to parse the final assistant content as JSON (strict)
     let parsed;
 if (!finalAssistantContent) {
-  ...
+  console.warn("⚠️ No assistant content received. Using fallback.");
+  parsed = null;
 } else {
   try {
     parsed = JSON.parse(finalAssistantContent);
@@ -1506,7 +1507,7 @@ if (!finalAssistantContent) {
     } else {
       parsed = null;
     }
-  },
+  }
 
 
       if (!parsed) {
