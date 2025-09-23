@@ -44,6 +44,7 @@ import getTrendInsights from "./tools/getTrendInsights.js";
 
 
 import { validateLookAgainstRules } from "./lib/styleRules.js";
+import { isColorGoodForSkinTone } from "./lib/colorRules.js";
 // 🔮 Load fashion taxonomy
 import { taxonomy, findCategory, getAttributes } from "./lib/taxonomyUtils.js";
 import { themeAttributes } from "./lib/themeAttributes.js";
@@ -305,25 +306,6 @@ function safeLower(txt) {
 
 
 
-function isColorGoodForSkinTone(color = "", skinTone = "") {
-  const warmTones = ["olive", "mustard", "rust", "coral", "maroon", "gold", "peach", "warm beige"];
-  const coolTones = ["icy blue", "lavender", "mint", "grey", "neon green", "silver", "lilac"];
-
-  const clr = safeLower(color);
-  const tone = safeLower(skinTone);
-
-  if (!clr || !tone) return true; // no filtering
-
-  if (tone.includes("warm")) {
-    return !coolTones.some((ct) => clr.includes(ct));
-  }
-
-  if (tone.includes("cool")) {
-    return !warmTones.some((wt) => clr.includes(wt));
-  }
-
-  return true; // neutral or unknown tone
-}
 
 
 
@@ -1249,27 +1231,6 @@ app.post("/suggest-outfit", async (req, res) => {
     return { error: err?.message || String(err) };
   }
 }
-
-      try {
-        // hydrate minimal structure for validate functions
-        const hydrated = items.map(it => ({
-          id: it.id,
-          name: it.name,
-          category: it.category,
-          color: it.color,
-          taxonomyPath: it.taxonomyPath,
-          attributes: it.attributes,
-          fabric: it.fabric,
-          silhouette: it.silhouette,
-        }));
-
-        const fashionBrainResult = validateLook(hydrated, { weather: w });
-        const styleRulesResult = validateLookAgainstRules({ items: hydrated }, { bannedItems: (prefs?.dislikes || []), weather: w });
-        return { fashionBrainResult, styleRulesResult };
-      } catch (err) {
-        return { error: err?.message || String(err) };
-      }
-    }
 
     // function definitions passed to the model (JSON Schema)
     const functions = [
