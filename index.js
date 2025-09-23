@@ -1219,7 +1219,37 @@ app.post("/suggest-outfit", async (req, res) => {
       }
     }
 
-    async function fn_validateLook({ items = [], weather: w = city }) {
+    async function fn_validateLook({ items = [], weather: w = city, occasion = occasion, prefs: userPrefs = prefs }) {
+  try {
+    // hydrate minimal structure for validate functions
+    const hydrated = items.map(it => ({
+      id: it.id,
+      name: it.name,
+      category: it.category,
+      color: it.color,
+      taxonomyPath: it.taxonomyPath,
+      attributes: it.attributes,
+      fabric: it.fabric,
+      silhouette: it.silhouette,
+    }));
+
+    const fashionBrainResult = validateLook(hydrated, { weather: w });
+    const styleRulesResult = validateLookAgainstRules(
+      { items: hydrated },
+      {
+        bannedItems: (userPrefs?.dislikes || []),
+        weather: w,
+        occasion: occasion,
+        prefs: userPrefs
+      }
+    );
+
+    return { fashionBrainResult, styleRulesResult };
+  } catch (err) {
+    return { error: err?.message || String(err) };
+  }
+}
+
       try {
         // hydrate minimal structure for validate functions
         const hydrated = items.map(it => ({
@@ -1566,9 +1596,15 @@ if (!finalAssistantContent) {
 
         const validationFB = validateLook(hydrated, { weather: city });
         const validationRules = validateLookAgainstRules(
-          { items: hydrated },
-          { bannedItems: (prefs?.dislikes || []), weather: city }
-        );
+  { items: hydrated },
+  {
+    bannedItems: (prefs?.dislikes || []),
+    weather: city,
+    occasion: occasion,
+    prefs
+  }
+);
+
 
         console.log(`🧪 Validation for look #${i + 1}:`, { validationFB, validationRules });
 
