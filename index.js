@@ -1607,8 +1607,21 @@ if (!finalAssistantContent) {
       // Final filter: keep looks, even if invalid — just warn
       parsed.looks = parsed.looks.map(l => {
         if (!l.validation?.styleRules?.valid) {
-          l.style_note += " | ⚠️ This look may not follow all rules.";
-        }
+  const errs = (l.validation?.styleRules?.errors || []).join("; ");
+  console.warn("❌ Look failed validation, asking Tina to retry:", errs);
+
+  messages.push({
+    role: "function",
+    name: "validate_look",
+    content: JSON.stringify(l.validation)
+  });
+
+  messages.push({
+    role: "user",
+    content: `Your last look failed validation: ${errs}. Please fix and retry with a new look using only wardrobe items.`
+  });
+}
+
         return l;
       });
 
