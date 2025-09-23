@@ -1086,19 +1086,6 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
            let rawWardrobe = snap.docs.map(d => {
-
-// 🎯 Occasion-aware filter
-if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
-  const allowedCats = occasionCategoryMap[occasion.toLowerCase()];
-  rawWardrobe = rawWardrobe.filter(it =>
-    allowedCats.some(cat =>
-      (it.category || "").toLowerCase().includes(cat.toLowerCase())
-    )
-  );
-  console.log(`🎯 Occasion filter applied for "${occasion}", items left:`, rawWardrobe.length);
-}
-
-
         const data = d.data();
 
         // Normalize category
@@ -1132,6 +1119,17 @@ if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
           category: cleanCategory,
         };
       });
+
+      // 🎯 Occasion-aware filter
+      if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
+        const allowedCats = occasionCategoryMap[occasion.toLowerCase()];
+        rawWardrobe = rawWardrobe.filter(it =>
+          allowedCats.some(cat =>
+            (it.category || "").toLowerCase().includes(cat.toLowerCase())
+          )
+        );
+        console.log(`🎯 Occasion filter applied for "${occasion}", items left:`, rawWardrobe.length);
+      }
 
       // 🔍 DEBUG: show wardrobe normalization results
       console.log("🪞 Normalized wardrobe sample (first 5):",
@@ -1245,9 +1243,9 @@ if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
   } catch (err) {
     return { error: err?.message || String(err) };
   }
-}
+    }
 
-    // function definitions passed to the model (JSON Schema)
+    // function definitions passed to the model (JSON Schema)  
     const functions = [
       {
         name: "get_weather",
@@ -1362,9 +1360,7 @@ complexion: prefs.complexion || "",
           wardrobe_preview: wardrobeSample,   // 🔥 force-feed snapshot
           instructions: [
             "You MUST ONLY use wardrobe items provided by the get_wardrobe tool OR from wardrobe_preview.",
-            "Every outfit item MUST ONLY be referenced by its `idx` string. 
-NEVER invent names or ids. 
-Do NOT output item names, categories, or ids directly — only use idx values provided in wardrobe_preview.",
+            "Every outfit item MUST ONLY be referenced by its `idx` string. NEVER invent names or ids. Do NOT output item names, categories, or ids directly — only use idx values provided in wardrobe_preview.",
 
             "Do NOT output item names, categories, or ids directly — only use idx.",
             "Valid outfit structure: (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
@@ -1557,15 +1553,10 @@ if (!finalAssistantContent) {
         }
 
         const hydrated = (look.items || []).map((it) => {
-  // 🚫 Drop hallucinated items (only accept idx that exists in idx2item)
-  if (!it.idx || !idx2item[it.idx]) {
-    console.warn("❌ Dropping hallucinated item:", it);
-    return null;
-  }
-  return { ...idx2item[it.idx] };
-}).filter(Boolean);
-
-          if (it.idx && idx2item[it.idx]) return { ...idx2item[it.idx] };
+          // Primary: check if idx exists in idx2item
+          if (it.idx && idx2item[it.idx]) {
+            return { ...idx2item[it.idx] };
+          }
 
           // 🔄 fallback: try to match by name if Tina mistakenly outputs names
           if (it.name) {
@@ -1575,13 +1566,16 @@ if (!finalAssistantContent) {
             if (match) return { ...match };
           }
 
+          // 🔄 fallback: try to match by id
           if (it.id) {
             const match = rawWardrobe.find(r => r.id === it.id);
             if (match) return { ...match };
           }
 
-          return { id: it.id || it.idx || "unknown", name: it.name || "Unknown Item" };
-        });
+          // 🚫 Drop hallucinated items that can't be matched
+          console.warn("❌ Dropping hallucinated item:", it);
+          return null;
+        }).filter(Boolean);
 
         // 🔍 Debug logs
         console.log(`🔍 Hydrated look #${i + 1}:`, hydrated);
