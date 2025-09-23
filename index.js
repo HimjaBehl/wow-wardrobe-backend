@@ -1313,6 +1313,8 @@ app.post("/suggest-outfit", async (req, res) => {
 
       const wardrobeSample = buildSampleFromList(rawWardrobe, rawWardrobe.length);
 
+console.log("👤 User prefs from onboarding:", prefs);
+
 
       const userMsg = {
         role: "user",
@@ -1323,9 +1325,9 @@ app.post("/suggest-outfit", async (req, res) => {
           vibe,
           vibe_hints: moodHints,
           weather_hint: city,
-          gender: female,
-          bodyShape: pear,
-          complexion: warm,
+          gender: prefs.gender || "",
+bodyShape: prefs.bodyShape || "",
+complexion: prefs.complexion || "",
           prefs,
           wardrobe_preview: wardrobeSample,   // 🔥 force-feed snapshot
           instructions: [
