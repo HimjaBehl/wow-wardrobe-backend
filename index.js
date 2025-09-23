@@ -89,6 +89,8 @@ console.log('Loaded fashionTags =>', fashionTags);
 
 
 import { styleMoodMap } from "./styleMoodMap.js";
+import { occasionCategoryMap } from "./lib/occasionMap.js";
+
 
 console.log("💡 Available moods:", Object.keys(styleMoodMap));
 
@@ -1083,7 +1085,20 @@ app.post("/suggest-outfit", async (req, res) => {
       }
 
 
-      let rawWardrobe = snap.docs.map(d => {
+           let rawWardrobe = snap.docs.map(d => {
+
+// 🎯 Occasion-aware filter
+if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
+  const allowedCats = occasionCategoryMap[occasion.toLowerCase()];
+  rawWardrobe = rawWardrobe.filter(it =>
+    allowedCats.some(cat =>
+      (it.category || "").toLowerCase().includes(cat.toLowerCase())
+    )
+  );
+  console.log(`🎯 Occasion filter applied for "${occasion}", items left:`, rawWardrobe.length);
+}
+
+
         const data = d.data();
 
         // Normalize category
@@ -1304,6 +1319,11 @@ RULES:
 5. Respect user’s gender, bodyShape, complexion, and dislikes.
 6. Blend wardrobe items with trend inspiration where possible.
 7. Avoid repeating same exact outfit the user liked recently.
+8. Only suggest outfits appropriate for the occasion:
+   - Brunch/day: dresses, skirts, shorts, casual tops, casual footwear
+   - Office: blouses, trousers, blazers, formal shoes
+   - Party: dresses, skirts, heels, statement accessories
+   - Wedding/festive: traditional wear, gowns, jewelry
 
 JSON Schema:
 {
