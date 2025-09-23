@@ -1300,14 +1300,28 @@ app.post("/suggest-outfit", async (req, res) => {
     // Build initial messages: system + user with context
     const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
       const systemMsg = {
-        role: "system",
-        content:
-          "You are Tina, an autonomous AI stylist. You can call tools to get wardrobe, weather, trends or validate your drafts. " +
-          "Your ONLY valid way to reference clothing is via the wardrobe idx values returned by get_wardrobe. " +
-          "STRICT RULE: Every outfit must use idx values only (example: {\"idx\":\"0\"}). " +
-          "If you cannot find enough items, still output idx for whatever exists and explain the limitation in style_note. " +
-          "Never return empty items arrays."
-      };
+  role: "system",
+  content: `
+You are Tina, an autonomous AI stylist. 
+STRICT RULES:
+1. Output must be ONLY valid JSON. No text, no markdown, no commentary.
+2. JSON schema:
+{
+  "looks": [
+    {
+      "title": "string",
+      "style_note": "string",
+      "items": [
+        { "idx": "string" }
+      ]
+    }
+  ]
+}
+3. Use only "idx" values from wardrobe_preview or get_wardrobe. Never invent items.
+4. Always return at least 2 looks, each with 3–5 items.
+5. If wardrobe is too small, still return JSON with existing idx values and explain limitation in style_note.
+`
+};
 
 
 
@@ -1398,6 +1412,7 @@ complexion: prefs.complexion || "",
           function_call: "auto",
           temperature: 0.25,
           max_tokens: 1000,
+          response_format: { type: "json_object" }   // ✅ Force JSON-only
         }),
       });
 
@@ -1473,33 +1488,26 @@ complexion: prefs.complexion || "",
 
     // Try to parse the final assistant content as JSON (strict)
     let parsed;
-    if (!finalAssistantContent) {
-      console.warn("⚠️ Agent returned nothing. Using fallback simple looks.");
-      // fallback simple looks using first items
-      const fallbackItems = buildSampleFromList(rawWardrobe, 10);
-      parsed = {
-        looks: [
-          { title: "Fallback Look 1", style_note: "Auto fallback: insufficient agent output", items: fallbackItems.slice(0, 3).map(it => ({ idx: it.idx })) },
-          { title: "Fallback Look 2", style_note: "Auto fallback", items: fallbackItems.slice(3, 6).map(it => ({ idx: it.idx })) }
-        ],
-        note: "Agent did not produce final JSON, fallback applied."
-      };
-    } else {
+if (!finalAssistantContent) {
+  ...
+} else {
+  try {
+    parsed = JSON.parse(finalAssistantContent);
+  } catch (err) {
+    console.warn("⚠️ Raw content not valid JSON, attempting recovery");
+    const jsonMatch = finalAssistantContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
       try {
-        parsed = JSON.parse(finalAssistantContent);
-      } catch (err) {
-        // attempt to extract JSON object substring
-        const jsonMatch = finalAssistantContent.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            parsed = JSON.parse(jsonMatch[0]);
-          } catch (e2) {
-            parsed = null;
-          }
-        } else {
-          parsed = null;
-        }
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch (e2) {
+        console.error("❌ JSON recovery failed:", e2.message);
+        parsed = null;
       }
+    } else {
+      parsed = null;
+    }
+  },
+
 
       if (!parsed) {
         console.warn("⚠️ Could not parse assistant JSON. Returning fallback.");
