@@ -1114,7 +1114,19 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
         const lcCat = cleanCategory.toLowerCase();
 
         // Use the mapToCoreCategory function that's imported at the top
-        cleanCategory = mapToCoreCategory(lcCat);
+cleanCategory = mapToCoreCategory(lcCat);
+
+// 🔥 Fallback normalization
+if (["misc", "upper", "clothing upper"].includes(lcCat)) {
+  cleanCategory = "Top";
+}
+if (["lower", "clothing lower"].includes(lcCat)) {
+  cleanCategory = "Bottom";
+}
+if (["footwears", "shoe", "shoes"].includes(lcCat)) {
+  cleanCategory = "Footwear";
+}
+
 
 
         // Normalize name (avoid Clothing/Upper junk)
@@ -1122,6 +1134,9 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
         if (/clothing\/upper/i.test(cleanName)) cleanName = "Top";
         if (/clothing\/lower/i.test(cleanName)) cleanName = "Bottom";
         if (/clothing\/dresses?/i.test(cleanName)) cleanName = "Dress";
+
+        if (/misc/i.test(cleanName)) cleanName = "Top";
+        if (/upper/i.test(cleanName)) cleanName = "Top";
 
         return {
           id: d.id,
