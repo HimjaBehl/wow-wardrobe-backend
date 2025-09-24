@@ -1586,16 +1586,16 @@ if (!finalAssistantContent) {
 
         // hasCoreCategories is already imported at the top of the file
 
-const validationFB = validateLook(hydrated, { weather: city });
-const validationRules = validateLookAgainstRules(
-  { items: hydrated },
-  {
-    bannedItems: (prefs?.dislikes || []),
-    weather: city,
-    occasion: occasion,
-    prefs
-  }
-);
+// 🔥 Level 1 validation only
+const validationRules = {};
+if (!validateLevel1({ items: hydrated })) {
+  validationRules.valid = false;
+  validationRules.errors = ["Outfit must include Top+Bottom+Shoes (no Dress/Jumpsuit at Level 1)."];
+} else {
+  validationRules.valid = true;
+  validationRules.errors = [];
+}
+
 
 // 🔥 New beginner stylist rule
 // 🔥 Level 1 validation
@@ -1624,7 +1624,8 @@ if (!validateLevel1({ items: hydrated })) {
           title: look.title || `Untitled Look ${i + 1}`,
           style_note: look.style_note || "",
           items: hydrated,
-          validation: { fashionBrain: validationFB, styleRules: validationRules }
+          validation: { styleRules: validationRules }
+
         };
       });
 
