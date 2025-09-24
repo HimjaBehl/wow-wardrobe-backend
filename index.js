@@ -1316,11 +1316,10 @@ RULES:
 7. Boost categories/colors the user often likes (from style summary).
 8. Blend wardrobe items with trend inspiration where possible.
 9. Avoid repeating same exact outfit the user liked recently.
-10. Outfits must always match the requested occasion.
-+   Use the occasion provided by the user directly. 
-+   If it is unfamiliar, interpret it by choosing the closest fashion context 
-+   (e.g., “airport look” → comfortable travel wear, “date night” → chic evening look).
-+
+10. Outfits must always match the requested occasion. 
+   - Occasion: ${occasion}
+   - Only use categories appropriate for this occasion.
+   - Do not output casual, party, or other contexts when occasion is workwear.
 11. The occasion must appear in the title and style_note 
 +   (e.g., “Workwear Look”, “Date Night Look”).
 
