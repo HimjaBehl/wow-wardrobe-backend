@@ -1316,11 +1316,13 @@ RULES:
 7. Boost categories/colors the user often likes (from style summary).
 8. Blend wardrobe items with trend inspiration where possible.
 9. Avoid repeating same exact outfit the user liked recently.
-10. Only suggest outfits appropriate for the occasion:
-   - Brunch/day: dresses, skirts, shorts, casual tops, casual footwear
-   - Office: blouses, trousers, blazers, formal shoes
-   - Party: dresses, skirts, heels, statement accessories
-   - Wedding/festive: traditional wear, gowns, jewelry
+10. Outfits must always match the requested occasion.
++   Use the occasion provided by the user directly. 
++   If it is unfamiliar, interpret it by choosing the closest fashion context 
++   (e.g., “airport look” → comfortable travel wear, “date night” → chic evening look).
++
+11. The occasion must appear in the title and style_note 
++   (e.g., “Workwear Look”, “Date Night Look”).
 
 JSON Schema:
 {
@@ -1660,6 +1662,23 @@ if (!hasCoreCategories(hydrated)) {
     }
 
     console.log("🎨 Final parsed looks:", JSON.stringify(parsed, null, 2));
+
+    // 🔮 Enforce occasion in title + style_note
+    if (occasion) {
+      parsed.looks = (parsed.looks || []).map((look) => {
+        const lowerOccasion = occasion.toLowerCase();
+        // Title: ensure occasion mentioned
+        if (!look.title.toLowerCase().includes(lowerOccasion)) {
+          look.title = `${occasion} Look – ${look.title}`;
+        }
+        // Style_note: ensure occasion context
+        if (!look.style_note.toLowerCase().includes(lowerOccasion)) {
+          look.style_note = `${look.style_note} Styled for ${occasion}.`;
+        }
+        return look;
+      });
+    }
+
     return res.json(parsed);
 
   } catch (err) {
