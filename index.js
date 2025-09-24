@@ -1096,10 +1096,8 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
         let cleanCategory = (data.category || "").replace(/^Clothing\//i, "");
         const lcCat = cleanCategory.toLowerCase();
 
-        import { mapToCoreCategory } from "./lib/categoryMap.js"; // 🔥 add at top
-
-// Replace whole if/else with this
-let cleanCategory = mapToCoreCategory(lcCat);
+        // Use the mapToCoreCategory function that's imported at the top
+        cleanCategory = mapToCoreCategory(lcCat);
 
 
         // Normalize name (avoid Clothing/Upper junk)
@@ -1584,7 +1582,7 @@ if (!finalAssistantContent) {
         // 🔍 Debug logs
         console.log(`🔍 Hydrated look #${i + 1}:`, hydrated);
 
-        import { hasCoreCategories } from "./lib/validateCategories.js"; // 🔥 add at top
+        // hasCoreCategories is already imported at the top of the file
 
 const validationFB = validateLook(hydrated, { weather: city });
 const validationRules = validateLookAgainstRules(
