@@ -66,6 +66,12 @@ function getLevel1Basics() {
   ).map(b => `${b.principle}: ${b.rule} Example: ${b.example}`);
 }
 
+function getLevel2Basics() {
+  return fashionBasics.filter(b =>
+    ["Completeness", "Footwear Match", "Color Harmony", "Silhouette Balance"].includes(b.principle)
+  ).map(b => `${b.principle}: ${b.rule} Example: ${b.example}`);
+}
+
 console.log("✅ Loaded fashion taxonomy with top categories:", Object.keys(taxonomy));
 
 
@@ -1321,27 +1327,28 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
 
     // Build initial messages: system + user with context
     const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
-      const level1Basics = getLevel1Basics();
-const level1Prompt = `
-You are Tina, a beginner stylist intern.
-Your goal is to create very simple, complete outfits from the wardrobe provided.
+      const level2Basics = getLevel2Basics();
+const level2Prompt = `
+You are Tina, a beginner stylist intern (Level 2).
+Your goal is to create simple, complete outfits from the wardrobe provided.
 
-LEVEL 1 RULES:
+LEVEL 2 RULES:
 - Every outfit MUST be exactly: Top + Bottom + Footwear.
 - Footwear is mandatory.
 - Accessories optional, but only 1 if it clearly fits.
 - Do not use Dress or Jumpsuit at this level.
-- Notes must only describe chosen items (name, category, color).
-- Notes must be short and simple (1–2 sentences).
+- Notes must describe chosen items (name, category, color) in 1–2 short sentences.
+- Balance colors and silhouettes for harmony.
 
 Fashion basics you must follow:
-${level1Basics.join("\n")}
+${level2Basics.join("\n")}
 `;
 
 const systemMsg = {
   role: "system",
-  content: level1Prompt
+  content: level2Prompt
 };
+
 
 
 
@@ -1593,15 +1600,42 @@ if (!finalAssistantContent) {
 
         // hasCoreCategories is already imported at the top of the file
 
-// 🔥 Level 1 validation only
-const validationRules = {};
+// 🔥 Level 2 validation
+const validationRules = {
+  valid: true,
+  errors: []
+};
+
+// Level 1 structure check
 if (!validateLevel1({ items: hydrated })) {
   validationRules.valid = false;
-  validationRules.errors = ["Outfit must include Top+Bottom+Shoes (no Dress/Jumpsuit at Level 1)."];
-} else {
-  validationRules.valid = true;
-  validationRules.errors = [];
+  validationRules.errors.push("Outfit must include Top+Bottom+Shoes (no Dress/Jumpsuit at Level 2).");
 }
+
+// Level 2: Color Harmony
+const palettes = hydrated.map(it => (it.palette || "").toLowerCase()).filter(Boolean);
+const uniquePalettes = [...new Set(palettes)];
+if (uniquePalettes.length > 2) {
+  validationRules.valid = false;
+  validationRules.errors.push("Too many clashing color palettes: " + uniquePalettes.join(", "));
+}
+
+// Level 2: Silhouette Balance
+const uppers = hydrated.filter(it => it.silhouette === "upper");
+const lowers = hydrated.filter(it => it.silhouette === "lower");
+if (uppers.length && lowers.length) {
+  const bothFitted = uppers.every(it => /fitted/.test(it.silhouette || "")) &&
+                     lowers.every(it => /fitted/.test(it.silhouette || ""));
+  const bothLoose = uppers.every(it => /loose|oversize/.test(it.silhouette || "")) &&
+                    lowers.every(it => /loose|oversize/.test(it.silhouette || ""));
+  if (bothFitted || bothLoose) {
+    validationRules.valid = false;
+    validationRules.errors.push("Silhouette imbalance: mix fitted with loose for harmony.");
+  }
+}
+
+console.log(`🧪 Validation for look #${i + 1}:`, validationRules);
+
 
 
 // 🔥 New beginner stylist rule
