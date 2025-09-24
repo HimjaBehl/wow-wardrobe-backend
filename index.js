@@ -1064,6 +1064,20 @@ app.get("/privacy", (req, res) => {
   `);
 });
 
+// ✅ Normalize wardrobe categories cleanly
+function normalizeCategory(rawCat = "", rawName = "") {
+  const txt = (rawCat || rawName || "").toLowerCase();
+
+  if (/dress|jumpsuit/.test(txt)) return "Dress";
+  if (/shirt|top|blouse|t[- ]?shirt|upper/.test(txt)) return "Top";
+  if (/jeans|pants|shorts|skirt|trousers?|bottom/.test(txt)) return "Bottom";
+  if (/shoe|sneaker|heel|boot|loafer|sandal|footwear/.test(txt)) return "Footwear";
+  if (/jacket|coat|hoodie|outerwear/.test(txt)) return "Outerwear";
+  if (/bag|watch|jewel|bracelet|ring|sunglass|belt|scarf/.test(txt)) return "Accessory";
+
+  return "Misc";
+}
+
 
 // ─── Updated /suggest-outfit route: tool-calling agent loop ─────────────────
 app.post("/suggest-outfit", async (req, res) => {
@@ -1107,36 +1121,12 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
 
 
            let rawWardrobe = snap.docs.map(d => {
-        const data = d.data();
+  const data = d.data();
 
-        // Normalize category
-        let cleanCategory = (data.category || "").replace(/^Clothing\//i, "");
-        const lcCat = cleanCategory.toLowerCase();
-
-        // Use the mapToCoreCategory function that's imported at the top
-cleanCategory = mapToCoreCategory(lcCat);
-
-// 🔥 Fallback normalization
-if (["misc", "upper", "clothing upper"].includes(lcCat)) {
-  cleanCategory = "Top";
-}
-if (["lower", "clothing lower"].includes(lcCat)) {
-  cleanCategory = "Bottom";
-}
-if (["footwears", "shoe", "shoes"].includes(lcCat)) {
-  cleanCategory = "Footwear";
-}
+  // ✅ Clean category with helper
+  const cleanCategory = normalizeCategory(data.category, data.name);
 
 
-
-        // Normalize name (avoid Clothing/Upper junk)
-        let cleanName = data.name || "";
-        if (/clothing\/upper/i.test(cleanName)) cleanName = "Top";
-        if (/clothing\/lower/i.test(cleanName)) cleanName = "Bottom";
-        if (/clothing\/dresses?/i.test(cleanName)) cleanName = "Dress";
-
-        if (/misc/i.test(cleanName)) cleanName = "Top";
-        if (/upper/i.test(cleanName)) cleanName = "Top";
 
         return {
           id: d.id,
