@@ -1126,15 +1126,17 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
   // ✅ Clean category with helper
   const cleanCategory = normalizeCategory(data.category, data.name);
 
+  // ✅ Define cleanName properly
+  const cleanName = data.name || "Unnamed";
 
+  return {
+    id: d.id,
+    ...data,
+    name: cleanName,
+    category: cleanCategory,
+  };
+});
 
-        return {
-          id: d.id,
-          ...data,
-          name: cleanName,
-          category: cleanCategory,
-        };
-      });
 
       // 🎯 Occasion-aware filter
       if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
