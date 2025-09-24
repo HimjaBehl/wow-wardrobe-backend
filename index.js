@@ -1618,7 +1618,8 @@ if (!validateLevel1({ items: hydrated })) {
 
 
 
-        console.log(`🧪 Validation for look #${i + 1}:`, { validationFB, validationRules });
+        console.log(`🧪 Validation for look #${i + 1}:`, { validationRules });
+
 
         return {
           title: look.title || `Untitled Look ${i + 1}`,
