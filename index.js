@@ -50,7 +50,24 @@ import { isColorGoodForSkinTone } from "./lib/colorRules.js";
 // 🔮 Load fashion taxonomy
 import { taxonomy, findCategory, getAttributes } from "./lib/taxonomyUtils.js";
 import { themeAttributes } from "./lib/themeAttributes.js";
+
+// 🪄 Load fashion basics JSON
+let fashionBasics = [];
+try {
+  fashionBasics = JSON.parse(fs.readFileSync("fashionbasics.json", "utf-8")).basics || [];
+  console.log("✅ Loaded fashion basics:", fashionBasics.length);
+} catch (err) {
+  console.error("❌ Could not load fashionbasics.json:", err.message);
+}
+
+function getLevel1Basics() {
+  return fashionBasics.filter(b =>
+    ["Completeness", "Footwear Match"].includes(b.principle)
+  ).map(b => `${b.principle}: ${b.rule} Example: ${b.example}`);
+}
+
 console.log("✅ Loaded fashion taxonomy with top categories:", Object.keys(taxonomy));
+
 
 
 
@@ -1297,44 +1314,28 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
 
     // Build initial messages: system + user with context
     const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
-      const systemMsg = {
+      const level1Basics = getLevel1Basics();
+const level1Prompt = `
+You are Tina, a beginner stylist intern.
+Your goal is to create very simple, complete outfits from the wardrobe provided.
+
+LEVEL 1 RULES:
+- Every outfit MUST be exactly: Top + Bottom + Footwear.
+- Footwear is mandatory.
+- Accessories optional, but only 1 if it clearly fits.
+- Do not use Dress or Jumpsuit at this level.
+- Notes must only describe chosen items (name, category, color).
+- Notes must be short and simple (1–2 sentences).
+
+Fashion basics you must follow:
+${level1Basics.join("\n")}
+`;
+
+const systemMsg = {
   role: "system",
-  content: `
-You are Tina, an expert AI fashion stylist. 
-Your goal: create stylish, practical outfits.
-
-RULES:
-1. Output ONLY valid JSON (schema below).
-2. Outfits must balance silhouette (e.g. loose top + fitted bottom).
-3. Outfits must harmonize colors using warm/cool palettes.
-4. Always include footwear.
-4. ALWAYS include footwear.
-5. Valid outfits = (Top + Bottom + Shoes) OR (Dress + Shoes).
-6. Accessories are optional but encouraged.
-5. Respect user’s gender, bodyShape, complexion, dislikes, and style summary.
-6. Never suggest items, colors, or fabrics listed in dislikes.
-7. Boost categories/colors the user often likes (from style summary).
-8. Blend wardrobe items with trend inspiration where possible.
-9. Avoid repeating same exact outfit the user liked recently.
-10. Outfits must always match the requested occasion. 
-   - Occasion: ${occasion}
-   - Only use categories appropriate for this occasion.
-   - Do not output casual, party, or other contexts when occasion is workwear.
-11. The occasion must appear in the title and style_note 
-+   (e.g., “Workwear Look”, “Date Night Look”).
-
-JSON Schema:
-{
-  "looks": [
-    {
-      "title": "string",
-      "style_note": "string",
-      "items": [ { "idx": "string" } ]
-    }
-  ]
-}
-`
+  content: level1Prompt
 };
+
 
 
 
@@ -1597,12 +1598,23 @@ const validationRules = validateLookAgainstRules(
 );
 
 // 🔥 New beginner stylist rule
-if (!hasCoreCategories(hydrated)) {
+// 🔥 Level 1 validation
+function validateLevel1(look) {
+  const cats = look.items.map(it => (it.category || "").toLowerCase());
+  if (!(cats.includes("top") && cats.includes("bottom") && cats.includes("footwear"))) {
+    return false;
+  }
+  if (cats.includes("dress") || cats.includes("jumpsuit")) return false;
+  return true;
+}
+
+if (!validateLevel1({ items: hydrated })) {
   validationRules.valid = false;
   validationRules.errors = (validationRules.errors || []).concat([
-    "Outfit must include Top+Bottom+Shoes OR Dress+Shoes"
+    "Outfit must include Top+Bottom+Shoes (no Dress/Jumpsuit at Level 1)."
   ]);
 }
+
 
 
 
