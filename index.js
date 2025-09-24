@@ -10,6 +10,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 
+import { mapToCoreCategory } from "./lib/categoryMap.js";
+import { hasCoreCategories } from "./lib/validateCategories.js";
 
 
 import { validateLook } from "./lib/fashionBrain.js";
@@ -1094,19 +1096,11 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
         let cleanCategory = (data.category || "").replace(/^Clothing\//i, "");
         const lcCat = cleanCategory.toLowerCase();
 
-        if (lcCat.includes("upper") || lcCat.includes("top") || lcCat.includes("shirt") || lcCat.includes("blouse")) {
-          cleanCategory = "Top";
-        } else if (lcCat.includes("lower") || lcCat.includes("pants") || lcCat.includes("trouser") || lcCat.includes("skirt") || lcCat.includes("jeans")) {
-          cleanCategory = "Bottom";
-        } else if (lcCat.includes("dress") || lcCat.includes("jumpsuit") || lcCat.includes("overall")) {
-          cleanCategory = "Dress";
-        } else if (lcCat.includes("shoe") || lcCat.includes("boot") || lcCat.includes("sandal") || lcCat.includes("heel")) {
-          cleanCategory = "Footwear";
-        } else if (lcCat === "search" || lcCat.includes("bag") || lcCat.includes("accessor")) {
-          cleanCategory = "Accessory";
-        } else {
-          cleanCategory = "Misc";
-        }
+        import { mapToCoreCategory } from "./lib/categoryMap.js"; // 🔥 add at top
+
+// Replace whole if/else with this
+let cleanCategory = mapToCoreCategory(lcCat);
+
 
         // Normalize name (avoid Clothing/Upper junk)
         let cleanName = data.name || "";
@@ -1315,7 +1309,10 @@ RULES:
 1. Output ONLY valid JSON (schema below).
 2. Outfits must balance silhouette (e.g. loose top + fitted bottom).
 3. Outfits must harmonize colors using warm/cool palettes.
-4. Always include footwear unless it is clear from the look (like jumpsuits with built-in style).
+4. Always include footwear.
+4. ALWAYS include footwear.
+5. Valid outfits = (Top + Bottom + Shoes) OR (Dress + Shoes).
+6. Accessories are optional but encouraged.
 5. Respect user’s gender, bodyShape, complexion, dislikes, and style summary.
 6. Never suggest items, colors, or fabrics listed in dislikes.
 7. Boost categories/colors the user often likes (from style summary).
@@ -1587,8 +1584,10 @@ if (!finalAssistantContent) {
         // 🔍 Debug logs
         console.log(`🔍 Hydrated look #${i + 1}:`, hydrated);
 
-        const validationFB = validateLook(hydrated, { weather: city });
-        const validationRules = validateLookAgainstRules(
+        import { hasCoreCategories } from "./lib/validateCategories.js"; // 🔥 add at top
+
+const validationFB = validateLook(hydrated, { weather: city });
+const validationRules = validateLookAgainstRules(
   { items: hydrated },
   {
     bannedItems: (prefs?.dislikes || []),
@@ -1597,6 +1596,15 @@ if (!finalAssistantContent) {
     prefs
   }
 );
+
+// 🔥 New beginner stylist rule
+if (!hasCoreCategories(hydrated)) {
+  validationRules.valid = false;
+  validationRules.errors = (validationRules.errors || []).concat([
+    "Outfit must include Top+Bottom+Shoes OR Dress+Shoes"
+  ]);
+}
+
 
 
         console.log(`🧪 Validation for look #${i + 1}:`, { validationFB, validationRules });
