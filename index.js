@@ -44,8 +44,12 @@ app.use(cors({
 
 import getTrendInsights from "./tools/getTrendInsights.js";
 
+import { validateLookAgainstRules, validateLevel2, validateLevel1 } from "./lib/styleRules.js";
 
-import { validateLookAgainstRules } from "./lib/styleRules.js";
+
+
+
+
 import { isColorGoodForSkinTone } from "./lib/colorRules.js";
 // 🔮 Load fashion taxonomy
 import { taxonomy, findCategory, getAttributes } from "./lib/taxonomyUtils.js";
@@ -1601,16 +1605,9 @@ if (!finalAssistantContent) {
         // hasCoreCategories is already imported at the top of the file
 
 // 🔥 Level 2 validation
-const validationRules = {
-  valid: true,
-  errors: []
-};
+// Level 2 validation (color + silhouette checks)
+const validationRules = validateLevel2({ items: hydrated });
 
-// Level 1 structure check
-if (!validateLevel1({ items: hydrated })) {
-  validationRules.valid = false;
-  validationRules.errors.push("Outfit must include Top+Bottom+Shoes (no Dress/Jumpsuit at Level 2).");
-}
 
 // Level 2: Color Harmony
 const palettes = hydrated.map(it => (it.palette || "").toLowerCase()).filter(Boolean);
