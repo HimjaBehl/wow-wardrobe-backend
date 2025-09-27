@@ -1802,6 +1802,29 @@ app.post("/like-outfit", async (req, res) => {
   }
 });
 
+// ✅ Dislike outfit (save reason for learning Tina’s preferences)
+app.post("/dislike-outfit", async (req, res) => {
+  const { uid, outfit, reason = "Not my style" } = req.body;
+
+  if (!uid || !outfit) {
+    return res.status(400).json({ error: "uid & outfit required" });
+  }
+
+  try {
+    await db.collection("disliked_looks").add({
+      uid,
+      outfit,
+      reason,
+      disliked_at: new Date().toISOString(),
+    });
+
+    res.json({ message: "Look disliked!" });
+  } catch (e) {
+    console.error("❌ dislike-outfit failed:", e.message);
+    res.status(500).json({ error: "Could not save dislike" });
+  }
+});
+
 
 
 // ✅ Save outfit plan for a date
