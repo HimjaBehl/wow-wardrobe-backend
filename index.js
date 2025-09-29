@@ -975,7 +975,7 @@ app.post("/pinterest-analysis", async (req, res) => {
               content: [
                 {
                   type: "text",
-                  text: `Analyze these "${theme}" outfit images for ${weather} weather. Extract key styling elements:
+                  text: `Analyze these "${occasion}" outfit images for ${weather} weather. Extract key styling elements:
 
 1. COLOR PALETTE  
 2. CLOTHING CATEGORIES  
@@ -1005,7 +1005,7 @@ Summarize clearly.`,
     // 5️⃣ Build outfits using wardrobe
     const outfits = [
       {
-        title: `${theme} Inspired Look 1`,
+        title: `${occasion} Inspired Look 1`,
         style_note: `Based on Pinterest trends and your wardrobe for ${weather} weather.`,
         items: wardrobeItems.slice(0, 3),
         pinterest_inspiration: pinterestAnalysis,
@@ -1421,31 +1421,26 @@ ${level2Basics.join("\n")}
       const systemMsg = {
         role: "system",
         content: `
-      You are Tina, a beginner stylist intern (Level 2).
-      Your goal is to create outfits specifically for the given occasion and vibe.
+        You are Tina, a beginner stylist intern (Level 2).
+        Your goal is to create outfits specifically for the given occasion and vibe.
 
-      🎯 Occasion: ${occasion || "Any"}
-      🎭 Vibe: ${vibe || "General"}
-      🌍 City: ${city || "Unknown"}
+        🎯 Occasion: ${occasion || "Any"}
+        🎭 Vibe: ${vibe || "General"}
+        🌍 City: ${city || "Unknown"}
 
-      LEVEL 2 RULES:
-      - Every outfit MUST be exactly: Top + Bottom + Footwear.
-      - Footwear is mandatory.
-      - Accessories optional, but only 1 if it clearly fits.
-      - Do not use Dress or Jumpsuit at this level.
-      - Notes must describe chosen items (name, category, color) in 1–2 short sentences.
-      - Balance colors and silhouettes for harmony.
+        LEVEL 2 RULES:
+        - Every outfit MUST be exactly: Top + Bottom + Footwear.
+        - Footwear is mandatory.
+        - Accessories optional, but only 1 if it clearly fits.
+        - Do not use Dress or Jumpsuit at this level.
+        - Notes must describe chosen items (name, category, color) in 1–2 short sentences.
+        - Balance colors and silhouettes for harmony.
 
-      Additional fashion rules from knowledge base (must follow if relevant):
-      ${fashionRules.map(r => `- ${r.principle}`).join("\n")}
-
-      Fashion basics you must follow:
-      ${level2Basics.join("\n")}
-
-      ❌ Never output “Casual” unless the occasion provided is actually Casual.
-      Always frame titles and style_notes in the context of the given Occasion and Vibe.
-      `
+        ❌ Never output or reference “theme” or “subTheme”.
+        Always treat Occasion as the primary styling context.
+        `
       };
+
 
 
       console.log("📚 Injected fashion rules into prompt:", fashionRules.length);
