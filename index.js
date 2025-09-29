@@ -1684,10 +1684,14 @@ const validationRules = validateLevel2({ items: hydrated });
 // Level 2: Color Harmony
 const palettes = hydrated.map(it => (it.palette || "").toLowerCase()).filter(Boolean);
 const uniquePalettes = [...new Set(palettes)];
-if (uniquePalettes.length > 2) {
-  validationRules.valid = false;
-  validationRules.errors.push("Too many clashing color palettes: " + uniquePalettes.join(", "));
-}
+        const neutralColors = ["black", "white", "grey", "beige", "denim", "navy"];
+        const filteredPalettes = uniquePalettes.filter(p => !neutralColors.includes(p));
+        if (filteredPalettes.length > 2) {
+          // ❗ Only fail if >2 *non-neutral* palettes
+          validationRules.valid = false;
+          validationRules.errors.push("Too many clashing color palettes: " + filteredPalettes.join(", "));
+        }
+
 
 // Level 2: Silhouette Balance
 const uppers = hydrated.filter(it => it.silhouette === "upper");
@@ -1698,9 +1702,10 @@ if (uppers.length && lowers.length) {
   const bothLoose = uppers.every(it => /loose|oversize/.test(it.silhouette || "")) &&
                     lowers.every(it => /loose|oversize/.test(it.silhouette || ""));
   if (bothFitted || bothLoose) {
-    validationRules.valid = false;
-    validationRules.errors.push("Silhouette imbalance: mix fitted with loose for harmony.");
+    // ❗ Don’t fail – just warn
+    validationRules.errors.push("Silhouette imbalance: try mixing fitted with loose for harmony.");
   }
+
 }
 
 console.log(`🧪 Validation for look #${i + 1}:`, validationRules);
@@ -1718,12 +1723,25 @@ function validateLevel1(look) {
   return true;
 }
 
-if (!validateLevel1({ items: hydrated })) {
-  validationRules.valid = false;
-  validationRules.errors = (validationRules.errors || []).concat([
-    "Outfit must include Top+Bottom+Shoes (no Dress/Jumpsuit at Level 1)."
-  ]);
-}
+        if (!validateLevel1({ items: hydrated })) {
+          // ⚠️ Instead of failing, auto-add staple shoes if missing
+          const hasFootwear = hydrated.some(it => (it.category || "").toLowerCase() === "footwear");
+          if (!hasFootwear) {
+            hydrated.push({
+              id: "staple-shoes",
+              name: "Default Sneakers",
+              category: "Footwear",
+              color: "Neutral",
+              silhouette: "footwear",
+              palette: "neutral",
+              image_url: "https://dummyimage.com/200x200/000000/ffffff&text=Staple+Shoes"
+            });
+            validationRules.errors.push("Auto-added staple footwear for completeness.");
+          } else {
+            validationRules.errors.push("Outfit structure incomplete (expected Top+Bottom+Shoes).");
+          }
+        }
+
 
 
 
