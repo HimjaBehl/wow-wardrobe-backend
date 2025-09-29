@@ -547,7 +547,8 @@ app.get("/staples", async (req, res) => {
 
 // ✅ Enhanced Quick Add - Manual item entry with optional image
 app.post("/quick-add", async (req, res) => {
-  const { uid, name, category, color, image_url } = req.body;
+  const { uid, name, category = "Staple", color = "Default", image_url } = req.body;
+
 
   console.log("⚡ Quick-add request:", {
     uid,
@@ -577,7 +578,14 @@ app.post("/quick-add", async (req, res) => {
 
     const capitalizedName = capitalizeWords(name);
     const rawCategory = capitalizeWords(category || "");
-    const normalizedCategory = normalizeCategory(rawCategory, capitalizedName);
+    let normalizedCategory;
+    try {
+      normalizedCategory = normalizeCategory(rawCategory, capitalizedName);
+    } catch (e) {
+      console.warn("⚠️ normalizeCategory failed, falling back:", e.message);
+      normalizedCategory = rawCategory || "Staple";
+    }
+
 
     const capitalizedColor = capitalizeWords(color || "");
 
@@ -600,6 +608,14 @@ app.post("/quick-add", async (req, res) => {
     };
 
     const docRef = await db.collection("wardrobe").add(itemData);
+
+    console.log("👟 Saving quick-add staple:", {
+      uid,
+      name: capitalizedName,
+      category: normalizedCategory,
+      color: capitalizedColor,
+      image_url: image_url || null,
+    });
 
     console.log("✅ Quick-add item saved:", docRef.id);
 
