@@ -9,6 +9,8 @@ const openai = new OpenAI({
 import dotenv from "dotenv";
 dotenv.config();
 
+import { normalizeCategory } from "./lib/normalizeCategory.js";
+
 
 import { mapToCoreCategory } from "./lib/categoryMap.js";
 import { hasCoreCategories } from "./lib/validateCategories.js";
@@ -593,7 +595,9 @@ app.post("/quick-add", async (req, res) => {
     }
 
     const capitalizedName = capitalizeWords(name);
-    const capitalizedCategory = capitalizeWords(category || "");
+    const rawCategory = capitalizeWords(category || "");
+    const normalizedCategory = normalizeCategory(rawCategory, capitalizedName);
+
     const capitalizedColor = capitalizeWords(color || "");
 
     // Create tags array with name, color, and category
@@ -603,7 +607,7 @@ app.post("/quick-add", async (req, res) => {
     const itemData = {
       uid,
       name: capitalizedName,
-      category: capitalizedCategory,
+      category: normalizedCategory,   // ✅ instead of raw,
       color: capitalizedColor,
       image_url: image_url || null,
       tags,
@@ -689,12 +693,15 @@ app.post("/quick-add", async (req, res) => {
           ? getAttributes(taxonomyMatch.subCategory) || {}
           : {};
 
+        // 👇 Normalize category before saving
+        const normalizedCategory = normalizeCategory(capitalizedCategory, capitalizedName);
+
         const docRef = await db.collection("wardrobe").add({
           uid,
           image_path,
           image_url,
           name: capitalizedName,
-          category: capitalizedCategory,
+          category: normalizedCategory,   // ✅ normalized instead of raw
           color: capitalizedColor,
           tags: capitalizedTags,
           primaryTag,
@@ -705,6 +712,7 @@ app.post("/quick-add", async (req, res) => {
           attributes: taxonomyAttributes,
           created_at: new Date().toISOString(),
         });
+
 
         res.status(200).json({ message: "Item added", id: docRef.id });
       } catch (err) {
@@ -1074,20 +1082,30 @@ app.get("/privacy", (req, res) => {
   `);
 });
 
-// ✅ Normalize wardrobe categories cleanly
-function normalizeCategory(rawCat = "", rawName = "") {
-  const txt = (rawCat || rawName || "").toLowerCase();
 
-  if (/dress|jumpsuit/.test(txt)) return "Dress";
-  if (/shirt|top|blouse|t[- ]?shirt|upper/.test(txt)) return "Top";
-  if (/jeans|pants|shorts|skirt|trousers?|bottom/.test(txt)) return "Bottom";
-  if (/shoe|sneaker|heel|boot|loafer|sandal|footwear/.test(txt)) return "Footwear";
-  if (/jacket|coat|hoodie|outerwear/.test(txt)) return "Outerwear";
-  if (/bag|watch|jewel|bracelet|ring|sunglass|belt|scarf/.test(txt)) return "Accessory";
 
-  return "Misc";
-}
+// ✅ Fetch fashion rules (general, complexion, body type, wardrobe)
+app.get("/fashion-rules", async (req, res) => {
+  try {
+    const { category } = req.query; // optional filter
+    let query = db.collection("fashion_rules");
 
+    if (category) {
+      query = query.where("category", "==", category);
+    }
+
+    const snapshot = await query.get();
+    if (snapshot.empty) {
+      return res.status(404).json({ error: "No rules found" });
+    }
+
+    const rules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json({ success: true, rules });
+  } catch (err) {
+    console.error("❌ Fetch fashion rules failed:", err.message);
+    res.status(500).json({ error: "Failed to fetch fashion rules" });
+  }
+});
 
 // ─── Updated /suggest-outfit route: tool-calling agent loop ─────────────────
 app.post("/suggest-outfit", async (req, res) => {
@@ -1104,6 +1122,28 @@ app.post("/suggest-outfit", async (req, res) => {
   // Prefetch user preferences & a basic wardrobe snapshot (we still expose function to fetch full)
   const prefs = await getUserMemory(uid).catch(() => ({}));
 const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
+
+  // ✅ Fetch fashion rules based on user prefs
+  let fashionRules = [];
+  try {
+    const rulesSnap = await db.collection("fashion_rules").get();
+    fashionRules = rulesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // Filter by prefs (complexion + bodyShape)
+    const userRules = fashionRules.filter(rule => {
+      if (prefs.complexion && rule.rule_id.includes(prefs.complexion.toLowerCase())) return true;
+      if (prefs.bodyShape && rule.rule_id.includes(prefs.bodyShape.toLowerCase())) return true;
+      if (rule.category === "general") return true;
+      return false;
+    });
+
+    fashionRules = userRules;
+    console.log("🎯 Loaded fashion rules for user:", fashionRules.map(r => r.rule_id));
+  } catch (err) {
+    console.error("❌ Failed to fetch fashion rules:", err.message);
+    fashionRules = [];
+  }
+
 
 
     try {
@@ -1231,6 +1271,21 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
       return { items: buildSampleFromList(rawWardrobe, max), count: rawWardrobe.length };
     }
 
+      // ✅ Fetch fashion rules for Tina
+      async function fn_getFashionRules({ category = "" }) {
+        try {
+          let query = db.collection("fashion_rules");
+          if (category) {
+            query = query.where("category", "==", category);
+          }
+          const snapshot = await query.get();
+          return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (err) {
+          console.error("❌ Error fetching fashion rules:", err.message);
+          return [];
+        }
+      }
+
     async function fn_getTrends({ query = vibe || "general", source = "pinterest", limit = 5 }) {
       try {
         // getTrendInsights is a tool you already imported. If it expects args adjust accordingly.
@@ -1313,6 +1368,17 @@ const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
         }
       },
       {
+        name: "get_fashion_rules",
+        description: "Fetch fashion knowledge base rules for styling (general, complexion, body type, wardrobe).",
+        parameters: {
+          type: "object",
+          properties: {
+            category: { type: "string", description: "Optional filter (general, complexion, body_type, wardrobe)" }
+          },
+          required: []
+        }
+      },
+      {
         name: "validate_look",
         description: "Validate a proposed look (array of items) against style rules and return the structured validation.",
         parameters: {
@@ -1344,6 +1410,9 @@ LEVEL 2 RULES:
 - Notes must describe chosen items (name, category, color) in 1–2 short sentences.
 - Balance colors and silhouettes for harmony.
 
+Additional fashion rules from knowledge base (must follow if relevant):
+${fashionRules.map(r => `- ${r.principle}`).join("\n")}
+
 Fashion basics you must follow:
 ${level2Basics.join("\n")}
 `;
@@ -1353,6 +1422,7 @@ const systemMsg = {
   content: level2Prompt
 };
 
+      console.log("📚 Injected fashion rules into prompt:", fashionRules.length);
 
 
 
@@ -1483,6 +1553,8 @@ wardrobe_preview: wardrobeSample,
             fnResult = await fn_getWardrobe(fnArgs);
           } else if (fnName === "get_trends") {
             fnResult = await fn_getTrends(fnArgs);
+            } else if (fnName === "get_fashion_rules") {
+            fnResult = await fn_getFashionRules(fnArgs);
           } else if (fnName === "validate_look") {
             fnResult = await fn_validateLook(fnArgs);
           } else {
