@@ -1215,8 +1215,9 @@ app.post("/suggest-outfit", async (req, res) => {
       };
     });
 
-    // 🎯 Occasion-aware filter
+    // 🎯 Occasion-aware filter (strict)
     if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
+
       const allowedCats = occasionCategoryMap[occasion.toLowerCase()];
       rawWardrobe = rawWardrobe.filter((it) =>
         allowedCats.some((cat) =>
@@ -1243,7 +1244,16 @@ app.post("/suggest-outfit", async (req, res) => {
     console.log("📊 Total wardrobe items normalized:", rawWardrobe.length);
 
     // Small helper to map wardrobe to compact sample (idx strings)
+    function shuffleArray(arr) {
+      return arr
+        .map((a) => ({ sort: Math.random(), value: a }))
+        .sort((a, b) => a.sort - b.sort)
+        .map((a) => a.value);
+    }
+
     function buildSampleFromList(list = [], max = 50) {
+      const shuffled = shuffleArray(list); // 👈 randomize to reduce repetition
+
       return list.slice(0, max).map((it, idx) => {
         const cleanName = it.name || "Unnamed";
         const cleanCategory = it.category || "Misc"; // trust normalization done earlier
@@ -1492,7 +1502,9 @@ ${level2Basics.join("\n")}
         - Do not use Dress or Jumpsuit at this level.
         - Notes must describe chosen items (name, category, color) in 1–2 short sentences.
         - Balance colors and silhouettes for harmony.
-
+- MUST always dress for the occasion. If brunch → casual chic; if wedding → elegant/formal, etc.
+  - MUST vary items — avoid reusing the same piece in every look.
+  
         ❌ Never output or reference “theme” or “subTheme”.
         Always treat Occasion as the primary styling context.
         `,
@@ -1789,14 +1801,7 @@ ${level2Basics.join("\n")}
       const filteredPalettes = uniquePalettes.filter(
         (p) => !neutralColors.includes(p),
       );
-      if (filteredPalettes.length > 2) {
-        // ❗ Only fail if >2 *non-neutral* palettes
-        validationRules.valid = false;
-        validationRules.errors.push(
-          "Too many clashing color palettes: " + filteredPalettes.join(", "),
-        );
-      }
-
+      
       // Level 2: Silhouette Balance
       const uppers = hydrated.filter((it) => it.silhouette === "upper");
       const lowers = hydrated.filter((it) => it.silhouette === "lower");
