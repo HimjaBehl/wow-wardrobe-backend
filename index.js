@@ -547,7 +547,13 @@ app.get("/staples", async (req, res) => {
 
 // ✅ Enhanced Quick Add - Manual item entry with optional image
 app.post("/quick-add", async (req, res) => {
-  const { uid, name, category = "Staple", color = "Default", image_url } = req.body;
+  let { uid, name, category = "Staple", color = "Default", image_url } = req.body;
+
+  // ⚡ Auto-fallback UID for staples
+  if (!uid) {
+    uid = "staples-global"; // change to real user uid if you want to duplicate into each user’s wardrobe
+  }
+
 
 
   console.log("⚡ Quick-add request:", {
@@ -558,12 +564,13 @@ app.post("/quick-add", async (req, res) => {
     has_image: !!image_url,
   });
 
-  if (!uid || !name) {
+  if (!name) {
     return res.status(400).json({
       success: false,
-      message: "UID and name are required",
+      message: "Name is required",
     });
   }
+
 
   try {
     // Helper function to capitalize words
