@@ -587,7 +587,13 @@ app.post("/quick-add", async (req, res) => {
     const rawCategory = capitalizeWords(category || "");
     let normalizedCategory;
     try {
-      normalizedCategory = normalizeCategory(rawCategory, capitalizedName);
+      try {
+        normalizedCategory = normalizeCategory(rawCategory, capitalizedName);
+      } catch (e) {
+        console.warn("⚠️ normalizeCategory failed, defaulting to Staple:", e.message);
+        normalizedCategory = "Staple";
+      }
+
     } catch (e) {
       console.warn("⚠️ normalizeCategory failed, falling back:", e.message);
       normalizedCategory = rawCategory || "Staple";
