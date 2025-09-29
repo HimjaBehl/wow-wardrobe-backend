@@ -589,10 +589,15 @@ app.post("/quick-add", async (req, res) => {
     try {
       try {
         normalizedCategory = normalizeCategory(rawCategory, capitalizedName);
+        if (!normalizedCategory) {
+          console.warn("⚠️ normalizeCategory returned empty, forcing Staple");
+          normalizedCategory = "Staple";
+        }
       } catch (e) {
-        console.warn("⚠️ normalizeCategory failed, defaulting to Staple:", e.message);
+        console.warn("⚠️ normalizeCategory failed, forcing Staple:", e.message);
         normalizedCategory = "Staple";
       }
+
 
     } catch (e) {
       console.warn("⚠️ normalizeCategory failed, falling back:", e.message);
@@ -606,19 +611,21 @@ app.post("/quick-add", async (req, res) => {
     const tags = [
       capitalizedName,
       capitalizedColor,
-      capitalizedCategory,
+      normalizedCategory || "Staple",
     ].filter(Boolean);
+
 
     // Create wardrobe item with simplified structure for quick-add
     const itemData = {
       uid,
       name: capitalizedName,
-      category: normalizedCategory, // ✅ instead of raw,
-      color: capitalizedColor,
+      category: normalizedCategory || "Staple",
+      color: capitalizedColor || "Default",
       image_url: image_url || null,
-      tags,
+      tags: tags.length ? tags : [capitalizedName, "Staple"],
       created_at: new Date().toISOString(),
     };
+
 
     const docRef = await db.collection("wardrobe").add(itemData);
 
