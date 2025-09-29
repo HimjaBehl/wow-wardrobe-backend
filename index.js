@@ -932,11 +932,11 @@ async function getUserMemory(uid) {
 // ✅ Pinterest Analysis via Official API
 app.post("/pinterest-analysis", async (req, res) => {
   try {
-    const { uid, theme, weather = "mild", city = "Delhi" } = req.body;
-
-    if (!uid || !theme) {
-      return res.status(400).json({ error: "uid and theme are required" });
+    const { uid, occasion, weather = "mild", city = "Delhi" } = req.body;
+    if (!uid || !occasion) {
+      return res.status(400).json({ error: "uid and occasion are required" });
     }
+
 
     // 1️⃣ Fetch wardrobe from Firestore
     const snapshot = await db.collection("wardrobe").where("uid", "==", uid).get();
@@ -946,7 +946,8 @@ app.post("/pinterest-analysis", async (req, res) => {
     const wardrobeItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // 2️⃣ Build Pinterest search query
-    const searchQuery = `${theme} ${weather} outfits`;
+    const searchQuery = `${occasion} ${weather} outfits`;
+
 
     // 3️⃣ Call Pinterest API (Pins search endpoint)
     const pinterestRes = await axios.get(
