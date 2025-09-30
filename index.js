@@ -1707,6 +1707,18 @@ ${level2Basics.join("\n")}
         🎭 Vibe: ${vibe || "General"}
         🌍 City: ${city || "Unknown"}
 
+        👤 User Profile:
+        - Gender: ${prefs.gender || "Unspecified"}
+        - Body Shape: ${prefs.bodyShape || "Unspecified"}
+        - Complexion: ${prefs.complexion || "Unspecified"}
+        - Explicit Dislikes: ${prefs.dislikes?.join(", ") || "None"}
+
+        RULES:
+        - Avoid items/colors/styles the user dislikes.
+        - Pick silhouettes flattering for their body shape.
+        - Use palettes that suit their complexion.
+        - Ensure outfits align with their gender identity/preferences.
+
         LEVEL 2 RULES:
         - Every outfit MUST be exactly: Top + Bottom + Footwear.
         - Footwear is mandatory.
@@ -1714,13 +1726,14 @@ ${level2Basics.join("\n")}
         - Do not use Dress or Jumpsuit at this level.
         - Notes must describe chosen items (name, category, color) in 1–2 short sentences.
         - Balance colors and silhouettes for harmony.
-- MUST always dress for the occasion. If brunch → casual chic; if wedding → elegant/formal, etc.
-  - MUST vary items — avoid reusing the same piece in every look.
-  
+        - MUST always dress for the occasion. If brunch → casual chic; if wedding → elegant/formal, etc.
+        - MUST vary items — avoid reusing the same piece in every look.
+
         ❌ Never output or reference “theme” or “subTheme”.
         Always treat Occasion as the primary styling context.
-        `,
+      `,
     };
+
 
     console.log("📚 Injected fashion rules into prompt:", fashionRules.length);
 
