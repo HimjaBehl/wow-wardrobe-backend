@@ -1981,7 +1981,7 @@ ${level2Basics.join("\n")}
       return makeComboFingerprint(items);
     }
 
-    parsed.looks = await Promise.all((parsed.looks || []).map(async (look, i) => {
+    parsed.looks = (parsed.looks || []).map((look, i) => {
       // 🛑 Fallback: if Tina gave no items, inject random sample
       if (!look.items || look.items.length === 0) {
         console.warn(`⚠️ Look ${i + 1} had no items, applying fallback.`);
@@ -2017,6 +2017,54 @@ ${level2Basics.join("\n")}
           return null;
         })
         .filter(Boolean);
+
+      // ✅ Check combo memory
+      const combo = makeComboFingerprint(hydrated);
+
+      // If combo matches a disliked one → mark warning
+      if (dislikedCombos.includes(combo)) {
+        look.style_note += " ⚠️ This combination matches a previously disliked look.";
+        look.validation = look.validation || {};
+        look.validation.comboWarning = "Disliked combo match";
+
+        // 🔄 Smart fallback: try swapping only 1 item
+        let fixed = false;
+        for (let j = 0; j < hydrated.length; j++) {
+          const candidateItems = buildSampleFromList(rawWardrobe, 10);
+          for (const cand of candidateItems) {
+            const newItems = [...hydrated];
+            newItems[j] = cand; // replace one item
+            const newCombo = makeComboFingerprint(newItems);
+            if (!dislikedCombos.includes(newCombo)) {
+              hydrated = newItems;
+              look.items = newItems;
+              look.style_note += ` | Re-weighted by swapping ${cand.name} to avoid disliked combo.`;
+              look.validation.comboWarning = "Fixed by single-item swap";
+              fixed = true;
+              await logComboEvent(uid, "swap");   // ✅ log swap
+              break;
+            }
+          }
+          if (fixed) break;
+        }
+
+        // If still disliked → replace whole outfit
+        if (!fixed) {
+          const retryItems = buildSampleFromList(rawWardrobe, 5);
+          const retryCombo = makeComboFingerprint(
+
+
+      // If combo matches a liked one → mark boost
+            if (likedCombos.includes(combo)) {
+              look.style_note += " ❤️ This combination is similar to one you liked before!";
+              look.validation = look.validation || {};
+              look.validation.comboBoost = "Liked combo match";
+
+              // 🔥 Log this event into Tina’s memory
+              await logComboEvent(uid, "like");
+            }
+
+
 
       // 🔍 Debug logs
       console.log(`🔍 Hydrated look #${i + 1}:`, hydrated);
@@ -2165,7 +2213,7 @@ ${level2Basics.join("\n")}
         items: hydrated,
         validation: { styleRules: validationRules },
       };
-    }));
+    });
 
     // Final filter: keep looks, even if invalid — just warn
     parsed.looks = parsed.looks.map((l) => {
