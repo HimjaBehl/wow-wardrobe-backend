@@ -482,7 +482,7 @@ app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// ✅ Fetch wardrobe by user ID (optimized)
+// ✅ Fetch wardrobe by user ID (normalized + hydrated)
 app.get("/wardrobe", async (req, res) => {
   try {
     let { uid } = req.query;
@@ -494,7 +494,6 @@ app.get("/wardrobe", async (req, res) => {
 
     console.log("📥 Incoming UID:", uid);
 
-    // 🔍 Direct Firestore query (faster, cheaper)
     const snapshot = await db
       .collection("wardrobe")
       .where("uid", "==", uid)
@@ -505,12 +504,38 @@ app.get("/wardrobe", async (req, res) => {
       return res.json([]);
     }
 
-    const items = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // Helper to normalize display name
+    function normalizeName(data) {
+      if (data.primaryTag) return data.primaryTag;
+      if (data.name?.startsWith("Unknown")) {
+        return data.name.replace(/^Unknown\s+/i, "").trim();
+      }
+      if (data.name?.startsWith("Default")) {
+        return data.name.replace(/^Default\s+/i, "").trim();
+      }
+      return data.name || "Unnamed";
+    }
 
-    console.log("📦 Docs found:", items.length);
+    const items = snapshot.docs.map((doc) => {
+      const data = doc.data();
+
+      const normalizedCategory = normalizeCategory(
+        data.category || "",
+        data.name || "",
+      );
+      const taxonomyPath = mapTaxonomy(normalizedCategory);
+
+      return hydrateWardrobeItem({
+        id: doc.id,
+        ...data,
+        name: normalizeName(data),
+        primaryTag: normalizeName(data),
+        category: normalizedCategory,
+        taxonomyPath,
+      });
+    });
+
+    console.log("📦 Normalized wardrobe items:", items.length);
     res.json(items);
   } catch (err) {
     console.error("❌ Fetch wardrobe error:", err.message);
