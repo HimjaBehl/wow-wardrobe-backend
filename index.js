@@ -1255,11 +1255,20 @@ app.post("/suggest-outfit", async (req, res) => {
     if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
 
       const allowedCats = occasionCategoryMap[occasion.toLowerCase()];
-      rawWardrobe = rawWardrobe.filter((it) =>
-        allowedCats.some((cat) =>
-          (it.category || "").toLowerCase().includes(cat.toLowerCase()),
-        ),
-      );
+      rawWardrobe = rawWardrobe.filter((it) => {
+        const cat = (it.category || "").toLowerCase();
+        return allowedCats.some((allowed) => {
+          const a = allowed.toLowerCase();
+          return (
+            cat.includes(a) || // direct contains
+            it.name?.toLowerCase().includes(a) || // also check name
+            (cat.startsWith("formal") && a.includes("shirt")) || // catch formal shirt
+            (cat.includes("trouser") && a.includes("pants")) || // pants vs trousers
+            (cat.includes("heel") && a.includes("shoes")) // heels vs shoes
+          );
+        });
+      });
+
       console.log(
         `🎯 Occasion filter applied for "${occasion}", items left:`,
         rawWardrobe.length,
