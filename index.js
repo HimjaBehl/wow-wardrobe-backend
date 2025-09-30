@@ -1751,6 +1751,30 @@ Fashion basics you must follow:
 ${level2Basics.join("\n")}
 `;
 
+    // 🔥 Force wardrobe fetch before agent loop
+    const wardrobeSample =
+      rawWardrobe.length > 0 ? buildSampleFromList(rawWardrobe, 50) : [];
+
+    console.log("👕 wardrobeSample built:", wardrobeSample.length, "items");
+
+    const messages = [
+      systemMsg,
+      {
+        role: "function",
+        name: "get_wardrobe",
+        content: JSON.stringify({
+          items: wardrobeSample,
+          count: wardrobeSample.length,
+        }),
+      },
+      userMsg,
+    ];
+
+    console.log(
+      "👜 Forced wardrobe injected into messages:",
+      wardrobeSample.length,
+      "items"
+    );
     const userMsg = {
       role: "user",
       content: JSON.stringify(
@@ -1798,30 +1822,7 @@ ${level2Basics.join("\n")}
     };
 
 
-    // 🔥 Force wardrobe fetch before agent loop
-    const wardrobeSample =
-      rawWardrobe.length > 0 ? buildSampleFromList(rawWardrobe, 50) : [];
-
-    console.log("👕 wardrobeSample built:", wardrobeSample.length, "items");
-
-    const messages = [
-      systemMsg,
-      {
-        role: "function",
-        name: "get_wardrobe",
-        content: JSON.stringify({
-          items: wardrobeSample,
-          count: wardrobeSample.length,
-        }),
-      },
-      userMsg,
-    ];
-
-    console.log(
-      "👜 Forced wardrobe injected into messages:",
-      wardrobeSample.length,
-      "items"
-    );
+    
 
 
     // 🔍 DEBUG: log what Tina is given as input
