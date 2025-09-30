@@ -482,7 +482,7 @@ app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// ✅ Fetch wardrobe by user ID
+// ✅ Fetch wardrobe by user ID (optimized)
 app.get("/wardrobe", async (req, res) => {
   try {
     let { uid } = req.query;
@@ -492,15 +492,23 @@ app.get("/wardrobe", async (req, res) => {
       return res.status(400).json({ error: "UID is required" });
     }
 
-    console.log("📥 Incoming UID:", JSON.stringify(uid));
+    console.log("📥 Incoming UID:", uid);
 
-    // 🔍 Fetch all docs first
-    const snapshot = await db.collection("wardrobe").get();
+    // 🔍 Direct Firestore query (faster, cheaper)
+    const snapshot = await db
+      .collection("wardrobe")
+      .where("uid", "==", uid)
+      .get();
 
-    // ✅ Filter in JS (avoids Firestore hidden char issues)
-    const items = snapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((doc) => (doc.uid || "").trim() === uid);
+    if (snapshot.empty) {
+      console.log("⚠️ No wardrobe items found for UID:", uid);
+      return res.json([]);
+    }
+
+    const items = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     console.log("📦 Docs found:", items.length);
     res.json(items);
@@ -509,6 +517,7 @@ app.get("/wardrobe", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // ✅ Debug route to list all wardrobe docs
 app.get("/debug-wardrobe", async (req, res) => {
