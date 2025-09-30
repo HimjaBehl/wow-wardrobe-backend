@@ -2164,8 +2164,10 @@ ${level2Basics.join("\n")}
         style_note: look.style_note || "",
         items: hydrated,
         validation: { styleRules: validationRules },
-      };
+      
+    };
     }));
+  
 
     // Final filter: keep looks, even if invalid — just warn
     parsed.looks = parsed.looks.map((l) => {
