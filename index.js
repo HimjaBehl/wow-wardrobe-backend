@@ -12,6 +12,19 @@ import { hydrateWardrobeItem } from "./lib/hydrateWardrobeItem.js";
 
 import { normalizeCategory } from "./lib/normalizeCategory.js";
 
+function mapTaxonomy(category) {
+  switch (category) {
+    case "Top": return "Clothing/Clothing/Upper";
+    case "Bottom": return "Clothing/Clothing/Pants";
+    case "Dress": return "Clothing/Clothing/Dresses";
+    case "Outerwear": return "Clothing/Clothing/Jackets and Coats";
+    case "Footwear": return "Footwear/Footwear";
+    case "Accessory": return "Accessories/Accessories";
+    default: return "Misc/Misc";
+  }
+}
+
+
 import { mapToCoreCategory } from "./lib/categoryMap.js";
 import { hasCoreCategories } from "./lib/validateCategories.js";
 
@@ -648,14 +661,18 @@ app.post("/quick-add", async (req, res) => {
     
 
 
+    const taxonomyPath = mapTaxonomy(normalizedCategory);
+
     const hydrated = hydrateWardrobeItem({
       uid,
       name: capitalizedName,
       category: normalizedCategory,
       color: capitalizedColor,
       image_url,
-      tags,
+      tags: capitalizedTags,
+      taxonomyPath,
     });
+
 
     const docRef = await db.collection("wardrobe").add(hydrated);
 
@@ -748,6 +765,8 @@ app.post("/wardrobe", async (req, res) => {
       capitalizedName,
     );
 
+    const taxonomyPath = mapTaxonomy(normalizedCategory);
+
     const hydrated = hydrateWardrobeItem({
       uid,
       name: capitalizedName,
@@ -755,7 +774,9 @@ app.post("/wardrobe", async (req, res) => {
       color: capitalizedColor,
       image_url,
       tags: capitalizedTags,
+      taxonomyPath,
     });
+
 
     const docRef = await db.collection("wardrobe").add(hydrated);
 
@@ -980,10 +1001,13 @@ app.post("/normalize-wardrobe", async (req, res) => {
       const normalizedCategory = normalizeCategory(data.category, cleanName);
 
       // 3. Hydrate missing fields
+      const taxonomyPath = mapTaxonomy(normalizedCategory);
+
       const hydrated = hydrateWardrobeItem({
         ...data,
         name: cleanName,
         category: normalizedCategory,
+        taxonomyPath,
       });
 
       // Only update if something changed
