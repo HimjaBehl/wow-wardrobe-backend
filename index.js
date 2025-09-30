@@ -957,11 +957,11 @@ app.post("/migrate-wardrobe", async (req, res) => {
 
     for (const doc of snapshot.docs) {
       const data = doc.data();
-      if (!data.silhouette || !data.palette || !data.taxonomyPath) {
-        const hydrated = hydrateWardrobeItem(data);
-        batch.update(doc.ref, hydrated);
-        count++;
-      }
+
+      // Always re-hydrate with new taxonomy
+      const hydrated = hydrateWardrobeItem(data);
+      batch.update(doc.ref, hydrated);
+      count++;
     }
 
     await batch.commit();
@@ -970,6 +970,7 @@ app.post("/migrate-wardrobe", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // ✅ Normalize wardrobe data (fix names, categories, taxonomy)
 app.post("/normalize-wardrobe", async (req, res) => {
