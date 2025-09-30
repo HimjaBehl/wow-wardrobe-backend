@@ -950,6 +950,60 @@ app.post("/migrate-wardrobe", async (req, res) => {
   }
 });
 
+// ✅ Normalize wardrobe data (fix names, categories, taxonomy)
+app.post("/normalize-wardrobe", async (req, res) => {
+  try {
+    const snapshot = await db.collection("wardrobe").get();
+    const batch = db.batch();
+    let count = 0;
+
+    // Helper: capitalize words cleanly
+    function capitalizeWords(str) {
+      return (str || "")
+        .toLowerCase()
+        .split(/[\s-/]+/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+    }
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+
+      // 1. Clean name
+      let cleanName = (data.name || "")
+        .replace(/\.png/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      cleanName = capitalizeWords(cleanName);
+
+      // 2. Normalize category
+      const normalizedCategory = normalizeCategory(data.category, cleanName);
+
+      // 3. Hydrate missing fields
+      const hydrated = hydrateWardrobeItem({
+        ...data,
+        name: cleanName,
+        category: normalizedCategory,
+      });
+
+      // Only update if something changed
+      const current = JSON.stringify(data);
+      const updated = JSON.stringify(hydrated);
+      if (current !== updated) {
+        batch.update(doc.ref, hydrated);
+        count++;
+      }
+    }
+
+    await batch.commit();
+    res.json({ message: `Normalized ${count} wardrobe items` });
+  } catch (err) {
+    console.error("❌ normalize-wardrobe error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // ✅ Get outfit plan for a given user and date
 app.get("/plan-outfit", async (req, res) => {
   const { uid, date } = req.query;
