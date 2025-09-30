@@ -8,6 +8,8 @@ const openai = new OpenAI({
 import dotenv from "dotenv";
 dotenv.config();
 
+import { hydrateWardrobeItem } from "./lib/hydrateWardrobeItem.js";
+
 import { normalizeCategory } from "./lib/normalizeCategory.js";
 
 import { mapToCoreCategory } from "./lib/categoryMap.js";
@@ -367,16 +369,19 @@ app.post("/search-product", async (req, res) => {
       },
     });
 
-    // 🔹 Normalize into "products" list
+    // 🔹 Normalize into "products" list (hydrated)
     const products =
-      serpRes.data.images_results?.slice(0, 6).map((img) => ({
-        name: img.title || "Unnamed Product",
-        image_url: img.original || img.thumbnail,
-        thumbnail: img.thumbnail,
-        category: "Search", // fallback
-        color: "Unknown", // fallback
-        source: img.link || null,
-      })) || [];
+      serpRes.data.images_results?.slice(0, 6).map((img) => {
+        return hydrateWardrobeItem({
+          uid: "search-temp",
+          name: img.title || "Unnamed Product",
+          image_url: img.original || img.thumbnail,
+          category: "Search",
+          color: "Unknown",
+          tags: ["Search", img.title || ""],
+        });
+      }) || [];
+
 
     res.json({ success: true, products });
   } catch (err) {
@@ -511,6 +516,27 @@ app.get("/debug-wardrobe", async (req, res) => {
   }
 });
 
+// ✅ Debug uniform wardrobe schema
+app.get("/debug-uniform", async (req, res) => {
+  try {
+    const snapshot = await db.collection("wardrobe").get();
+    const items = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      name: doc.data().name,
+      category: doc.data().category,
+      color: doc.data().color,
+      silhouette: doc.data().silhouette || "❌ missing",
+      palette: doc.data().palette || "❌ missing",
+      taxonomyPath: doc.data().taxonomyPath || "❌ missing",
+      source: doc.data().uid === "staples-global" ? "staple" : "wardrobe",
+    }));
+    res.json({ count: items.length, items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
 app.get("/staples", async (req, res) => {
   const gender = req.query.gender || "male";
@@ -530,11 +556,14 @@ app.get("/staples", async (req, res) => {
           expires: "03-01-2030", // pick a far future expiry
         });
 
-        return {
+        return hydrateWardrobeItem({
+          uid: "staples-global",  // global staples fallback UID
           name: displayName,
           category: "Staple",
-          variants: [{ color: "Default", image_url: signedUrl }],
-        };
+          color: "Default",
+          image_url: signedUrl,
+          tags: [displayName, "Staple"],
+        });
       }),
     );
 
@@ -616,15 +645,18 @@ app.post("/quick-add", async (req, res) => {
 
 
     // Create wardrobe item with simplified structure for quick-add
-    const itemData = {
+    
+
+
+    const itemData = hydrateWardrobeItem({
       uid,
-      name: capitalizedName,
-      category: normalizedCategory || "Staple",
-      color: capitalizedColor || "Default",
-      image_url: image_url || null,
-      tags: tags.length ? tags : [capitalizedName, "Staple"],
-      created_at: new Date().toISOString(),
-    };
+      name,
+      category,
+      color,
+      image_url,
+      tags,
+    });
+
 
 
     const docRef = await db.collection("wardrobe").add(itemData);
@@ -717,22 +749,17 @@ app.post("/wardrobe", async (req, res) => {
       capitalizedName,
     );
 
-    const docRef = await db.collection("wardrobe").add({
+    const itemData = hydrateWardrobeItem({
       uid,
-      image_path,
-      image_url,
       name: capitalizedName,
-      category: normalizedCategory, // ✅ normalized instead of raw
+      category: normalizedCategory,
       color: capitalizedColor,
+      image_url,
       tags: capitalizedTags,
-      primaryTag,
-      fabric,
-      taxonomyPath: taxonomyMatch
-        ? `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}`
-        : null,
-      attributes: taxonomyAttributes,
-      created_at: new Date().toISOString(),
     });
+
+    const docRef = await db.collection("wardrobe").add(itemData);
+
 
     res.status(200).json({ message: "Item added", id: docRef.id });
   } catch (err) {
