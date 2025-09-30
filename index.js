@@ -648,18 +648,17 @@ app.post("/quick-add", async (req, res) => {
     
 
 
-    const itemData = hydrateWardrobeItem({
+    const hydrated = hydrateWardrobeItem({
       uid,
-      name,
-      category,
-      color,
+      name: capitalizedName,
+      category: normalizedCategory,
+      color: capitalizedColor,
       image_url,
       tags,
     });
 
+    const docRef = await db.collection("wardrobe").add(hydrated);
 
-
-    const docRef = await db.collection("wardrobe").add(itemData);
 
     console.log("👟 Saving quick-add staple:", {
       uid,
@@ -749,7 +748,7 @@ app.post("/wardrobe", async (req, res) => {
       capitalizedName,
     );
 
-    const itemData = hydrateWardrobeItem({
+    const hydrated = hydrateWardrobeItem({
       uid,
       name: capitalizedName,
       category: normalizedCategory,
@@ -758,7 +757,10 @@ app.post("/wardrobe", async (req, res) => {
       tags: capitalizedTags,
     });
 
-    const docRef = await db.collection("wardrobe").add(itemData);
+    const docRef = await db.collection("wardrobe").add(hydrated);
+
+    res.status(200).json({ message: "Item added", id: docRef.id, item: hydrated });
+
 
 
     res.status(200).json({ message: "Item added", id: docRef.id });
@@ -920,6 +922,31 @@ app.post("/wardrobe/bulk-delete", async (req, res) => {
   } catch (err) {
     console.error("❌ Error bulk deleting items:", err.message);
     res.status(500).json({ error: "Failed to bulk delete wardrobe items" });
+  }
+});
+
+
+
+// ✅ Migration script: hydrate missing fields (one-time use)
+app.post("/migrate-wardrobe", async (req, res) => {
+  try {
+    const snapshot = await db.collection("wardrobe").get();
+    const batch = db.batch();
+    let count = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      if (!data.silhouette || !data.palette || !data.taxonomyPath) {
+        const hydrated = hydrateWardrobeItem(data);
+        batch.update(doc.ref, hydrated);
+        count++;
+      }
+    }
+
+    await batch.commit();
+    res.json({ message: `Migrated ${count} wardrobe items` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
