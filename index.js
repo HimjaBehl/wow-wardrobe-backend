@@ -1799,6 +1799,10 @@ ${level2Basics.join("\n")}
 
 
     // 🔥 Force wardrobe fetch before agent loop
+    const wardrobeSample =
+      rawWardrobe.length > 0 ? buildSampleFromList(rawWardrobe, 50) : [];
+
+    console.log("👕 wardrobeSample built:", wardrobeSample.length, "items");
 
     const messages = [
       systemMsg,
@@ -1816,8 +1820,9 @@ ${level2Basics.join("\n")}
     console.log(
       "👜 Forced wardrobe injected into messages:",
       wardrobeSample.length,
-      "items",
+      "items"
     );
+
 
     // 🔍 DEBUG: log what Tina is given as input
     console.log("🪞 Tina agent INPUT snapshot >>>");
