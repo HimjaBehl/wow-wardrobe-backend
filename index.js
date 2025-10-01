@@ -1789,7 +1789,8 @@ ${level2Basics.join("\n")}
             "You MUST ONLY use wardrobe items provided by the get_wardrobe tool OR from wardrobe_preview.",
               "Every outfit item MUST ONLY be referenced by its `idx` string. NEVER invent names or ids. Do NOT output item names, categories, or ids directly — only use idx values provided in wardrobe_preview.",
               "Do NOT output item names, categories, or ids directly — only use idx.",
-              "Valid outfit structure: (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
+            "Valid outfit structure: Every look must include either (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
+              "Do not output looks that are missing a Top unless it is a Dress/Jumpsuit outfit.",
               "Each outfit must have 3–5 items, complete, no missing pieces.",
               "If the wardrobe is too small, still output JSON with looks but explain in style_note.",
               "Consider likedCombos as positive references to favor, and dislikedCombos as negative references to avoid repeating exactly."
