@@ -2291,7 +2291,14 @@ ${level2Basics.join("\n")}
       parsed.outfits = [];
       parsed.note = parsed.note || "No outfits parsed";
     }
-
+    parsed.outfits = (parsed.outfits || []).map((look, i) => {
+      if (!look.items || look.items.length === 0) {
+        console.warn(`⚠️ Look ${i + 1} had no items. Adding fallback.`);
+        look.items = buildSampleFromList(rawWardrobe, 3);
+        look.style_note = (look.style_note || "") + " | Auto-filled.";
+      }
+      return look;
+    });
     return res.json(parsed);
 
   } catch (err) {
