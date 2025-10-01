@@ -2275,7 +2275,25 @@ ${level2Basics.join("\n")}
       });
     }
 
+    // ✅ Normalize Tina output so frontend always gets { outfits: [...] }
+    if (Array.isArray(parsed)) {
+      parsed = { outfits: parsed };
+    }
+
+    if (parsed && parsed.looks && !parsed.outfits) {
+      console.warn("⚠️ Normalizing 'looks' → 'outfits'");
+      parsed.outfits = parsed.looks;
+      delete parsed.looks;
+    }
+
+    if (!parsed.outfits) {
+      console.warn("⚠️ Tina returned no outfits, forcing empty array");
+      parsed.outfits = [];
+      parsed.note = parsed.note || "No outfits parsed";
+    }
+
     return res.json(parsed);
+
   } catch (err) {
     console.error("❌ /suggest-outfit (agent) error:", err);
     return res
