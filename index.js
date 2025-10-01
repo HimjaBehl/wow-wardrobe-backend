@@ -1757,24 +1757,15 @@ ${level2Basics.join("\n")}
 
     console.log("👕 wardrobeSample built:", wardrobeSample.length, "items");
 
-    const messages = [
-      systemMsg,
-      {
-        role: "function",
-        name: "get_wardrobe",
-        content: JSON.stringify({
-          items: wardrobeSample,
-          count: wardrobeSample.length,
-        }),
-      },
-      userMsg,
-    ];
+    // ✅ Define system message
+    const systemMsg = {
+      role: "system",
+      content: `You are Tina, a beginner stylist intern (Level 2).
+    You must always return structured JSON outfit suggestions.
+    Follow the Level 2 rules (Top + Bottom + Footwear, etc.).`
+    };
 
-    console.log(
-      "👜 Forced wardrobe injected into messages:",
-      wardrobeSample.length,
-      "items"
-    );
+    // ✅ Define user message
     const userMsg = {
       role: "user",
       content: JSON.stringify(
@@ -1792,34 +1783,42 @@ ${level2Basics.join("\n")}
           style_summary: styleSummary || "",
           prefs,
           wardrobe_preview: wardrobeSample,
-          likedCombos,      // 👈 add here
-          dislikedCombos,   // 👈 add here
+          likedCombos,
+          dislikedCombos,
           instructions: [
             "You MUST ONLY use wardrobe items provided by the get_wardrobe tool OR from wardrobe_preview.",
-            "Every outfit item MUST ONLY be referenced by its `idx` string. NEVER invent names or ids. Do NOT output item names, categories, or ids directly — only use idx values provided in wardrobe_preview.",
-            "Do NOT output item names, categories, or ids directly — only use idx.",
+            "Every outfit item MUST ONLY be referenced by its `idx` string. NEVER invent names or ids.",
             "Valid outfit structure: (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
-            "Each outfit must have 3–5 items, complete, no missing pieces.",
-            "If the wardrobe is too small, still output JSON with looks but explain in style_note.",
-            "Consider likedCombos as positive references to favor, and dislikedCombos as negative references to avoid repeating exactly.", // 👈 NEW rule
+            "Each outfit must have 3–5 items.",
+            "Consider likedCombos as positive references, dislikedCombos as negative references.",
           ],
-          response_format: {
-            type: "json",
-            schema: {
-              looks: [
-                {
-                  title: "string",
-                  style_note: "string",
-                  items: [{ idx: "string" }],
-                },
-              ],
-            },
-          },
         },
         null,
         2,
       ),
     };
+
+    // ✅ Build messages array in correct order
+    const messages = [
+      systemMsg,
+      {
+        role: "function",
+        name: "get_wardrobe",
+        content: JSON.stringify({
+          items: wardrobeSample,
+          count: wardrobeSample.length,
+        }),
+      },
+      userMsg,
+    ];
+
+
+    console.log(
+      "👜 Forced wardrobe injected into messages:",
+      wardrobeSample.length,
+      "items"
+    );
+    
 
 
     
