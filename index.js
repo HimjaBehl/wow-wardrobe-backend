@@ -1765,7 +1765,7 @@ ${level2Basics.join("\n")}
     Follow the Level 2 rules (Top + Bottom + Footwear, etc.).`
     };
 
-    // ✅ Define user message
+    // ✅ Define user message (force "outfits")
     const userMsg = {
       role: "user",
       content: JSON.stringify(
@@ -1787,20 +1787,21 @@ ${level2Basics.join("\n")}
           dislikedCombos,
           instructions: [
             "You MUST ONLY use wardrobe items provided by wardrobe_preview.",
-              "Each item MUST be referenced by its exact 'idx' value from wardrobe_preview. Do NOT invent or describe items in words.",
-              "Every outfit item MUST ONLY be referenced by its `idx` string. NEVER invent names or ids. Do NOT output item names, categories, or ids directly — only use idx values provided in wardrobe_preview.",
-              "Do NOT output item names, categories, or ids directly — only use idx.",
-            "Valid outfit structure: Every look must include either (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
-              "Do not output looks that are missing a Top unless it is a Dress/Jumpsuit outfit.",
-              "Each outfit must have 3–5 items, complete, no missing pieces.",
-              "If the wardrobe is too small, still output JSON with looks but explain in style_note.",
-              "Consider likedCombos as positive references to favor, and dislikedCombos as negative references to avoid repeating exactly."
+            "Each item MUST be referenced by its exact 'idx' value from wardrobe_preview. Do NOT invent or describe items in words.",
+            "Do NOT output item names, categories, or ids directly — only use idx.",
+            "Valid outfit structure: Every outfit must include either (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
+            "Do not output outfits that are missing a Top unless it is a Dress/Jumpsuit outfit.",
+            "Each outfit must have 3–5 items, complete, no missing pieces.",
+            "If the wardrobe is too small, still output JSON with outfits but explain in style_note.",
+            "Consider likedCombos as positive references to favor, and dislikedCombos as negative references to avoid repeating exactly.",
+            "IMPORTANT: Always return JSON with a top-level key called 'outfits'."
           ],
         },
         null,
         2,
       ),
     };
+
 
     // ✅ Build messages array in correct order
     const messages = [
