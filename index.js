@@ -1445,9 +1445,9 @@ app.post("/suggest-outfit", async (req, res) => {
     if (snap.empty) {
       console.warn("⚠️ Wardrobe empty, returning test items");
       return res.json({
-        looks: [
+        outfits: [
           {
-            title: "Debug Look",
+            title: "Debug Outfit",
             style_note: "No wardrobe but forced",
             items: [],
           },
@@ -1787,6 +1787,8 @@ ${level2Basics.join("\n")}
           dislikedCombos,
           instructions: [
             "You MUST ONLY use wardrobe items provided by wardrobe_preview.",
+            "You must always return structured JSON with a top-level key named 'outfits'.",
+            "Never use 'looks'. Titles inside each outfit can still use the word 'Look'.",
             "Each item MUST be referenced by its exact 'idx' value from wardrobe_preview. Do NOT invent or describe items in words.",
             "Do NOT output item names, categories, or ids directly — only use idx.",
             "Valid outfit structure: Every outfit must include either (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
@@ -1945,7 +1947,29 @@ ${level2Basics.join("\n")}
     } else {
       try {
         parsed = JSON.parse(finalAssistantContent);
+        // 🛡️ Normalize Tina/backend key: "looks" → "outfits"
+        if (parsed && parsed.looks && !parsed.outfits) {
+          console.warn("⚠️ Normalizing 'looks' → 'outfits'");
+          parsed.outfits = parsed.looks;
+          delete parsed.looks;
+        }
+
       } catch (err) {
+        // 🛡️ Fallback: handle if Tina used "looks" instead of "outfits"
+        if (parsed && parsed.looks && !parsed.outfits) {
+          console.warn("⚠️ Tina returned 'looks' instead of 'outfits'. Remapping...");
+          parsed.outfits = parsed.looks;
+          delete parsed.looks;
+        }
+
+        // 🛡️ Normalize Tina/backend key: "looks" → "outfits"
+        if (parsed && parsed.looks && !parsed.outfits) {
+          console.warn("⚠️ Normalizing 'looks' → 'outfits'");
+          parsed.outfits = parsed.looks;
+          delete parsed.looks;
+        }
+
+
         console.warn("⚠️ Raw content not valid JSON, attempting recovery");
         const jsonMatch = finalAssistantContent.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -1964,14 +1988,14 @@ ${level2Basics.join("\n")}
         console.warn("⚠️ Could not parse assistant JSON. Returning fallback.");
         const fallbackItems = buildSampleFromList(rawWardrobe, 10);
         parsed = {
-          looks: [
+          outfits: [
             {
-              title: "Fallback Look 1",
+              title: "Fallback Outfit 1",
               style_note: "Fallback because parsing failed",
               items: fallbackItems.slice(0, 3).map((it) => ({ idx: it.idx })),
             },
             {
-              title: "Fallback Look 2",
+              title: "Fallback Outfit 2",
               style_note: "Fallback because parsing failed",
               items: fallbackItems.slice(3, 6).map((it) => ({ idx: it.idx })),
             },
@@ -1981,7 +2005,7 @@ ${level2Basics.join("\n")}
       }
     }
 
-    // Hydrate parsed.looks items into full item objects using the available wardrobe (prefer filtered rawWardrobe)
+    // Hydrate parsed.outfits items into full item objects using the available wardrobe (prefer filtered rawWardrobe)
     const idx2item = Object.fromEntries(
       buildSampleFromList(rawWardrobe, 100).map((it) => [String(it.idx), it]),
     );
@@ -1991,7 +2015,7 @@ ${level2Basics.join("\n")}
       return makeComboFingerprint(items);
     }
 
-    parsed.looks = await Promise.all((parsed.looks || []).map(async (look, i) => {
+    parsed.outfits = await Promise.all((parsed.outfits || []).map(async (look, i) => {
       // 🛑 Fallback: if Tina gave no items, inject random sample
       if (!look.items || look.items.length === 0) {
         console.warn(`⚠️ Look ${i + 1} had no items, applying fallback.`);
@@ -2180,7 +2204,7 @@ ${level2Basics.join("\n")}
   
 
     // Final filter: keep looks, even if invalid — just warn
-    parsed.looks = parsed.looks.map((l) => {
+    parsed.outfits = parsed.outfits.map((l) => {
       if (!l.validation?.styleRules?.valid) {
         const errs = (l.validation?.styleRules?.errors || []).join("; ");
         console.warn("❌ Look failed validation, asking Tina to retry:", errs);
@@ -2193,7 +2217,7 @@ ${level2Basics.join("\n")}
 
         messages.push({
           role: "user",
-          content: `Your last look failed validation: ${errs}. Please fix and retry with a new look using only wardrobe items.`,
+          content: `Your last outfit failed validation: ${errs}. Please fix and retry with a new outfit using only wardrobe items.`,
         });
       }
 
@@ -2201,7 +2225,7 @@ ${level2Basics.join("\n")}
     });
 
     // Always allow looks to pass even if missing perfect balance
-    parsed.looks = (parsed.looks || []).map((look) => {
+    parsed.outfits = (parsed.outfits || []).map((look) => {
       if (!look.items || look.items.length < 1) {
         // auto-fill with first wardrobe items if too small
         look.items = buildSampleFromList(rawWardrobe, 3);
@@ -2211,12 +2235,12 @@ ${level2Basics.join("\n")}
     });
 
     // If none survived, fallback to simple combinations
-    if (!parsed.looks || parsed.looks.length === 0) {
+    if (!parsed.outfits || parsed.outfits.length === 0) {
       console.warn(
         "⚠️ No valid looks after validation — building fallback looks",
       );
       const fallbackItems = buildSampleFromList(rawWardrobe, 10);
-      parsed.looks = [
+      parsed.outfits = [
         {
           title: "Fallback Look 1",
           style_note: "Auto fallback",
@@ -2237,7 +2261,7 @@ ${level2Basics.join("\n")}
 
     // 🔮 Enforce occasion in title + style_note
     if (occasion) {
-      parsed.looks = (parsed.looks || []).map((look) => {
+      parsed.outfits = (parsed.outfits || []).map((look) => {
         const lowerOccasion = occasion.toLowerCase();
         // Title: ensure occasion mentioned
         if (!look.title.toLowerCase().includes(lowerOccasion)) {
