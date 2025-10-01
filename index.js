@@ -1786,7 +1786,8 @@ ${level2Basics.join("\n")}
           likedCombos,
           dislikedCombos,
           instructions: [
-            "You MUST ONLY use wardrobe items provided by the get_wardrobe tool OR from wardrobe_preview.",
+            "You MUST ONLY use wardrobe items provided by wardrobe_preview.",
+              "Each item MUST be referenced by its exact 'idx' value from wardrobe_preview. Do NOT invent or describe items in words.",
               "Every outfit item MUST ONLY be referenced by its `idx` string. NEVER invent names or ids. Do NOT output item names, categories, or ids directly — only use idx values provided in wardrobe_preview.",
               "Do NOT output item names, categories, or ids directly — only use idx.",
             "Valid outfit structure: Every look must include either (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
