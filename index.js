@@ -2299,7 +2299,14 @@ ${level2Basics.join("\n")}
       }
       return look;
     });
+    // ✅ Normalize before sending — rename outfits → looks for frontend consistency
+    if (parsed && parsed.outfits && !parsed.looks) {
+      parsed.looks = parsed.outfits;
+      delete parsed.outfits;
+    }
+
     return res.json(parsed);
+
 
   } catch (err) {
     console.error("❌ /suggest-outfit (agent) error:", err);
