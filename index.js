@@ -1520,7 +1520,8 @@ app.post("/suggest-outfit", async (req, res) => {
     function buildSampleFromList(list = [], max = 50) {
       const shuffled = shuffleArray(list); // 👈 randomize to reduce repetition
 
-      return list.slice(0, max).map((it, idx) => {
+      return shuffled.slice(0, max).map((it, idx) => {
+
         const cleanName = it.name || "Unnamed";
         const cleanCategory = it.category || "Misc"; // trust normalization done earlier
 
@@ -1860,7 +1861,7 @@ ${level2Basics.join("\n")}
             messages,
             functions,
             function_call: "auto",
-            temperature: 0.25,
+            temperature: 0.40,
             max_tokens: 1000,
             response_format: { type: "json_object" }, // ✅ Force JSON-only
           }),
