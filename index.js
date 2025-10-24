@@ -63,8 +63,8 @@ import getTrendInsights from "./tools/getTrendInsights.js";
 import {
   validateLookAgainstRules,
   validateLevel2,
-  validateLevel1,
 } from "./lib/styleRules.js";
+
 
 import { isColorGoodForSkinTone } from "./lib/colorRules.js";
 // 🔮 Load fashion taxonomy
@@ -759,9 +759,7 @@ app.post("/quick-add", async (req, res) => {
 
     return res.json({
       success: true,
-      item: {
-        id: docRef.id,
-        ...itemData,
+      item: { id: docRef.id, ...hydrated
       },
       message: "Item added successfully to wardrobe",
     });
@@ -850,8 +848,7 @@ app.post("/wardrobe", async (req, res) => {
 
     const docRef = await db.collection("wardrobe").add(hydrated);
 
-    res.status(200).json({ message: "Item added", id: docRef.id, item: hydrated });
-
+    
 
 
     res.status(200).json({
@@ -1727,9 +1724,11 @@ app.post("/suggest-outfit", async (req, res) => {
     async function fn_validateLook({
       items = [],
       weather: w = city,
-      occasion = occasion,
+      occasion: occ = "",
       prefs: userPrefs = prefs,
     }) {
+      const occUsed = occ || occasion; // use request-level 'occasion' when not provided
+
       try {
         // hydrate minimal structure for validate functions
         const hydrated = items.map((it) => ({
@@ -1749,7 +1748,8 @@ app.post("/suggest-outfit", async (req, res) => {
           {
             bannedItems: userPrefs?.dislikes || [],
             weather: w,
-            occasion: occasion,
+            occasion: occUsed,
+
             prefs: userPrefs,
           },
         );
@@ -2057,6 +2057,13 @@ ${level2Basics.join("\n")}
 
     console.log("📝 Tina raw assistant content:", finalAssistantContent);
 
+    function normalizeOutfitsKey(obj) {
+      if (obj && obj.looks && !obj.outfits) {
+        obj.outfits = obj.looks;
+        delete obj.looks;
+      }
+    }
+
     // Try to parse the final assistant content as JSON (strict)
     let parsed;
     if (!finalAssistantContent) {
@@ -2066,14 +2073,8 @@ ${level2Basics.join("\n")}
       try {
         parsed = JSON.parse(finalAssistantContent);
 
-        // 🧹 Normalize "looks" → "outfits" once
-        function normalizeOutfitsKey(obj) {
-          if (obj && obj.looks && !obj.outfits) {
-            obj.outfits = obj.looks;
-            delete obj.looks;
-          }
-        }
         normalizeOutfitsKey(parsed);
+
 
         // 🛡️ Normalize Tina/backend key: "looks" → "outfits"
         if (parsed && parsed.looks && !parsed.outfits) {
@@ -2156,7 +2157,7 @@ ${level2Basics.join("\n")}
           (look.style_note || "") + " | Fallback items auto-inserted.";
       }
 
-      const hydrated = (look.items || [])
+      let hydrated = (look.items || [])
         .map((it) => {
           // Primary: check if idx exists in idx2item
           if (it.idx && idx2item[it.idx]) {
