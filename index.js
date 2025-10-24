@@ -360,6 +360,34 @@ function makeComboFingerprint(items = []) {
     .join("|");
 }
 
+// ---------------- OUTIFT COMPLETENESS HELPERS ----------------
+const NEUTRALS = ["black","white","cream","beige","grey","gray","navy","denim","tan","brown","off-white"];
+const cat = (it) => (it.category || "").toLowerCase();
+const isNeutralColor = (c="") => NEUTRALS.some(n => (c||"").toLowerCase().includes(n));
+function pickOne(arr=[], preferNeutral=false){ if(!arr.length)return null; if(preferNeutral){const n=arr.filter(a=>isNeutralColor(a.color)); if(n.length)return n[Math.floor(Math.random()*n.length)];} return arr[Math.floor(Math.random()*arr.length)]; }
+function forceCompleteLook(items=[], pool=[]){
+  let hydrated=[...items];
+  const tops=pool.filter(i=>/top|shirt|tee|t-?shirt|blouse|kurta/.test(cat(i)));
+  const bottoms=pool.filter(i=>/bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(cat(i)));
+  const dresses=pool.filter(i=>/dress|jumpsuit|saree/.test(cat(i)));
+  const footwears=pool.filter(i=>/footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(cat(i)));
+  const outers=pool.filter(i=>/outer|jacket|coat|cardigan|shrug/.test(cat(i)));
+  const accs=pool.filter(i=>/accessor|belt|watch|bag|sunglass|scarf|dupatta|stole|shawl/.test(cat(i)));
+  const has=(re)=>hydrated.some(i=>re.test(cat(i))); const add=(x)=>{if(x)hydrated.push(x);};
+  if(has(/dress|jumpsuit|saree/)){
+    if(!has(/footwear|shoe|sandal|heel|sneaker|jutti|boot/)){ add(pickOne(footwears,true)||pickOne(footwears)); }
+    hydrated=hydrated.filter(i=>/dress|jumpsuit|saree|footwear|outer|jacket|coat|dupatta|shawl|stole|accessor/.test(cat(i)));
+    if(hydrated.length<4) add(pickOne(outers.filter(isNeutralColor))||pickOne(accs,true));
+    return hydrated.slice(0,5);
+  }
+  if(!has(/top|shirt|tee|t-?shirt|blouse|kurta/)) add(pickOne(tops,true)||pickOne(tops));
+  if(!has(/bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/)) add(pickOne(bottoms,true)||pickOne(bottoms));
+  if(!has(/footwear|shoe|sandal|heel|sneaker|jutti|boot/)) add(pickOne(footwears,true)||pickOne(footwears));
+  if(hydrated.length<4){ const maybe=pickOne(outers.filter(isNeutralColor))||pickOne(accs,true); if(maybe) add(maybe); }
+  return hydrated.slice(0,5);
+}
+// -------------------------------------------------------------
+
 app.get("/health", (req, res) => {
   res.status(200).json({
     ok: true,
@@ -692,7 +720,7 @@ app.post("/quick-add", async (req, res) => {
     const capitalizedColor = capitalizeWords(color || "");
 
     // Create tags array with name, color, and category
-    const tags = [
+    const capitalizedTags = [
       capitalizedName,
       capitalizedColor,
       normalizedCategory || "Staple",
@@ -826,7 +854,12 @@ app.post("/wardrobe", async (req, res) => {
 
 
 
-    res.status(200).json({ message: "Item added", id: docRef.id });
+    res.status(200).json({
+      message: "Item added",
+      id: docRef.id,
+      item: { id: docRef.id, ...hydrated },
+    });
+
   } catch (err) {
     console.error("❌ Error adding item:", err.message);
     res.status(500).json({ error: "Failed to save wardrobe item" });
@@ -1162,6 +1195,31 @@ async function logComboEvent(uid, type) {
   }
 }
 
+// 🧭 Tina emergent learning updater (global, reused by routes)
+async function updateLearning(uid, validation, liked = true) {
+  try {
+    const ref = db.collection("tina_memory").doc(uid);
+    const doc = await ref.get();
+    const weights = doc.exists ? (doc.data().learning_weights || {}) : {};
+
+    // learning increments
+    const delta = liked ? 0.05 : -0.03;
+    const bump = (v, d) => Math.min(1, Math.max(0, (v ?? 0.5) + d));
+
+    const updated = {
+      colorHarmony: bump(weights.colorHarmony, validation?.valid ? delta : -0.02),
+      silhouetteBalance: bump(weights.silhouetteBalance, validation?.valid ? delta : -0.02),
+      trendAwareness: bump(weights.trendAwareness, 0.01),       // slow upward nudge
+      wardrobeRotation: bump(weights.wardrobeRotation, 0.01),   // slow upward nudge
+    };
+
+    await ref.set({ learning_weights: updated }, { merge: true });
+    console.log("📈 Updated Tina learning weights:", updated);
+  } catch (err) {
+    console.error("⚠️ Learning update failed:", err.message);
+  }
+}
+
 
 // ✅ Pinterest Analysis via Official API
 app.post("/pinterest-analysis", async (req, res) => {
@@ -1364,6 +1422,26 @@ app.post("/suggest-outfit", async (req, res) => {
 
   // Prefetch user preferences & a basic wardrobe snapshot (we still expose function to fetch full)
   const prefs = await getUserMemory(uid).catch(() => ({}));
+
+  // 🧠 Tina learning weights setup
+  function getTinaLevel(weights = {}) {
+    const vals = Object.values(weights);
+    if (!vals.length) return "Level 1 (Intern)";
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    if (avg < 0.4) return "Level 1 (Intern)";
+    if (avg < 0.7) return "Level 2 (Junior Stylist)";
+    return "Level 3 (Confident Stylist)";
+  }
+
+  const learning = prefs.learning_weights || {
+    colorHarmony: 0.5,
+    silhouetteBalance: 0.5,
+    trendAwareness: 0.3,
+    wardrobeRotation: 0.4,
+  };
+  const tinaLevel = getTinaLevel(learning);
+  console.log("🧩 Tina Level:", tinaLevel, "Weights:", learning);
+
   const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
 
   // 👗 Fetch liked & disliked combos for user
@@ -1510,30 +1588,65 @@ app.post("/suggest-outfit", async (req, res) => {
     console.log("📊 Total wardrobe items normalized:", rawWardrobe.length);
 
     // Small helper to map wardrobe to compact sample (idx strings)
-    function shuffleArray(arr) {
-      return arr
-        .map((a) => ({ sort: Math.random(), value: a }))
-        .sort((a, b) => a.sort - b.sort)
-        .map((a) => a.value);
+    // 🎯 Learning-aware sampling (rotation + color harmony)
+    function weightedSample(arr, max, opts = {}) {
+      const {
+        rotationWeight = learning.wardrobeRotation || 0.4,
+        harmonyWeight  = learning.colorHarmony   || 0.5,
+      } = opts;
+
+      const now = Date.now();
+      const NEUTRALS = new Set([
+        "black","white","cream","beige","grey","gray","navy","denim","tan","brown","off-white"
+      ]);
+
+      const scored = arr.map((it) => {
+        const lw = it.lastWorn ? new Date(it.lastWorn).getTime() : 0;
+        const days = lw ? Math.max(1, (now - lw) / (1000*60*60*24)) : 999;
+        const neutral = NEUTRALS.has((it.color || "").toLowerCase()) ? 1 : 0;
+        const score =
+          rotationWeight * Math.min(1, days / 21) +
+          harmonyWeight  * neutral +
+          Math.random() * 0.2;
+        return { it, score };
+      });
+
+      const total = scored.reduce((a,b)=>a+b.score,0) || 1;
+      const take  = Math.min(max, scored.length);
+      const used  = new Set();
+      const picked = [];
+
+      while (picked.length < take && used.size < scored.length) {
+        let r = Math.random() * total;
+        for (const s of scored) {
+          if (used.has(s.it.id)) continue;
+          if ((r -= s.score) <= 0) {
+            picked.push(s.it);
+            used.add(s.it.id);
+            break;
+          }
+        }
+      }
+      return picked;
     }
 
     function buildSampleFromList(list = [], max = 50) {
-      const shuffled = shuffleArray(list); // 👈 randomize to reduce repetition
+      const subset = weightedSample(list, max, {
+        rotationWeight: learning.wardrobeRotation,
+        harmonyWeight:  learning.colorHarmony,
+      });
 
-      return shuffled.slice(0, max).map((it, idx) => {
-
+      return subset.map((it, idx) => {
         const cleanName = it.name || "Unnamed";
-        const cleanCategory = it.category || "Misc"; // trust normalization done earlier
-
-        const silhouetteGuess =
-          it.silhouette || guessSilhouette(cleanName + " " + cleanCategory);
-        const paletteGuess = it.palette || pickPalette(it.color || "");
+        const cleanCat  = it.category || "Misc";
+        const silhouetteGuess = it.silhouette || guessSilhouette(`${cleanName} ${cleanCat}`);
+        const paletteGuess    = it.palette    || pickPalette(it.color || "");
 
         const sample = {
           idx: String(idx),
           id: it.id,
           name: cleanName,
-          category: cleanCategory,
+          category: cleanCat,
           color: it.color || "Unknown",
           taxonomyPath: it.taxonomyPath || "",
           attributes: it.attributes || {},
@@ -1541,14 +1654,9 @@ app.post("/suggest-outfit", async (req, res) => {
           silhouette: silhouetteGuess,
           palette: paletteGuess,
           image_url: it.image_url || "",
+          lastWorn: it.lastWorn || null,
         };
-
-        console.log("🧵 Hydrated wardrobe item:", sample);
-        // 🔍 DEBUG log
-        if (idx < 5) {
-          console.log("🎽 buildSampleFromList item:", sample);
-        }
-
+        if (idx < 5) console.log("🎽 buildSampleFromList item:", sample);
         return sample;
       });
     }
@@ -1758,15 +1866,35 @@ ${level2Basics.join("\n")}
 
     console.log("👕 wardrobeSample built:", wardrobeSample.length, "items");
 
-    // ✅ Define system message
+    const FEWSHOTS = [
+      { role:"user", content: JSON.stringify({ task:"example - casual", wardrobe_preview:[{idx:"0"},{idx:"1"},{idx:"2"}] }) },
+      { role:"assistant", content: JSON.stringify({ outfits:[{ title:"Casual Street Look", style_note:"Neutral tee with denim and clean sneakers.", items:[{idx:"0"},{idx:"1"},{idx:"2"}] }] }) },
+      { role:"user", content: JSON.stringify({ task:"example - dressy", wardrobe_preview:[{idx:"3"},{idx:"4"}] }) },
+      { role:"assistant", content: JSON.stringify({ outfits:[{ title:"Dinner Dress Look", style_note:"Navy dress with nude heels.", items:[{idx:"3"},{idx:"4"}] }] }) },
+      { role:"user", content: JSON.stringify({ task:"example - indian", wardrobe_preview:[{idx:"5"},{idx:"6"},{idx:"7"}] }) },
+      { role:"assistant", content: JSON.stringify({ outfits:[{ title:"Festive Kurta Set", style_note:"Pastel kurta, palazzo and juttis.", items:[{idx:"5"},{idx:"6"},{idx:"7"}] }] }) }
+    ];
+
+    
+    // 🪞 Adaptive system prompt
     const systemMsg = {
       role: "system",
-      content: `You are Tina, a beginner stylist intern (Level 2).
-    You must always return structured JSON outfit suggestions.
-    Follow the Level 2 rules (Top + Bottom + Footwear, etc.).`
+      content: `You are Tina, a ${tinaLevel}.
+    You learn from past likes/dislikes to improve your sense of style.
+    Your current confidence:
+    - Color harmony: ${(learning.colorHarmony * 100).toFixed(0)}%
+    - Silhouette balance: ${(learning.silhouetteBalance * 100).toFixed(0)}%
+    - Trend awareness: ${(learning.trendAwareness * 100).toFixed(0)}%
+    - Wardrobe rotation: ${(learning.wardrobeRotation * 100).toFixed(0)}%
+
+    RULES:
+    1. Use ONLY items from the wardrobe_preview.
+    2. Create complete, stylish looks using Top+Bottom+Footwear (or Dress+Footwear).
+    3. Prioritize balance in color and silhouette.
+    4. Consider user's preferences, dislikes, and current trends.
+    5. Return JSON with key "outfits" only.`
     };
 
-    // ✅ Define user message (force "outfits")
     const userMsg = {
       role: "user",
       content: JSON.stringify(
@@ -1775,50 +1903,39 @@ ${level2Basics.join("\n")}
           uid,
           occasion,
           vibe,
-          vibe_hints: moodHints,
-          weather_hint: city,
+          vibe_hints: styleMoodMap[vibe?.toLowerCase()] || [],
+          city,
           gender: prefs.gender || "",
           bodyShape: prefs.bodyShape || "",
           complexion: prefs.complexion || "",
           dislikes: prefs.dislikes || [],
           style_summary: styleSummary || "",
-          prefs,
-          wardrobe_preview: wardrobeSample,
+          learning_weights: learning,
+          wardrobe_preview: wardrobeSample,            // MUST use these idx items
           likedCombos,
           dislikedCombos,
           instructions: [
-            "You MUST ONLY use wardrobe items provided by wardrobe_preview.",
-            "You must always return structured JSON with a top-level key named 'outfits'.",
-            "Never use 'looks'. Titles inside each outfit can still use the word 'Look'.",
-            "Each item MUST be referenced by its exact 'idx' value from wardrobe_preview. Do NOT invent or describe items in words.",
-            "Do NOT output item names, categories, or ids directly — only use idx.",
-            "Valid outfit structure: Every outfit must include either (Top + Bottom + Footwear) OR (Dress/Jumpsuit + Footwear).",
-            "Do not output outfits that are missing a Top unless it is a Dress/Jumpsuit outfit.",
-            "Each outfit must have 3–5 items, complete, no missing pieces.",
-            "If the wardrobe is too small, still output JSON with outfits but explain in style_note.",
-            "Consider likedCombos as positive references to favor, and dislikedCombos as negative references to avoid repeating exactly.",
-            "IMPORTANT: Always return JSON with a top-level key called 'outfits'."
+            "Use ONLY wardrobe_preview items; reference items by their exact 'idx'.",
+            "Each outfit must be (Top+Bottom+Footwear) OR (Dress/Jumpsuit+Footwear).",
+            "Return JSON with a top-level key 'outfits' only (no prose).",
+            "Prefer color harmony and silhouette balance.",
+            "Avoid combos fingerprinted in dislikedCombos; favor likedCombos.",
+            "3–5 items per outfit; 2 outfits total."
           ],
         },
         null,
-        2,
+        2
       ),
     };
-
 
     // ✅ Build messages array in correct order
     const messages = [
       systemMsg,
-      {
-        role: "function",
-        name: "get_wardrobe",
-        content: JSON.stringify({
-          items: wardrobeSample,
-          count: wardrobeSample.length,
-        }),
-      },
+      { role:"function", name:"get_wardrobe", content: JSON.stringify({ items: wardrobeSample, count: wardrobeSample.length }) },
+      ...FEWSHOTS,
       userMsg,
     ];
+
 
 
     console.log(
@@ -1861,7 +1978,7 @@ ${level2Basics.join("\n")}
             messages,
             functions,
             function_call: "auto",
-            temperature: 0.40,
+            temperature: 0.2,
             max_tokens: 1000,
             response_format: { type: "json_object" }, // ✅ Force JSON-only
           }),
@@ -1948,6 +2065,16 @@ ${level2Basics.join("\n")}
     } else {
       try {
         parsed = JSON.parse(finalAssistantContent);
+
+        // 🧹 Normalize "looks" → "outfits" once
+        function normalizeOutfitsKey(obj) {
+          if (obj && obj.looks && !obj.outfits) {
+            obj.outfits = obj.looks;
+            delete obj.looks;
+          }
+        }
+        normalizeOutfitsKey(parsed);
+
         // 🛡️ Normalize Tina/backend key: "looks" → "outfits"
         if (parsed && parsed.looks && !parsed.outfits) {
           console.warn("⚠️ Normalizing 'looks' → 'outfits'");
@@ -1976,6 +2103,9 @@ ${level2Basics.join("\n")}
         if (jsonMatch) {
           try {
             parsed = JSON.parse(jsonMatch[0]);
+
+            normalizeOutfitsKey(parsed);
+
           } catch (e2) {
             console.error("❌ JSON recovery failed:", e2.message);
             parsed = null;
@@ -2056,6 +2186,17 @@ ${level2Basics.join("\n")}
       // 🔍 Debug logs
       console.log(`🔍 Hydrated look #${i + 1}:`, hydrated);
 
+      // 🛡️ Enforce completeness BEFORE validation
+      const pool = buildSampleFromList(rawWardrobe, 80);
+      hydrated = forceCompleteLook(hydrated, pool);
+
+      // normalize if dress/jumpsuit path
+      const catsLower = hydrated.map(h => (h.category||"").toLowerCase());
+      if (catsLower.some(c => /dress|jumpsuit|saree/.test(c))) {
+        hydrated = hydrated.filter(it => /dress|jumpsuit|saree|footwear|outer|jacket|coat|dupatta|shawl|stole|accessor/.test((it.category||"").toLowerCase()));
+        hydrated = forceCompleteLook(hydrated, pool);
+      }
+
       // ✅ Combo preference memory check
       const combo = makeComboFingerprint(hydrated);
 
@@ -2112,6 +2253,10 @@ ${level2Basics.join("\n")}
       // Level 2 validation (color + silhouette checks)
       const validationRules = validateLevel2({ items: hydrated });
 
+      // 🧠 log a positive learning step when validation passes
+      await updateLearning(uid, { valid: !!validationRules?.valid }, !!validationRules?.valid);
+
+
       // Level 2: Color Harmony
       const palettes = hydrated
         .map((it) => (it.palette || "").toLowerCase())
@@ -2150,23 +2295,19 @@ ${level2Basics.join("\n")}
       console.log(`🧪 Validation for look #${i + 1}:`, validationRules);
 
       // 🔥 New beginner stylist rule
-      // 🔥 Level 1 validation
-      function validateLevel1(look) {
+      // 🔥 Basic completeness check (keep separate from imported validateLevel1)
+      function basicCompletenessCheck(look) {
         const cats = look.items.map((it) => (it.category || "").toLowerCase());
-        if (
-          !(
-            cats.includes("top") &&
-            cats.includes("bottom") &&
-            cats.includes("footwear")
-          )
-        ) {
+        if (!(cats.includes("top") && cats.includes("bottom") && cats.includes("footwear"))) {
           return false;
         }
         if (cats.includes("dress") || cats.includes("jumpsuit")) return false;
         return true;
       }
 
-      if (!validateLevel1({ items: hydrated })) {
+
+      if (!basicCompletenessCheck({ items: hydrated })) {
+
         // ⚠️ Instead of failing, auto-add staple shoes if missing
         const hasFootwear = hydrated.some(
           (it) => (it.category || "").toLowerCase() === "footwear",
@@ -2193,6 +2334,48 @@ ${level2Basics.join("\n")}
       }
 
       console.log(`🧪 Validation for look #${i + 1}:`, { validationRules });
+
+      // 🔁 One-shot self-heal if invalid
+      let reasons = [...(validationRules?.errors || [])];
+      const isInvalid = !validationRules?.valid || reasons.length;
+
+      if (isInvalid) {
+        const needTop = !hydrated.some(i => /top|shirt|tee|t-?shirt|blouse|kurta/.test(cat(i)));
+        const needBottom = !hydrated.some(i => /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(cat(i)));
+        const needFootwear = !hydrated.some(i => /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(cat(i)));
+
+        messages.push({
+          role: "user",
+          content: JSON.stringify({
+            correction: "Previous outfit failed validation. Fix and regenerate ONE alternative outfit.",
+            reasons,
+            constraint: { require: { top: needTop, bottom: needBottom, footwear: needFootwear }, avoid_combo_like: dislikedCombos.slice(0,5) },
+            keep_context: true,
+            wardrobe_preview: wardrobeSample
+          })
+        });
+
+        try {
+          const fixResp = await fetch("https://api.openai.com/v1/chat/completions",{
+            method:"POST",
+            headers:{ "Content-Type":"application/json", Authorization:`Bearer ${process.env.OPENAI_API_KEY}` },
+            body: JSON.stringify({ model:"gpt-4o-mini", messages, temperature:0.2, max_tokens:700, response_format:{type:"json_object"} })
+          });
+          const fixJson = await fixResp.json();
+          const fixMsg = fixJson.choices?.[0]?.message?.content;
+          if (fixMsg) {
+            const fixParsed = JSON.parse(fixMsg);
+            const fixItems = (fixParsed.outfits?.[0]?.items || []).map(o => idx2item[String(o.idx)]).filter(Boolean);
+            if (fixItems.length) {
+              hydrated = forceCompleteLook(fixItems, pool);
+              const recheck = validateLevel2({ items: hydrated });
+              validationRules.valid = recheck.valid;
+              validationRules.errors = recheck.errors;
+              reasons = recheck.errors || [];
+            }
+          }
+        } catch (e) { console.warn("Retry fix failed:", e.message); }
+      }
 
       return {
         title: look.title || `Untitled Look ${i + 1}`,
@@ -2382,7 +2565,11 @@ app.post("/like-outfit", async (req, res) => {
       liked_at: new Date().toISOString(),
     });
 
+    // 🧠 reinforce positive learning on explicit like
+    await updateLearning(uid, { valid: true }, true);
+
     res.json({ message: "Look liked!", combo });
+
   } catch (e) {
     console.error("❌ like-outfit failed:", e.message);
     res.status(500).json({ error: "Could not save like" });
@@ -2409,7 +2596,11 @@ app.post("/dislike-outfit", async (req, res) => {
       disliked_at: new Date().toISOString(),
     });
 
+    // 🧠 reinforce negative learning on explicit dislike
+    await updateLearning(uid, { valid: false }, false);
+
     res.json({ message: "Look disliked!", combo });
+
   } catch (e) {
     console.error("❌ dislike-outfit failed:", e.message);
     res.status(500).json({ error: "Could not save dislike" });
@@ -2522,7 +2713,7 @@ Preferences: ${JSON.stringify(preferences)}
           { role: "system", content: "You are a fashion stylist AI." },
           { role: "user", content: prompt },
         ],
-        temperature: 0.7,
+        temperature: 0.2,
       }),
     });
 
