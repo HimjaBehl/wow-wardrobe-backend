@@ -1494,7 +1494,15 @@ app.post("/suggest-outfit", async (req, res) => {
       dislikes: userCtx.dislikes,
     };
 
-    // 🧠 Tina learning weights setup
+    // 🧠 Tina learning weights setup (always defined)
+    const baseWeights = {
+      colorHarmony: 0.5,
+      silhouetteBalance: 0.5,
+      trendAwareness: 0.3,
+      wardrobeRotation: 0.4,
+    };
+    const learning = { ...baseWeights, ...(userCtx?.learning_weights || {}) };
+
     function getTinaLevel(weights = {}) {
       const vals = Object.values(weights);
       if (!vals.length) return "Level 1 (Intern)";
@@ -1503,8 +1511,6 @@ app.post("/suggest-outfit", async (req, res) => {
       if (avg < 0.7) return "Level 2 (Junior Stylist)";
       return "Level 3 (Confident Stylist)";
     }
-
-    const learning = userCtx.learning_weights;
     const tinaLevel = getTinaLevel(learning);
 
     const likedCombos = userCtx.likedCombos || [];
@@ -1512,11 +1518,43 @@ app.post("/suggest-outfit", async (req, res) => {
     const styleSummary = userCtx.styleSummary || "";
     const lastServedCombo = userCtx.last_served_combo || null;
 
-    console.log("❤️ likedCombos:", likedCombos.length, "💔 dislikedCombos:", dislikedCombos.length);
+    console.log(
+      "❤️ likedCombos:",
+      likedCombos.length,
+      "💔 dislikedCombos:",
+      dislikedCombos.length,
+    );
 
+    // 👇 keep these available to the rest of the handler
+    Object.assign(req, {
+      _prefs: prefs,
+      _learning: learning,
+      _tinaLevel: tinaLevel,
+      _likedCombos: likedCombos,
+      _dislikedCombos: dislikedCombos,
+      _styleSummary: styleSummary,
+      _lastServedCombo: lastServedCombo,
+    });
   } catch (err) {
     console.warn("⚠️ Could not fetch combo memory:", err.message);
+    // Ensure downstream code still has defaults
+    const baseWeights = {
+      colorHarmony: 0.5,
+      silhouetteBalance: 0.5,
+      trendAwareness: 0.3,
+      wardrobeRotation: 0.4,
+    };
+    Object.assign(req, {
+      _prefs: { gender: "", bodyShape: "", complexion: "", dislikes: [] },
+      _learning: baseWeights,
+      _tinaLevel: "Level 1 (Intern)",
+      _likedCombos: [],
+      _dislikedCombos: [],
+      _styleSummary: "",
+      _lastServedCombo: null,
+    });
   }
+
   
   // ✅ Fetch fashion rules based on user prefs
   let fashionRules = [];
