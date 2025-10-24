@@ -363,7 +363,10 @@ function makeComboFingerprint(items = []) {
 // ---------------- OUTIFT COMPLETENESS HELPERS ----------------
 const NEUTRALS = ["black","white","cream","beige","grey","gray","navy","denim","tan","brown","off-white"];
 const cat = (it) => (it.category || "").toLowerCase();
-const isNeutralColor = (c="") => NEUTRALS.some(n => (c||"").toLowerCase().includes(n));
+const isNeutralColor = (c = "") => {
+  const s = Array.isArray(c) ? (c[0] || "") : (typeof c === "string" ? c : "");
+  return NEUTRALS.some(n => s.toLowerCase().includes(n));
+};
 function pickOne(arr=[], preferNeutral=false){ if(!arr.length)return null; if(preferNeutral){const n=arr.filter(a=>isNeutralColor(a.color)); if(n.length)return n[Math.floor(Math.random()*n.length)];} return arr[Math.floor(Math.random()*arr.length)]; }
 function forceCompleteLook(items=[], pool=[]){
   let hydrated=[...items];
@@ -377,13 +380,13 @@ function forceCompleteLook(items=[], pool=[]){
   if(has(/dress|jumpsuit|saree/)){
     if(!has(/footwear|shoe|sandal|heel|sneaker|jutti|boot/)){ add(pickOne(footwears,true)||pickOne(footwears)); }
     hydrated=hydrated.filter(i=>/dress|jumpsuit|saree|footwear|outer|jacket|coat|dupatta|shawl|stole|accessor/.test(cat(i)));
-    if(hydrated.length<4) add(pickOne(outers.filter(isNeutralColor))||pickOne(accs,true));
+    if(hydrated.length<4) add(pickOne(outers.filter(i => isNeutralColor(i.color)))||pickOne(accs,true));
     return hydrated.slice(0,5);
   }
   if(!has(/top|shirt|tee|t-?shirt|blouse|kurta/)) add(pickOne(tops,true)||pickOne(tops));
   if(!has(/bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/)) add(pickOne(bottoms,true)||pickOne(bottoms));
   if(!has(/footwear|shoe|sandal|heel|sneaker|jutti|boot/)) add(pickOne(footwears,true)||pickOne(footwears));
-  if(hydrated.length<4){ const maybe=pickOne(outers.filter(isNeutralColor))||pickOne(accs,true); if(maybe) add(maybe); }
+  if(hydrated.length<4){ const maybe=pickOne(outers.filter(i => isNeutralColor(i.color)))||pickOne(accs,true); if(maybe) add(maybe); }
   return hydrated.slice(0,5);
 }
 // -------------------------------------------------------------
@@ -1600,7 +1603,9 @@ app.post("/suggest-outfit", async (req, res) => {
       const scored = arr.map((it) => {
         const lw = it.lastWorn ? new Date(it.lastWorn).getTime() : 0;
         const days = lw ? Math.max(1, (now - lw) / (1000*60*60*24)) : 999;
-        const neutral = NEUTRALS.has((it.color || "").toLowerCase()) ? 1 : 0;
+        const colorStr = Array.isArray(it.color) ? (it.color[0] || "") : (typeof it.color === "string" ? it.color : "");
+        const neutral = NEUTRALS.has(colorStr.toLowerCase()) ? 1 : 0;
+
         const score =
           rotationWeight * Math.min(1, days / 21) +
           harmonyWeight  * neutral +
@@ -1644,7 +1649,7 @@ app.post("/suggest-outfit", async (req, res) => {
           id: it.id,
           name: cleanName,
           category: cleanCat,
-          color: it.color || "Unknown",
+          color: Array.isArray(it.color) ? (it.color[0] || "Unknown") : (it.color || "Unknown"),
           taxonomyPath: it.taxonomyPath || "",
           attributes: it.attributes || {},
           fabric: it.fabric || "Unknown",
