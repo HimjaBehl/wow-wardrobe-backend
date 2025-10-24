@@ -1405,6 +1405,67 @@ app.get("/fashion-rules", async (req, res) => {
   }
 });
 
+// ── Rich user style context (likes/dislikes + prefs + learning) ─────────────
+async function getUserStyleContext(uid) {
+  const mem = await getUserMemory(uid).catch(() => ({}));
+
+  const learning = {
+    colorHarmony:      mem?.learning_weights?.colorHarmony      ?? 0.5,
+    silhouetteBalance: mem?.learning_weights?.silhouetteBalance ?? 0.5,
+    trendAwareness:    mem?.learning_weights?.trendAwareness    ?? 0.3,
+    wardrobeRotation:  mem?.learning_weights?.wardrobeRotation  ?? 0.4,
+  };
+
+  // liked / disliked combo fingerprints
+  let likedCombos = [];
+  let dislikedCombos = [];
+  try {
+    const likedSnap = await db.collection("liked_looks").where("uid","==",uid).limit(100).get();
+    likedCombos = likedSnap.docs.map(d => d.data().combo).filter(Boolean);
+
+    const dislikedSnap = await db.collection("disliked_looks").where("uid","==",uid).limit(100).get();
+    dislikedCombos = dislikedSnap.docs.map(d => d.data().combo).filter(Boolean);
+  } catch (e) {
+    console.warn("⚠️ styleContext combos fetch failed:", e.message);
+  }
+
+  // short style summary (re-uses your helper)
+  const summary = await buildUserStyleSummary(uid).catch(() => "");
+
+  // optional “top signals” fallback if summary comes empty
+  const likedItems = [];
+  try {
+    const likedSnap = await db.collection("liked_looks").where("uid","==",uid).orderBy("liked_at","desc").limit(40).get();
+    likedSnap.docs.forEach(d => (d.data().outfit?.items || []).forEach(i => likedItems.push(i)));
+  } catch {}
+  const countBy = (arr, key) =>
+    arr.reduce((acc, it) => {
+      const k = (it?.[key] || "").toLowerCase();
+      if (!k) return acc;
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+  const top3 = (obj) => Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>k);
+  const topColors = top3(countBy(likedItems, "color"));
+  const topCats   = top3(countBy(likedItems, "category"));
+
+  const styleSummary =
+    summary ||
+    `Prefers colors: ${topColors.join(", ") || "neutral"}; categories: ${topCats.join(", ") || "mixed"}.`;
+
+  return {
+    gender: (mem.gender || "").toLowerCase(),
+    bodyShape: (mem.bodyShape || "").toLowerCase(),
+    complexion: (mem.complexion || "").toLowerCase(),
+    dislikes: Array.isArray(mem.dislikes) ? mem.dislikes : [],
+    learning_weights: learning,
+    likedCombos,
+    dislikedCombos,
+    styleSummary,
+    last_served_combo: mem.last_served_combo || null,
+  };
+}
+
 // ─── Updated /suggest-outfit route: tool-calling agent loop ─────────────────
 app.post("/suggest-outfit", async (req, res) => {
   console.log("HIT /suggest-outfit (agent) ", { ts: new Date().toISOString() });
@@ -1421,48 +1482,38 @@ app.post("/suggest-outfit", async (req, res) => {
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
   // Prefetch user preferences & a basic wardrobe snapshot (we still expose function to fetch full)
-  const prefs = await getUserMemory(uid).catch(() => ({}));
-
-  // 🧠 Tina learning weights setup
-  function getTinaLevel(weights = {}) {
-    const vals = Object.values(weights);
-    if (!vals.length) return "Level 1 (Intern)";
-    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-    if (avg < 0.4) return "Level 1 (Intern)";
-    if (avg < 0.7) return "Level 2 (Junior Stylist)";
-    return "Level 3 (Confident Stylist)";
-  }
-
-  const learning = prefs.learning_weights || {
-    colorHarmony: 0.5,
-    silhouetteBalance: 0.5,
-    trendAwareness: 0.3,
-    wardrobeRotation: 0.4,
-  };
-  const tinaLevel = getTinaLevel(learning);
-  console.log("🧩 Tina Level:", tinaLevel, "Weights:", learning);
-
-  const styleSummary = await buildUserStyleSummary(uid).catch(() => "");
-
-  // 👗 Fetch liked & disliked combos for user
-  let likedCombos = [];
-  let dislikedCombos = [];
   try {
-    const likedSnap = await db
-      .collection("liked_looks")
-      .where("uid", "==", uid)
-      .limit(50)
-      .get();
-    likedCombos = likedSnap.docs.map(d => d.data().combo).filter(Boolean);
+    // 🔹 Enriched user context
+    const userCtx = await getUserStyleContext(uid);
 
-    const dislikedSnap = await db
-      .collection("disliked_looks")
-      .where("uid", "==", uid)
-      .limit(50)
-      .get();
-    dislikedCombos = dislikedSnap.docs.map(d => d.data().combo).filter(Boolean);
+    // keep a compact prefs object for validators that expect `prefs`
+    const prefs = {
+      gender: userCtx.gender,
+      bodyShape: userCtx.bodyShape,
+      complexion: userCtx.complexion,
+      dislikes: userCtx.dislikes,
+    };
+
+    // 🧠 Tina learning weights setup
+    function getTinaLevel(weights = {}) {
+      const vals = Object.values(weights);
+      if (!vals.length) return "Level 1 (Intern)";
+      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+      if (avg < 0.4) return "Level 1 (Intern)";
+      if (avg < 0.7) return "Level 2 (Junior Stylist)";
+      return "Level 3 (Confident Stylist)";
+    }
+
+    const learning = userCtx.learning_weights;
+    const tinaLevel = getTinaLevel(learning);
+
+    const likedCombos = userCtx.likedCombos || [];
+    const dislikedCombos = userCtx.dislikedCombos || [];
+    const styleSummary = userCtx.styleSummary || "";
+    const lastServedCombo = userCtx.last_served_combo || null;
 
     console.log("❤️ likedCombos:", likedCombos.length, "💔 dislikedCombos:", dislikedCombos.length);
+
   } catch (err) {
     console.warn("⚠️ Could not fetch combo memory:", err.message);
   }
@@ -1904,34 +1955,44 @@ ${level2Basics.join("\n")}
       role: "user",
       content: JSON.stringify(
         {
-          task: "Generate 2 polished outfits",
+          task: "Generate 1 polished outfit",
           uid,
           occasion,
           vibe,
           vibe_hints: styleMoodMap[vibe?.toLowerCase()] || [],
           city,
-          gender: prefs.gender || "",
-          bodyShape: prefs.bodyShape || "",
-          complexion: prefs.complexion || "",
-          dislikes: prefs.dislikes || [],
-          style_summary: styleSummary || "",
+
+          // 🧠 enriched prefs
+          gender: userCtx.gender,
+          bodyShape: userCtx.bodyShape,
+          complexion: userCtx.complexion,
+          dislikes: userCtx.dislikes,
+
+          // memory/context
           learning_weights: learning,
-          wardrobe_preview: wardrobeSample,            // MUST use these idx items
+          style_summary: styleSummary,
           likedCombos,
           dislikedCombos,
+          last_served_combo: lastServedCombo,
+
+          // wardrobe you already built
+          wardrobe_preview: wardrobeSample,
+
           instructions: [
             "Use ONLY wardrobe_preview items; reference items by their exact 'idx'.",
             "Each outfit must be (Top+Bottom+Footwear) OR (Dress/Jumpsuit+Footwear).",
             "Return JSON with a top-level key 'outfits' only (no prose).",
             "Prefer color harmony and silhouette balance.",
             "Avoid combos fingerprinted in dislikedCombos; favor likedCombos.",
-            "3–5 items per outfit; 2 outfits total."
+            ...(lastServedCombo ? [`Avoid repeating this combo fingerprint: ${lastServedCombo}`] : []),
+            "3–5 items per outfit; 1 outfit total."
           ],
         },
         null,
         2
       ),
     };
+
 
     // ✅ Build messages array in correct order
     const messages = [
