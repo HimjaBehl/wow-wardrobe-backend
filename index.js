@@ -1542,7 +1542,17 @@ app.post("/suggest-outfit", async (req, res) => {
     const rulesSnap = await db.collection("fashion_rules").get();
     fashionRules = rulesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-    // Filter by prefs (complexion + bodyShape)
+    // Filter by prefs
+    // ✅ Build formatted rules for AI prompt
+    const rulesText = fashionRules
+      .map(r => {
+        const p = r.principle ? `• ${r.principle}` : "• Rule";
+        const rule = r.rule ? ` — ${r.rule}` : "";
+        const ex = r.example ? ` (ex: ${r.example})` : "";
+        return `${p}${rule}${ex}`;
+      })
+      .join("\n");
+
     const userRules = fashionRules.filter((rule) => {
       if (
         prefs.complexion &&
@@ -1915,24 +1925,7 @@ app.post("/suggest-outfit", async (req, res) => {
     // Build initial messages: system + user with context
     const moodHints = styleMoodMap[vibe?.toLowerCase()] || [];
     const level2Basics = getLevel2Basics();
-    const level2Prompt = `
-You are Tina, a beginner stylist intern (Level 2).
-Your goal is to create simple, complete outfits from the wardrobe provided.
-
-LEVEL 2 RULES:
-- Every outfit MUST be exactly: Top + Bottom + Footwear.
-- Footwear is mandatory.
-- Accessories optional, but only 1 if it clearly fits.
-- Do not use Dress or Jumpsuit at this level.
-- Notes must describe chosen items (name, category, color) in 1–2 short sentences.
-- Balance colors and silhouettes for harmony.
-
-Additional fashion rules from knowledge base (must follow if relevant):
-${fashionRules.map((r) => `- ${r.principle}`).join("\n")}
-
-Fashion basics you must follow:
-${level2Basics.join("\n")}
-`;
+    
 
     // 🔥 Force wardrobe fetch before agent loop
     const wardrobeSample =
@@ -1941,73 +1934,122 @@ ${level2Basics.join("\n")}
     console.log("👕 wardrobeSample built:", wardrobeSample.length, "items");
 
     const FEWSHOTS = [
-      { role:"user", content: JSON.stringify({ task:"example - casual", wardrobe_preview:[{idx:"0"},{idx:"1"},{idx:"2"}] }) },
-      { role:"assistant", content: JSON.stringify({ outfits:[{ title:"Casual Street Look", style_note:"Neutral tee with denim and clean sneakers.", items:[{idx:"0"},{idx:"1"},{idx:"2"}] }] }) },
-      { role:"user", content: JSON.stringify({ task:"example - dressy", wardrobe_preview:[{idx:"3"},{idx:"4"}] }) },
-      { role:"assistant", content: JSON.stringify({ outfits:[{ title:"Dinner Dress Look", style_note:"Navy dress with nude heels.", items:[{idx:"3"},{idx:"4"}] }] }) },
-      { role:"user", content: JSON.stringify({ task:"example - indian", wardrobe_preview:[{idx:"5"},{idx:"6"},{idx:"7"}] }) },
-      { role:"assistant", content: JSON.stringify({ outfits:[{ title:"Festive Kurta Set", style_note:"Pastel kurta, palazzo and juttis.", items:[{idx:"5"},{idx:"6"},{idx:"7"}] }] }) }
+      { role: "user", content: JSON.stringify({
+          task: "example - casual",
+          wardrobe_preview: [{idx:"0"},{idx:"1"},{idx:"2"}]
+      })},
+      { role: "assistant", content: JSON.stringify({
+          outfits: [{
+            title: "Casual Street Look",
+            style_note: "Neutral tee with denim and clean sneakers for easy balance.",
+            items: [{idx:"0"},{idx:"1"},{idx:"2"}]
+          }]
+      })},
+
+      { role: "user", content: JSON.stringify({
+          task: "example - dress",
+          wardrobe_preview: [{idx:"3"},{idx:"4"}]
+      })},
+      { role: "assistant", content: JSON.stringify({
+          outfits: [{
+            title: "Dinner Dress Look",
+            style_note: "Navy dress with nude heels; simple silhouette and soft contrast.",
+            items: [{idx:"3"},{idx:"4"}]
+          }]
+      })},
+
+      { role: "user", content: JSON.stringify({
+          task: "example - indian",
+          wardrobe_preview: [{idx:"5"},{idx:"6"},{idx:"7"}]
+      })},
+      { role: "assistant", content: JSON.stringify({
+          outfits: [{
+            title: "Festive Kurta Set",
+            style_note: "Pastel kurta + palazzo + juttis; airy fabrics and cohesive palette.",
+            items: [{idx:"5"},{idx:"6"},{idx:"7"}]
+          }]
+      })},
+
+      { role: "user", content: JSON.stringify({
+          task: "example - avoid disliked",
+          dislikedCombos: ["top-neutral-upper|bottom-bright-lower|footwear-neutral-footwear"],
+          wardrobe_preview: [{idx:"8"},{idx:"9"},{idx:"10"}]
+      })},
+      { role: "assistant", content: JSON.stringify({
+          outfits: [{
+            title: "Smart-Casual Alt",
+            style_note: "Avoided prior disliked combo; chose warm top, tapered chinos, minimal sneakers.",
+            items: [{idx:"8"},{idx:"9"},{idx:"10"}]
+          }]
+      })}
     ];
+
 
     
     // 🪞 Adaptive system prompt
     const systemMsg = {
       role: "system",
-      content: `You are Tina, a ${tinaLevel}.
-    You learn from past likes/dislikes to improve your sense of style.
-    Your current confidence:
+      content:
+    `You are Tina, a ${tinaLevel}.
+    You design outfits using only the items provided in the wardrobe preview (addressable strictly by their "idx" values).
+
+    Your current confidence (derived from learning weights):
     - Color harmony: ${(learning.colorHarmony * 100).toFixed(0)}%
     - Silhouette balance: ${(learning.silhouetteBalance * 100).toFixed(0)}%
     - Trend awareness: ${(learning.trendAwareness * 100).toFixed(0)}%
     - Wardrobe rotation: ${(learning.wardrobeRotation * 100).toFixed(0)}%
 
-    RULES:
-    1. Use ONLY items from the wardrobe_preview.
-    2. Create complete, stylish looks using Top+Bottom+Footwear (or Dress+Footwear).
-    3. Prioritize balance in color and silhouette.
-    4. Consider user's preferences, dislikes, and current trends.
-    5. Return JSON with key "outfits" only.`
+    STRICT OUTPUT FORMAT:
+    - Respond with **only** valid JSON.
+    - Top-level key must be **"outfits"** (no prose, no extra keys).
+    - Each outfit: { "title": string, "style_note": string, "items": [{ "idx": string }, ...] }
+    - Use **only** "idx" to reference items. Never invent items or fields.
+
+    STYLE CONSTRAINTS:
+    1) Use ONLY wardrobe_preview items (by idx).
+    2) Prefer (Top + Bottom + Footwear). A (Dress/Jumpsuit + Footwear) path is allowed.
+    3) Enforce color harmony & silhouette balance at your level.
+    4) STRICTLY avoid any combination fingerprints present in "dislikedCombos".
+    5) If your combination is close to any in "likedCombos", prefer it. Mark that in style_note.
+    6) If the user provided an occasion or vibe, align names and notes with that context.
+
+    FASHION KNOWLEDGE BASE (follow if relevant):
+    ${rulesText || "• (No additional rules available)"}
+
+    Return only JSON with the 'outfits' key.`
     };
+
 
     const userMsg = {
       role: "user",
-      content: JSON.stringify(
-        {
-          task: "Generate 1 polished outfit",
-          uid,
-          occasion,
-          vibe,
-          vibe_hints: styleMoodMap[vibe?.toLowerCase()] || [],
-          city,
-
-          // ✅ use the hoisted values, not userCtx
-          gender: prefs.gender,
-          bodyShape: prefs.bodyShape,
-          complexion: prefs.complexion,
-          dislikes: prefs.dislikes,
-
-          learning_weights: learning,
-          style_summary: styleSummary,
-          likedCombos,
-          dislikedCombos,
-          last_served_combo: lastServedCombo,
-
-          wardrobe_preview: wardrobeSample,
-
-          instructions: [
-            "Use ONLY wardrobe_preview items; reference items by their exact 'idx'.",
-            "Each outfit must be (Top+Bottom+Footwear) OR (Dress/Jumpsuit+Footwear).",
-            "Return JSON with a top-level key 'outfits' only (no prose).",
-            "Prefer color harmony and silhouette balance.",
-            "Avoid combos fingerprinted in dislikedCombos; favor likedCombos.",
-            ...(lastServedCombo ? [`Avoid repeating this combo fingerprint: ${lastServedCombo}`] : []),
-            "3–5 items per outfit; 1 outfit total."
-          ],
-        },
-        null,
-        2
-      ),
+      content: JSON.stringify({
+        task: "Generate 1 polished outfit",
+        uid, occasion, vibe,
+        vibe_hints: styleMoodMap[vibe?.toLowerCase()] || [],
+        city,
+        gender: prefs.gender,
+        bodyShape: prefs.bodyShape,
+        complexion: prefs.complexion,
+        dislikes: prefs.dislikes,
+        learning_weights: learning,
+        style_summary: styleSummary,
+        likedCombos,
+        dislikedCombos,
+        last_served_combo: lastServedCombo,
+        wardrobe_preview: wardrobeSample,
+        instructions: [
+          "Return **only** JSON with top-level key 'outfits'. No prose.",
+          "Reference items strictly by 'idx'; never invent items.",
+          "Each outfit is (Top+Bottom+Footwear) OR (Dress/Jumpsuit+Footwear).",
+          "Prefer color harmony and silhouette balance.",
+          "HARD AVOID any fingerprint in dislikedCombos.",
+          "If close to likedCombos, prefer that combo and call it out in style_note.",
+          ...(lastServedCombo ? [`Avoid repeating this combo fingerprint: ${lastServedCombo}`] : []),
+          "3–5 items per outfit; 1 outfit total."
+        ],
+      }, null, 2),
     };
+
 
 
 
@@ -2147,6 +2189,34 @@ ${level2Basics.join("\n")}
       }
     }
 
+    // Enforce strict shape for AI output: { outfits: [ { title, style_note, items:[{idx}] } ] }
+    function sanitizeOutfitsPayload(parsed) {
+      // Accept either {outfits:[...]} or an array directly; drop everything else.
+      const rawOutfits = Array.isArray(parsed?.outfits)
+        ? parsed.outfits
+        : (Array.isArray(parsed) ? parsed : []);
+
+      const outfits = rawOutfits.map((o) => {
+        const title =
+          typeof o?.title === "string" && o.title.trim()
+            ? o.title.trim()
+            : "Untitled Look";
+
+        const style_note =
+          typeof o?.style_note === "string" ? o.style_note.trim() : "";
+
+        // Keep ONLY idx references – drop any invented fields
+        const items = Array.isArray(o?.items) ? o.items : [];
+        const cleanItems = items
+          .map((it) => (it && typeof it.idx === "string" ? { idx: it.idx } : null))
+          .filter(Boolean);
+
+        return { title, style_note, items: cleanItems };
+      });
+
+      return { outfits };
+    }
+
     // Try to parse the final assistant content as JSON (strict)
     let parsed;
     if (!finalAssistantContent) {
@@ -2158,15 +2228,18 @@ ${level2Basics.join("\n")}
 
         normalizeOutfitsKey(parsed);
 
-
-        // 🛡️ Normalize Tina/backend key: "looks" → "outfits"
         if (parsed && parsed.looks && !parsed.outfits) {
           console.warn("⚠️ Normalizing 'looks' → 'outfits'");
           parsed.outfits = parsed.looks;
           delete parsed.looks;
         }
 
+        // ✅ Enforce clean structure now
+        parsed = sanitizeOutfitsPayload(parsed);
+        console.log("🧼 Sanitized AI payload (head):", JSON.stringify(parsed).slice(0, 400));
+
       } catch (err) {
+
         // 🛡️ Fallback: handle if Tina used "looks" instead of "outfits"
         if (parsed && parsed.looks && !parsed.outfits) {
           console.warn("⚠️ Tina returned 'looks' instead of 'outfits'. Remapping...");
@@ -2187,9 +2260,9 @@ ${level2Basics.join("\n")}
         if (jsonMatch) {
           try {
             parsed = JSON.parse(jsonMatch[0]);
-
             normalizeOutfitsKey(parsed);
-
+            parsed = sanitizeOutfitsPayload(parsed);
+            console.log("🧼 Sanitized (recovered) AI payload (head):", JSON.stringify(parsed).slice(0, 400));
           } catch (e2) {
             console.error("❌ JSON recovery failed:", e2.message);
             parsed = null;
@@ -2197,26 +2270,26 @@ ${level2Basics.join("\n")}
         } else {
           parsed = null;
         }
-      }
 
-      if (!parsed) {
-        console.warn("⚠️ Could not parse assistant JSON. Returning fallback.");
-        const fallbackItems = buildSampleFromList(rawWardrobe, 10);
-        parsed = {
-          outfits: [
-            {
-              title: "Fallback Outfit 1",
-              style_note: "Fallback because parsing failed",
-              items: fallbackItems.slice(0, 3).map((it) => ({ idx: it.idx })),
-            },
-            {
-              title: "Fallback Outfit 2",
-              style_note: "Fallback because parsing failed",
-              items: fallbackItems.slice(3, 6).map((it) => ({ idx: it.idx })),
-            },
-          ],
-          note: "Fallback: Tina's response couldn't be parsed as JSON.",
-        };
+
+        if (!parsed) {
+          console.warn("⚠️ Could not parse assistant JSON. Returning fallback.");
+          const fallbackItems = buildSampleFromList(rawWardrobe, 10);
+          parsed = sanitizeOutfitsPayload({
+            outfits: [
+              {
+                title: "Fallback Outfit 1",
+                style_note: "Fallback because parsing failed",
+                items: fallbackItems.slice(0, 3).map((it) => ({ idx: it.idx })),
+              },
+              {
+                title: "Fallback Outfit 2",
+                style_note: "Fallback because parsing failed",
+                items: fallbackItems.slice(3, 6).map((it) => ({ idx: it.idx })),
+              },
+            ],
+          });
+        }
       }
     }
 
@@ -2466,8 +2539,7 @@ ${level2Basics.join("\n")}
         style_note: look.style_note || "",
         items: hydrated,
         validation: { styleRules: validationRules },
-      
-    };
+      };
     }));
   
 
