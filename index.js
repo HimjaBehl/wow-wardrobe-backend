@@ -1538,13 +1538,23 @@ app.post("/suggest-outfit", async (req, res) => {
   
   // ✅ Fetch fashion rules based on user prefs
   let fashionRules = [];
+  let rulesText = ""; // <-- HOISTED so system prompt can safely read it
   try {
     const rulesSnap = await db.collection("fashion_rules").get();
     fashionRules = rulesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
     // Filter by prefs
-    // ✅ Build formatted rules for AI prompt
-    const rulesText = fashionRules
+    const userRules = fashionRules.filter((rule) => {
+      if (prefs.complexion && rule.rule_id.includes(prefs.complexion.toLowerCase())) return true;
+      if (prefs.bodyShape && rule.rule_id.includes(prefs.bodyShape.toLowerCase())) return true;
+      if (rule.category === "general") return true;
+      return false;
+    });
+
+    fashionRules = userRules;
+
+    // ✅ Build formatted rules for AI prompt AFTER filtering
+    rulesText = fashionRules
       .map(r => {
         const p = r.principle ? `• ${r.principle}` : "• Rule";
         const rule = r.rule ? ` — ${r.rule}` : "";
@@ -1553,27 +1563,12 @@ app.post("/suggest-outfit", async (req, res) => {
       })
       .join("\n");
 
-    const userRules = fashionRules.filter((rule) => {
-      if (
-        prefs.complexion &&
-        rule.rule_id.includes(prefs.complexion.toLowerCase())
-      )
-        return true;
-      if (
-        prefs.bodyShape &&
-        rule.rule_id.includes(prefs.bodyShape.toLowerCase())
-      )
-        return true;
-      if (rule.category === "general") return true;
-      return false;
-    });
-
-    fashionRules = userRules;
     console.log(
       "🎯 Loaded fashion rules for user:",
       fashionRules.map((r) => r.rule_id),
     );
   } catch (err) {
+
     console.error("❌ Failed to fetch fashion rules:", err.message);
     fashionRules = [];
   }
@@ -2274,18 +2269,21 @@ app.post("/suggest-outfit", async (req, res) => {
 
         if (!parsed) {
           console.warn("⚠️ Could not parse assistant JSON. Returning fallback.");
-          const fallbackItems = buildSampleFromList(rawWardrobe, 10);
+          const pool = (wardrobeSample && wardrobeSample.length >= 6)
+            ? wardrobeSample
+            : buildSampleFromList(rawWardrobe, 10); // small safety net
+
           parsed = sanitizeOutfitsPayload({
             outfits: [
               {
                 title: "Fallback Outfit 1",
                 style_note: "Fallback because parsing failed",
-                items: fallbackItems.slice(0, 3).map((it) => ({ idx: it.idx })),
+                items: pool.slice(0, 3).map((it) => ({ idx: String(it.idx) })),
               },
               {
                 title: "Fallback Outfit 2",
                 style_note: "Fallback because parsing failed",
-                items: fallbackItems.slice(3, 6).map((it) => ({ idx: it.idx })),
+                items: pool.slice(3, 6).map((it) => ({ idx: String(it.idx) })),
               },
             ],
           });
@@ -2295,8 +2293,9 @@ app.post("/suggest-outfit", async (req, res) => {
 
     // Hydrate parsed.outfits items into full item objects using the available wardrobe (prefer filtered rawWardrobe)
     const idx2item = Object.fromEntries(
-      buildSampleFromList(rawWardrobe, 100).map((it) => [String(it.idx), it]),
+      (wardrobeSample || []).map((it) => [String(it.idx), it]),
     );
+
 
     // 👗 Combo validation (soft block disliked)
     function getCombo(items = []) {
