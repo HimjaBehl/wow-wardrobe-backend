@@ -1,5 +1,42 @@
 import sharp from "sharp";
 import OpenAI from "openai";
+
+// ── Redaction + Safe Debug Logger ──
+function redact(obj) {
+  try {
+    const clone = JSON.parse(JSON.stringify(obj));
+    const scrub = (o) => {
+      if (!o || typeof o !== "object") return;
+      for (const k of Object.keys(o)) {
+        const key = k.toLowerCase();
+        if (/(uid|user_?id|email|token|apikey|api_key|authorization|auth|bearer)/i.test(key)) {
+          o[k] = "[redacted]";
+          continue;
+        }
+        if (/(image_?url|signedurl|signed_url|downloadurl|displayurl|display_url)/i.test(key)) {
+          o[k] = "[redacted-url]";
+          continue;
+        }
+        if ((key === "id" || key.endsWith("_id")) && typeof o[k] === "string") {
+          const v = o[k];
+          o[k] = v.length > 8 ? `[id:…${v.slice(-4)}]` : "[id:redacted]";
+          continue;
+        }
+        if (typeof o[k] === "object") scrub(o[k]);
+      }
+    };
+    scrub(clone);
+    return clone;
+  } catch {
+    return "[unloggable]";
+  }
+}
+
+const DEBUG_LOGS = process.env.DEBUG_LOGS === "1";
+function dlog(...args) {
+  if (DEBUG_LOGS) console.log(...args);
+}
+
 import fs from "fs";
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -2070,7 +2107,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
     // 🔍 DEBUG: log what Tina is given as input
-    console.log("🪞 Tina agent INPUT snapshot >>>");
+    dlog("🪞 Tina agent INPUT snapshot >>>");
     console.log("Occasion:", occasion, "| Vibe:", vibe, "| City:", city);
     console.log("Prefs:", JSON.stringify(prefs, null, 2));
     console.log(
@@ -2268,26 +2305,27 @@ app.post("/suggest-outfit", async (req, res) => {
 
 
         if (!parsed) {
-          console.warn("⚠️ Could not parse assistant JSON. Returning fallback.");
+          dlog("⚠️ Could not parse assistant JSON. Returning weighted fallback.");
           const pool = (wardrobeSample && wardrobeSample.length >= 6)
             ? wardrobeSample
-            : buildSampleFromList(rawWardrobe, 10); // small safety net
+            : buildSampleFromList(rawWardrobe, 10); // weighted sample
 
           parsed = sanitizeOutfitsPayload({
             outfits: [
               {
-                title: "Fallback Outfit 1",
-                style_note: "Fallback because parsing failed",
+                title: "Auto-Fallback 1",
+                style_note: "AI output invalid; generated weighted fallback look.",
                 items: pool.slice(0, 3).map((it) => ({ idx: String(it.idx) })),
               },
               {
-                title: "Fallback Outfit 2",
-                style_note: "Fallback because parsing failed",
+                title: "Auto-Fallback 2",
+                style_note: "AI output invalid; generated weighted fallback look.",
                 items: pool.slice(3, 6).map((it) => ({ idx: String(it.idx) })),
               },
             ],
           });
         }
+
       }
     }
 
