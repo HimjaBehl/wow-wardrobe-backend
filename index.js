@@ -1980,20 +1980,18 @@ ${level2Basics.join("\n")}
           vibe_hints: styleMoodMap[vibe?.toLowerCase()] || [],
           city,
 
-          // 🧠 enriched prefs
-          gender: userCtx.gender,
-          bodyShape: userCtx.bodyShape,
-          complexion: userCtx.complexion,
-          dislikes: userCtx.dislikes,
+          // ✅ use the hoisted values, not userCtx
+          gender: prefs.gender,
+          bodyShape: prefs.bodyShape,
+          complexion: prefs.complexion,
+          dislikes: prefs.dislikes,
 
-          // memory/context
           learning_weights: learning,
           style_summary: styleSummary,
           likedCombos,
           dislikedCombos,
           last_served_combo: lastServedCombo,
 
-          // wardrobe you already built
           wardrobe_preview: wardrobeSample,
 
           instructions: [
@@ -2010,6 +2008,7 @@ ${level2Basics.join("\n")}
         2
       ),
     };
+
 
 
     // ✅ Build messages array in correct order
