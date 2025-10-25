@@ -1481,27 +1481,37 @@ app.post("/suggest-outfit", async (req, res) => {
 
   if (!uid) return res.status(400).json({ error: "uid is required" });
 
+  // ─────────────────────────────
+  // 🧠 Hoisted per-request context (available throughout this handler)
+  // ─────────────────────────────
+  let prefs = { gender: "", bodyShape: "", complexion: "", dislikes: [] };
+  let learning = { colorHarmony: 0.5, silhouetteBalance: 0.5, trendAwareness: 0.3, wardrobeRotation: 0.4 };
+  let tinaLevel = "Level 1 (Intern)";
+  let likedCombos = [];
+  let dislikedCombos = [];
+  let styleSummary = "";
+  let lastServedCombo = null;
+
+
   // Prefetch user preferences & a basic wardrobe snapshot (we still expose function to fetch full)
   try {
     // 🔹 Enriched user context
     const userCtx = await getUserStyleContext(uid);
 
-    // keep a compact prefs object for validators that expect `prefs`
-    const prefs = {
+    prefs = {
       gender: userCtx.gender,
       bodyShape: userCtx.bodyShape,
       complexion: userCtx.complexion,
       dislikes: userCtx.dislikes,
     };
 
-    // 🧠 Tina learning weights setup (always defined)
     const baseWeights = {
       colorHarmony: 0.5,
       silhouetteBalance: 0.5,
       trendAwareness: 0.3,
       wardrobeRotation: 0.4,
     };
-    const learning = { ...baseWeights, ...(userCtx?.learning_weights || {}) };
+    learning = { ...baseWeights, ...(userCtx?.learning_weights || {}) };
 
     function getTinaLevel(weights = {}) {
       const vals = Object.values(weights);
@@ -1511,49 +1521,19 @@ app.post("/suggest-outfit", async (req, res) => {
       if (avg < 0.7) return "Level 2 (Junior Stylist)";
       return "Level 3 (Confident Stylist)";
     }
-    const tinaLevel = getTinaLevel(learning);
 
-    const likedCombos = userCtx.likedCombos || [];
-    const dislikedCombos = userCtx.dislikedCombos || [];
-    const styleSummary = userCtx.styleSummary || "";
-    const lastServedCombo = userCtx.last_served_combo || null;
+    tinaLevel = getTinaLevel(learning);
 
-    console.log(
-      "❤️ likedCombos:",
-      likedCombos.length,
-      "💔 dislikedCombos:",
-      dislikedCombos.length,
-    );
+    likedCombos = userCtx.likedCombos || [];
+    dislikedCombos = userCtx.dislikedCombos || [];
+    styleSummary = userCtx.styleSummary || "";
+    lastServedCombo = userCtx.last_served_combo || null;
 
-    // 👇 keep these available to the rest of the handler
-    Object.assign(req, {
-      _prefs: prefs,
-      _learning: learning,
-      _tinaLevel: tinaLevel,
-      _likedCombos: likedCombos,
-      _dislikedCombos: dislikedCombos,
-      _styleSummary: styleSummary,
-      _lastServedCombo: lastServedCombo,
-    });
   } catch (err) {
     console.warn("⚠️ Could not fetch combo memory:", err.message);
-    // Ensure downstream code still has defaults
-    const baseWeights = {
-      colorHarmony: 0.5,
-      silhouetteBalance: 0.5,
-      trendAwareness: 0.3,
-      wardrobeRotation: 0.4,
-    };
-    Object.assign(req, {
-      _prefs: { gender: "", bodyShape: "", complexion: "", dislikes: [] },
-      _learning: baseWeights,
-      _tinaLevel: "Level 1 (Intern)",
-      _likedCombos: [],
-      _dislikedCombos: [],
-      _styleSummary: "",
-      _lastServedCombo: null,
-    });
+    // keep defaults
   }
+
 
   
   // ✅ Fetch fashion rules based on user prefs
