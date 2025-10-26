@@ -460,19 +460,19 @@ app.post("/search-product", async (req, res) => {
 
     // 🔹 Normalize into "products" list (hydrated)
     const products =
-      serpRes.data.images_results?.slice(0, 6).map((img) => {
+      (serpRes.data.images_results || []).slice(0, 6).map((img) => {
         return hydrateWardrobeItem({
           uid: "search-temp",
-          name: img.title || "Unnamed Product",
-          image_url: img.original || img.thumbnail,
+          name: img?.title || "Unnamed Product",
+          image_url: img?.original || img?.thumbnail || "",
           category: "Search",
           color: "Unknown",
-          tags: ["Search", img.title || ""],
+          tags: ["Search", img?.title || ""],
         });
-      }) || [];
+      });
 
+    res.json({ success: true, products, items: products });
 
-    res.json({ success: true, products });
   } catch (err) {
     console.error("❌ /search-product failed:", err.message);
     res.status(500).json({ error: "Search failed" });
@@ -488,20 +488,26 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ Auto-tagging
+// ✅ Auto-tagging (normalized keys)
 app.post("/auto-tag", async (req, res) => {
   const { image_url } = req.body || {};
   if (!image_url) return res.status(400).json({ error: "Image URL required" });
+
   try {
     const result = await autoTagFromImageUrl(image_url);
-    return res.json(result);
+
+    // Normalize keys to match /auto-tag-upload and keep originals too
+    return res.json({
+      ...result,
+      detectedItems: Array.isArray(result?.detected) ? result.detected : [],
+      imageUrl: result?.image_url ?? "",
+    });
   } catch (err) {
     console.error("🔥 /auto-tag error:", err);
-    res
-      .status(500)
-      .json({ error: "Auto-tagging failed", message: err.message });
+    res.status(500).json({ error: "Auto-tagging failed", message: err.message });
   }
 });
+
 
 // Accepts multipart/form-data with field name: "file"
 app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
@@ -612,7 +618,8 @@ app.get("/wardrobe", async (req, res) => {
     });
 
     console.log("📦 Normalized wardrobe items:", items.length);
-    res.json(items);
+    res.json(Array.isArray(items) ? items : []);
+
   } catch (err) {
     console.error("❌ Fetch wardrobe error:", err.message);
     res.status(500).json({ error: err.message });
@@ -690,7 +697,8 @@ app.get("/staples", async (req, res) => {
       }),
     );
 
-    res.json({ success: true, staples });
+    res.json({ success: true, staples, items: staples });
+
   } catch (err) {
     console.error("Error fetching staples:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -2676,13 +2684,19 @@ app.post("/suggest-outfit", async (req, res) => {
       }
       return look;
     });
-    // ✅ Normalize before sending — rename outfits → looks for frontend consistency
-    if (parsed && parsed.outfits && !parsed.looks) {
-      parsed.looks = parsed.outfits;
-      delete parsed.outfits;
-    }
+    // ✅ Final normalization: return BOTH shapes to keep old UIs working
+    const looksArr = Array.isArray(parsed?.looks)
+      ? parsed.looks
+      : (Array.isArray(parsed?.outfits) ? parsed.outfits : []);
 
-    return res.json(parsed);
+    const response = {
+      ...parsed,
+      looks: looksArr,
+      outfits: looksArr,            // mirror for older UIs
+      note: parsed?.note || undefined
+    };
+
+    return res.json(response);
 
 
   } catch (err) {
