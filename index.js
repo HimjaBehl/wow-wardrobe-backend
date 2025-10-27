@@ -707,7 +707,22 @@ app.get("/staples", async (req, res) => {
 
 // ✅ Enhanced Quick Add - Manual item entry with optional image
 app.post("/quick-add", async (req, res) => {
-  let { uid, name, category = "Staple", color = "Default", image_url } = req.body;
+  let {
+    uid,
+    name,
+    editedName,
+    category = "Staple",
+    editedCategory,
+    color = "Default",
+    editedColor,
+    image_url
+  } = req.body;
+
+  // Prefer edited values if provided
+  name = (editedName ?? name);
+  category = (editedCategory ?? category);
+  color = (editedColor ?? color);
+
 
   // ⚡ Auto-fallback UID for staples
   if (!uid) {
@@ -784,6 +799,7 @@ app.post("/quick-add", async (req, res) => {
     const hydrated = hydrateWardrobeItem({
       uid,
       name: capitalizedName,
+      primaryTag: capitalizedName,   // keep display name consistent
       category: normalizedCategory,
       color: capitalizedColor,
       image_url,
@@ -824,8 +840,14 @@ app.post("/quick-add", async (req, res) => {
 // ✅ Add wardrobe item
 app.post("/wardrobe", async (req, res) => {
   try {
-    const { uid, image_path, image_url, name, category, color, tags } =
+    let { uid, image_path, image_url, name, editedName, category, editedCategory, color, editedColor, tags } =
       req.body;
+
+    // Prefer edited values if provided
+    name = (editedName ?? name);
+    category = (editedCategory ?? category);
+    color = (editedColor ?? color);
+
 
     if (
       !uid ||
@@ -886,12 +908,14 @@ app.post("/wardrobe", async (req, res) => {
     const hydrated = hydrateWardrobeItem({
       uid,
       name: capitalizedName,
+      primaryTag: capitalizedName,   // keep display name consistent
       category: normalizedCategory,
       color: capitalizedColor,
       image_url,
       tags: capitalizedTags,
       taxonomyPath,
     });
+
 
 
     const docRef = await db.collection("wardrobe").add(hydrated);
@@ -928,7 +952,11 @@ app.delete("/wardrobe/:id", async (req, res) => {
 // ✅ Update wardrobe item
 app.put("/wardrobe/:id", async (req, res) => {
   const { id } = req.params;
-  const { uid, name, category, color, tags } = req.body;
+  let { uid, name, editedName, category, editedCategory, color, editedColor, tags } = req.body;
+  name = (editedName ?? name);
+  category = (editedCategory ?? category);
+  color = (editedColor ?? color);
+
 
   if (!id) return res.status(400).json({ error: "Item ID is required" });
   if (!uid) return res.status(400).json({ error: "UID is required" });
