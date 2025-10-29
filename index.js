@@ -2684,9 +2684,18 @@ app.post("/suggest-outfit", async (req, res) => {
       if (isInvalid) {
         const needTop = !hydrated.some(i => /top|shirt|tee|t-?shirt|blouse|kurta/.test(cat(i)));
         const needBottom = !hydrated.some(i => /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(cat(i)));
+        // ✅ Define outers safely from the full wardrobe pool
+        const outers = rawWardrobe.filter(i =>
+          /outer|jacket|coat|cardigan|shrug/i.test(i.category || i.name || "")
+        );
+
         const outs = outers
           .slice()
-          .sort((a, b) => (outerwearPriority(b.category, b.name) - outerwearPriority(a.category, a.name)));
+          .sort((a, b) =>
+            (outerwearPriority?.(b.category, b.name) || 0) -
+            (outerwearPriority?.(a.category, a.name) || 0)
+          );
+
 
         if (hydrated.length < 4) add(outs[0] || pickOne(accs, true));
         const needFootwear = !hydrated.some(i => /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(cat(i)));
