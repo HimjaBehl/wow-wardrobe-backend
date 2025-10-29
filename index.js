@@ -2080,6 +2080,7 @@ app.post("/suggest-outfit", async (req, res) => {
     4) STRICTLY avoid any combination fingerprints present in "dislikedCombos".
     5) If your combination is close to any in "likedCombos", prefer it. Mark that in style_note.
     6) If the user provided an occasion or vibe, align names and notes with that context.
+    7) **The title and style_note MUST accurately describe the chosen items. DO NOT mention "dress", "heels", etc. unless those categories are actually present in "items". If they would be ideal but missing, write a neutral description (e.g., "polished look with blazer and trousers").
 
     FASHION KNOWLEDGE BASE (follow if relevant):
     ${rulesText || "• (No additional rules available)"}
@@ -2479,6 +2480,43 @@ app.post("/suggest-outfit", async (req, res) => {
         look.validation.comboBoost = "Liked combo match";
       }
 
+      // --- Reconcile title/style_note with actual items ---
+      function catKey(it=""){
+        const c = (it||"").toLowerCase();
+        return /dress|jumpsuit|gown/.test(c) ? "dress"
+             : /top|shirt|tee|t-?shirt|blouse|kurta/.test(c) ? "top"
+             : /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(c) ? "bottom"
+             : /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(c) ? "footwear"
+             : /outer|jacket|coat|cardigan|shrug/.test(c) ? "outer"
+             : "other";
+      }
+      const cats = hydrated.map(h => catKey(h.category));
+      const has = (k) => cats.includes(k);
+      const mentions = (re) => re.test((look.style_note||"") + " " + (look.title||""));
+
+      const mentionsDress = mentions(/dress|gown/i);
+      const mentionsHeels = mentions(/heels?/i);
+
+      // If note/title claims "dress" but we don't have one → neutralize the copy
+      if (mentionsDress && !has("dress")) {
+        look.title = (look.title||"").replace(/dress/ig, "look").trim() || "Polished Look";
+        look.style_note = (look.style_note||"")
+          .replace(/dress|gown/ig, "outfit")
+          .replace(/\s+\|\s*Note:.*$/i, "") // drop any trailing auto-notes
+          .trim();
+      }
+
+      // If note says "heels" but no footwear/heels → neutralize
+      if (mentionsHeels && !has("footwear")) {
+        look.style_note = (look.style_note||"").replace(/heels?/ig, "footwear").trim();
+      }
+
+      // If description is now too vague, add a factual summary of items
+      const names = hydrated.map(h => (h.name || h.category || "").toString().trim()).filter(Boolean);
+      const summary = names.slice(0,3).join(", ");
+      if (!/top|bottom|footwear|dress|jumpsuit|outer/i.test(look.style_note||"")) {
+        look.style_note = `${look.style_note ? look.style_note + " " : ""}Pieces: ${summary}.`;
+      }
 
       // hasCoreCategories is already imported at the top of the file
 
