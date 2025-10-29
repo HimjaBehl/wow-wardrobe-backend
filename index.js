@@ -405,25 +405,57 @@ const isNeutralColor = (c = "") => {
   return NEUTRALS.some(n => s.toLowerCase().includes(n));
 };
 function pickOne(arr=[], preferNeutral=false){ if(!arr.length)return null; if(preferNeutral){const n=arr.filter(a=>isNeutralColor(a.color)); if(n.length)return n[Math.floor(Math.random()*n.length)];} return arr[Math.floor(Math.random()*arr.length)]; }
-function forceCompleteLook(items=[], pool=[]){
+
+  function forceCompleteLook(items=[], pool=[], opts = {}){
+     const gender = (opts.gender || "").toLowerCase();  // "female" | "male" | ""
+     const occasion = (opts.occasion || "").toLowerCase();
+
   let hydrated=[...items];
   const tops=pool.filter(i=>/top|shirt|tee|t-?shirt|blouse|kurta/.test(cat(i)));
   const bottoms=pool.filter(i=>/bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(cat(i)));
   const dresses=pool.filter(i=>/dress|jumpsuit|saree/.test(cat(i)));
   const footwears=pool.filter(i=>/footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(cat(i)));
   const outers=pool.filter(i=>/outer|jacket|coat|cardigan|shrug/.test(cat(i)));
-  const accs=pool.filter(i=>/accessor|belt|watch|bag|sunglass|scarf|dupatta|stole|shawl/.test(cat(i)));
+    const accs=pool.filter(i=>/accessor|belt|watch|bag|handbag|tote|purse|sunglass|scarf|dupatta|stole|shawl/.test(cat(i)));
+       const bags = accs.filter(i => /(bag|handbag|tote|purse)/i.test(i.name || i.category || ""));
+      const belts = accs.filter(i => /belt/i.test(i.name || i.category || ""));
+
   const has=(re)=>hydrated.some(i=>re.test(cat(i))); const add=(x)=>{if(x)hydrated.push(x);};
   if(has(/dress|jumpsuit|saree/)){
     if(!has(/footwear|shoe|sandal|heel|sneaker|jutti|boot/)){ add(pickOne(footwears,true)||pickOne(footwears)); }
     hydrated=hydrated.filter(i=>/dress|jumpsuit|saree|footwear|outer|jacket|coat|dupatta|shawl|stole|accessor/.test(cat(i)));
-    if(hydrated.length<4) add(pickOne(outers.filter(i => isNeutralColor(i.color)))||pickOne(accs,true));
+         // 🎯 gender-aware accessory completion
+         if (gender === "female") {
+           if (!hydrated.some(i => /(bag|handbag|tote|purse)/i.test((i.name||i.category||"")))) {
+             add(pickOne(bags, true) || pickOne(bags) || pickOne(accs, true));
+           }
+         } else if (gender === "male") {
+           // belt only if there's a trouser + dress-shirt/blazer vibe
+           const hasTrousers = hydrated.some(i => /pants|trouser|chinos/i.test(i.name||i.category||""));
+           const hasShirtish = hydrated.some(i => /shirt|blazer|suit|waistcoat/i.test(i.name||i.category||""));
+           if (hasTrousers && hasShirtish && !hydrated.some(i => /belt/i.test(i.name||""))) {
+             add(pickOne(belts, true) || pickOne(belts));
+           }
+         }
+         if(hydrated.length<4) add(pickOne(outers.filter(i => isNeutralColor(i.color)))||pickOne(accs,true));
     return hydrated.slice(0,5);
   }
   if(!has(/top|shirt|tee|t-?shirt|blouse|kurta/)) add(pickOne(tops,true)||pickOne(tops));
   if(!has(/bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/)) add(pickOne(bottoms,true)||pickOne(bottoms));
   if(!has(/footwear|shoe|sandal|heel|sneaker|jutti|boot/)) add(pickOne(footwears,true)||pickOne(footwears));
-  if(hydrated.length<4){ const maybe=pickOne(outers.filter(i => isNeutralColor(i.color)))||pickOne(accs,true); if(maybe) add(maybe); }
+    // 🎯 gender-aware accessory completion for separates
+       if (gender === "female") {
+         if (!hydrated.some(i => /(bag|handbag|tote|purse)/i.test((i.name||i.category||"")))) {
+           add(pickOne(bags, true) || pickOne(bags) || pickOne(accs,true));
+         }
+       } else if (gender === "male") {
+         const hasTrousers = hydrated.some(i => /pants|trouser|chinos/i.test(i.name||i.category||""));
+         const hasShirtish = hydrated.some(i => /shirt|blazer|suit|waistcoat/i.test(i.name||i.category||""));
+         if (hasTrousers && hasShirtish && !hydrated.some(i => /belt/i.test(i.name||""))) {
+           add(pickOne(belts, true) || pickOne(belts));
+         }
+       }
+       if(hydrated.length<4){ const maybe=pickOne(outers.filter(i => isNeutralColor(i.color)))||pickOne(accs,true); if(maybe) add(maybe); }
   return hydrated.slice(0,5);
 }
 // -------------------------------------------------------------
@@ -1740,6 +1772,7 @@ app.post("/suggest-outfit", async (req, res) => {
       const {
         rotationWeight = learning.wardrobeRotation || 0.4,
         harmonyWeight  = learning.colorHarmony   || 0.5,
+        occasionBoost  = (occasion || "").toLowerCase(),
       } = opts;
 
       const now = Date.now();
@@ -1753,10 +1786,30 @@ app.post("/suggest-outfit", async (req, res) => {
         const colorStr = Array.isArray(it.color) ? (it.color[0] || "") : (typeof it.color === "string" ? it.color : "");
         const neutral = NEUTRALS.has(colorStr.toLowerCase()) ? 1 : 0;
 
+        // occasion-aware nudges
+           let occNudge = 0;
+            const name = (it.name || "").toLowerCase();
+            const catg = (it.category || "").toLowerCase();
+            const isTee = /tee|t-?shirt/.test(name) || /t-?shirt/.test(catg);
+            const isShirt = /shirt|blouse/.test(name) || /shirt|blouse/.test(catg);
+            const isBlazer = /blazer|suit|jacket/.test(name) || /blazer|suit|jacket/.test(catg);
+            const isTrouser = /trouser|pants|chinos|slacks/.test(name) || /trouser|pants|chinos|slacks/.test(catg);
+            const isSandal = /sandal|flip/.test(name) || /sandal|flip/.test(catg);
+            const isClosedToe = /loafer|oxford|derby|heel|pump|boot/.test(name) || /footwear/.test(catg);
+        
+            if (/(workwear|formal|interview)/.test(occasionBoost)) {
+              occNudge += (isShirt ? 0.25 : 0) + (isBlazer ? 0.25 : 0) + (isTrouser ? 0.2 : 0);
+              occNudge += (isClosedToe ? 0.15 : 0);
+              occNudge -= (isTee ? 0.25 : 0) + (isSandal ? 0.2 : 0);
+            }
+            if (/dinner|date/.test(occasionBoost)) {
+              occNudge += (isBlazer ? 0.15 : 0);
+            }
         const score =
           rotationWeight * Math.min(1, days / 21) +
           harmonyWeight  * neutral +
-          Math.random() * 0.2;
+          occNudge +
+             Math.random() * 0.2;
         return { it, score };
       });
 
@@ -1779,11 +1832,12 @@ app.post("/suggest-outfit", async (req, res) => {
       return picked;
     }
 
-    function buildSampleFromList(list = [], max = 50) {
-      const subset = weightedSample(list, max, {
-        rotationWeight: learning.wardrobeRotation,
-        harmonyWeight:  learning.colorHarmony,
-      });
+      function buildSampleFromList(list = [], max = 50) {
+       const subset = weightedSample(list, max, {
+          rotationWeight: learning.wardrobeRotation,
+          harmonyWeight:  learning.colorHarmony,
+          occasionBoost:  occasion,
+        });
 
       return subset.map((it, idx) => {
         const cleanName = it.name || "Unnamed";
@@ -2419,7 +2473,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
       // 🛡️ Enforce completeness BEFORE validation
       const pool = buildSampleFromList(rawWardrobe, 80);
-      hydrated = forceCompleteLook(hydrated, pool);
+       hydrated = forceCompleteLook(hydrated, pool, { gender: prefs.gender, occasion });
 
       // If it’s a one-piece path, keep only relevant categories and DO NOT re-force to separates.
       const catsLower = hydrated.map(h => (h.category || "").toLowerCase());
@@ -2574,15 +2628,14 @@ app.post("/suggest-outfit", async (req, res) => {
         const hasTop = cats.some(c => /top|shirt|tee|t-?shirt|blouse|kurta/.test(c));
         const hasBottom = cats.some(c => /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(c));
         const hasFootwear = cats.some(c => /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(c));
-        const pathA = hasTop && hasBottom && hasFootwear;
-
-        // Path B: Dress/Jumpsuit/Saree + Footwear (+ optional outer/accessories)
-        const hasOnePiece = cats.some(c => /dress|jumpsuit|saree/.test(c));
-        const pathB = hasOnePiece && hasFootwear;
-
-        return pathA || pathB;
-      }
-
+        
+        
+        const onlyAccessories = cats.every(c => /accessor|sunglass|watch|bag|belt|scarf|dupatta|stole|shawl/.test(c));
+        
+      const pathA = hasTop && hasBottom && hasFootwear;
+       const pathB = hasOnePiece && hasFootwear;
+        return !onlyAccessories && (pathA || pathB);
+         }
 
 
       if (!basicCompletenessCheck({ items: hydrated })) {
@@ -2604,7 +2657,7 @@ app.post("/suggest-outfit", async (req, res) => {
           // Do not force top/bottom when a dress/jumpsuit path is chosen.
         } else {
           // For separates, use your existing completion helper (real items only)
-          hydrated = forceCompleteLook(hydrated, pool);
+          hydrated = forceCompleteLook(hydrated, pool, { gender: prefs.gender, occasion });
         }
       }
 
@@ -2661,7 +2714,16 @@ app.post("/suggest-outfit", async (req, res) => {
 
       let finalNote = look.style_note || "";
       if (changedCategories) {
-        finalNote += " | Note: minor backend fix to complete the outfit with available wardrobe items.";
+      finalNote += " | Completed with real wardrobe items for balance.";
+      }
+      // If we added bag/belt implicitly, surface it:
+      const hasBag = hydrated.some(i => /(bag|handbag|tote|purse)/i.test((i.name||i.category||"")));
+      const hasBelt = hydrated.some(i => /belt/i.test((i.name||"")));
+      if (prefs.gender === "female" && hasBag && !/bag/i.test((look.style_note||""))) {
+        finalNote += " Included a bag to complete the look.";
+      }
+      if (prefs.gender === "male" && hasBelt && /(workwear|formal|interview)/i.test(occasion||"") && !/belt/i.test((look.style_note||""))) {
+        finalNote += " Added a belt for polish.";
       }
 
       return {
