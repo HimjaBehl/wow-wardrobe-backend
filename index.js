@@ -48,6 +48,7 @@ dotenv.config();
 import { hydrateWardrobeItem } from "./lib/hydrateWardrobeItem.js";
 
 import { normalizeCategory } from "./lib/normalizeCategory.js";
+import { outerwearPriority } from "./lib/normalizeCategory.js";
 
 function mapTaxonomy(category) {
   switch (category) {
@@ -2683,6 +2684,11 @@ app.post("/suggest-outfit", async (req, res) => {
       if (isInvalid) {
         const needTop = !hydrated.some(i => /top|shirt|tee|t-?shirt|blouse|kurta/.test(cat(i)));
         const needBottom = !hydrated.some(i => /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(cat(i)));
+        const outs = outers
+          .slice()
+          .sort((a, b) => (outerwearPriority(b.category, b.name) - outerwearPriority(a.category, a.name)));
+
+        if (hydrated.length < 4) add(outs[0] || pickOne(accs, true));
         const needFootwear = !hydrated.some(i => /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(cat(i)));
 
         messages.push({
