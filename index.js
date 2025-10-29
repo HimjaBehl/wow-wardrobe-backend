@@ -2628,7 +2628,7 @@ app.post("/suggest-outfit", async (req, res) => {
         const hasTop = cats.some(c => /top|shirt|tee|t-?shirt|blouse|kurta/.test(c));
         const hasBottom = cats.some(c => /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(c));
         const hasFootwear = cats.some(c => /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(c));
-        
+        const hasOnePiece = cats.some(c => /dress|jumpsuit|saree/.test(c));
         
         const onlyAccessories = cats.every(c => /accessor|sunglass|watch|bag|belt|scarf|dupatta|stole|shawl/.test(c));
         
@@ -2662,7 +2662,7 @@ app.post("/suggest-outfit", async (req, res) => {
            // Do not force top/bottom when a dress/jumpsuit path is chosen.
          } else {
            // For separates, use your existing completion helper (real items only)
-           hydrated = forceCmpleteLook(hydrated, pool);
+           hydrated = forceCompleteLook(hydrated, pool);
          }
        }
 
