@@ -2509,7 +2509,11 @@ app.post("/suggest-outfit", async (req, res) => {
               look.validation.comboWarning = "Fixed by single-item swap";
               fixed = true;
               break;
+              
             }
+            // ♻️ Re-validate after disliked-combo repair
+            validationRules = validateLevel2({ items: hydrated });
+
           }
           if (fixed) break;
         }
@@ -2576,7 +2580,7 @@ app.post("/suggest-outfit", async (req, res) => {
 
       // 🔥 Level 2 validation
       // Level 2 validation (color + silhouette checks)
-      const validationRules = validateLevel2({ items: hydrated });
+      let validationRules = validateLevel2({ items: hydrated });
 
       // 🧠 log a positive learning step when validation passes
       await updateLearning(uid, { valid: !!validationRules?.valid }, !!validationRules?.valid);
@@ -2657,6 +2661,9 @@ app.post("/suggest-outfit", async (req, res) => {
                validationRules.errors.push("Added matching footwear to complete one-piece outfit.");
              } else {
                validationRules.errors.push("One-piece look missing footwear and none found in wardrobe.");
+               // ✅ Re-run validation after any auto-complete changes (e.g., footwear added)
+               validationRules = validateLevel2({ items: hydrated });
+
              }
            }
            // Do not force top/bottom when a dress/jumpsuit path is chosen.
