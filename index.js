@@ -2420,12 +2420,15 @@ app.post("/suggest-outfit", async (req, res) => {
       const pool = buildSampleFromList(rawWardrobe, 80);
       hydrated = forceCompleteLook(hydrated, pool);
 
-      // normalize if dress/jumpsuit path
-      const catsLower = hydrated.map(h => (h.category||"").toLowerCase());
+      // If it’s a one-piece path, keep only relevant categories and DO NOT re-force to separates.
+      const catsLower = hydrated.map(h => (h.category || "").toLowerCase());
       if (catsLower.some(c => /dress|jumpsuit|saree/.test(c))) {
-        hydrated = hydrated.filter(it => /dress|jumpsuit|saree|footwear|outer|jacket|coat|dupatta|shawl|stole|accessor/.test((it.category||"").toLowerCase()));
-        hydrated = forceCompleteLook(hydrated, pool);
+        hydrated = hydrated.filter(it =>
+          /dress|jumpsuit|saree|footwear|outer|jacket|coat|dupatta|shawl|stole|accessor/.test((it.category || "").toLowerCase())
+        );
+        // Footwear completion for one-piece is handled in the completeness block above.
       }
+
 
       // ✅ Combo preference memory check
       const combo = makeComboFingerprint(hydrated);
@@ -2528,40 +2531,45 @@ app.post("/suggest-outfit", async (req, res) => {
       // 🔥 Basic completeness check (keep separate from imported validateLevel1)
       function basicCompletenessCheck(look) {
         const cats = look.items.map((it) => (it.category || "").toLowerCase());
-        if (!(cats.includes("top") && cats.includes("bottom") && cats.includes("footwear"))) {
-          return false;
-        }
-        if (cats.includes("dress") || cats.includes("jumpsuit")) return false;
-        return true;
+
+        // Path A: Top + Bottom + Footwear
+        const hasTop = cats.some(c => /top|shirt|tee|t-?shirt|blouse|kurta/.test(c));
+        const hasBottom = cats.some(c => /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(c));
+        const hasFootwear = cats.some(c => /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(c));
+        const pathA = hasTop && hasBottom && hasFootwear;
+
+        // Path B: Dress/Jumpsuit/Saree + Footwear (+ optional outer/accessories)
+        const hasOnePiece = cats.some(c => /dress|jumpsuit|saree/.test(c));
+        const pathB = hasOnePiece && hasFootwear;
+
+        return pathA || pathB;
       }
+
 
 
       if (!basicCompletenessCheck({ items: hydrated })) {
+        // If Tina intended a one-piece path, respect it; only add REAL footwear if missing.
+        const wantOnePiece = hydrated.some(it => /dress|jumpsuit|saree/i.test(it.category || ""));
+        const hasFootwear = hydrated.some(it => /footwear|shoe|sandal|heel|sneaker|jutti|boot/i.test(it.category || ""));
 
-        // ⚠️ Instead of failing, auto-add staple shoes if missing
-        const hasFootwear = hydrated.some(
-          (it) => (it.category || "").toLowerCase() === "footwear",
-        );
-        if (!hasFootwear) {
-          hydrated.push({
-            id: "staple-shoes",
-            name: "Default Sneakers",
-            category: "Footwear",
-            color: "Neutral",
-            silhouette: "footwear",
-            palette: "neutral",
-            image_url:
-              "https://dummyimage.com/200x200/000000/ffffff&text=Staple+Shoes",
-          });
-          validationRules.errors.push(
-            "Auto-added staple footwear for completeness.",
-          );
+        if (wantOnePiece) {
+          if (!hasFootwear) {
+            // pick a real footwear from the same pool; do not inject dummy placeholders
+            const realShoe = pool.find(it => /footwear|shoe|sandal|heel|sneaker|jutti|boot/i.test(it.category || ""));
+            if (realShoe) {
+              hydrated.push(realShoe);
+              validationRules.errors.push("Added matching footwear to complete one-piece outfit.");
+            } else {
+              validationRules.errors.push("One-piece look missing footwear and none found in wardrobe.");
+            }
+          }
+          // Do not force top/bottom when a dress/jumpsuit path is chosen.
         } else {
-          validationRules.errors.push(
-            "Outfit structure incomplete (expected Top+Bottom+Shoes).",
-          );
+          // For separates, use your existing completion helper (real items only)
+          hydrated = forceCompleteLook(hydrated, pool);
         }
       }
+
 
       console.log(`🧪 Validation for look #${i + 1}:`, { validationRules });
 
@@ -2607,12 +2615,24 @@ app.post("/suggest-outfit", async (req, res) => {
         } catch (e) { console.warn("Retry fix failed:", e.message); }
       }
 
+      const changedCategories = (() => {
+        const before = (look.items || []).map(it => (it.category || "").toLowerCase()).sort().join(",");
+        const after  = hydrated.map(it => (it.category || "").toLowerCase()).sort().join(",");
+        return before !== after;
+      })();
+
+      let finalNote = look.style_note || "";
+      if (changedCategories) {
+        finalNote += " | Note: minor backend fix to complete the outfit with available wardrobe items.";
+      }
+
       return {
         title: look.title || `Untitled Look ${i + 1}`,
-        style_note: look.style_note || "",
+        style_note: finalNote,
         items: hydrated,
         validation: { styleRules: validationRules },
       };
+
     }));
   
 
