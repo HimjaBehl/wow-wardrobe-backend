@@ -3147,6 +3147,13 @@ app.get("/fashion-basics", (req, res) => {
         res.status(500).json({ error: "Failed to fetch combo stats" });
       }
     });
+app.get("/version", (req, res) => {
+  res.json({
+    build: "post-forceComplete-fix",
+    forceCompleteType: typeof forceCompleteLook,
+    time: new Date().toISOString()
+  });
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
