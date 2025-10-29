@@ -2640,26 +2640,31 @@ app.post("/suggest-outfit", async (req, res) => {
 
       if (!basicCompletenessCheck({ items: hydrated })) {
         // If Tina intended a one-piece path, respect it; only add REAL footwear if missing.
-        const wantOnePiece = hydrated.some(it => /dress|jumpsuit|saree/i.test(it.category || ""));
-        const hasFootwear = hydrated.some(it => /footwear|shoe|sandal|heel|sneaker|jutti|boot/i.test(it.category || ""));
-
-        if (wantOnePiece) {
-          if (!hasFootwear) {
-            // pick a real footwear from the same pool; do not inject dummy placeholders
-            const realShoe = pool.find(it => /footwear|shoe|sandal|heel|sneaker|jutti|boot/i.test(it.category || ""));
-            if (realShoe) {
-              hydrated.push(realShoe);
-              validationRules.errors.push("Added matching footwear to complete one-piece outfit.");
-            } else {
-              validationRules.errors.push("One-piece look missing footwear and none found in wardrobe.");
-            }
-          }
-          // Do not force top/bottom when a dress/jumpsuit path is chosen.
-        } else {
-          // For separates, use your existing completion helper (real items only)
-          hydrated = forceCompleteLook(hydrated, pool, { gender: prefs.gender, occasion });
-        }
-      }
+         const isOnePiecePath = hydrated.some(
+           it => /dress|jumpsuit|saree/i.test(it.category || "")
+         );
+         const hasFootwear = hydrated.some(
+           it => /footwear|shoe|sandal|heel|sneaker|jutti|boot/i.test(it.category || "")
+         );
+      
+         if (isOnePiecePath) {
+           if (!hasFootwear) {
+             const realShoe = pool.find(it =>
+               /footwear|shoe|sandal|heel|sneaker|jutti|boot/i.test(it.category || "")
+             );
+             if (realShoe) {
+               hydrated.push(realShoe);
+               validationRules.errors.push("Added matching footwear to complete one-piece outfit.");
+             } else {
+               validationRules.errors.push("One-piece look missing footwear and none found in wardrobe.");
+             }
+           }
+           // Do not force top/bottom when a dress/jumpsuit path is chosen.
+         } else {
+           // For separates, use your existing completion helper (real items only)
+           hydrated = forceCmpleteLook(hydrated, pool);
+         }
+       }
 
 
       console.log(`🧪 Validation for look #${i + 1}:`, { validationRules });
