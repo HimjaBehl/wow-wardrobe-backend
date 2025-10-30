@@ -1624,8 +1624,8 @@ app.post("/suggest-outfit", async (req, res) => {
   try {
     // 🔹 Enriched user context
     const userCtx = await getUserStyleContext(uid);
-
     const microFeedback = userCtx.micro_feedback || [];
+
 
 
     prefs = {
