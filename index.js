@@ -72,6 +72,10 @@ import cors from "cors";
 
 const app = express();
 
+// Lock Tina's prose exactly as generated
+const PRESERVE_STYLE_TEXT = true;
+
+
 // ✅ JSON body parser
 app.use(express.json({ limit: "2mb" }));
 
@@ -2406,12 +2410,12 @@ app.post("/suggest-outfit", async (req, res) => {
             outfits: [
               {
                 title: "Auto-Fallback 1",
-                style_note: "AI output invalid; generated weighted fallback look.",
+                style_note: "",
                 items: pool.slice(0, 3).map((it) => ({ idx: String(it.idx) })),
               },
               {
                 title: "Auto-Fallback 2",
-                style_note: "AI output invalid; generated weighted fallback look.",
+                style_note: "",
                 items: pool.slice(3, 6).map((it) => ({ idx: String(it.idx) })),
               },
             ],
@@ -2438,8 +2442,8 @@ app.post("/suggest-outfit", async (req, res) => {
         console.warn(`⚠️ Look ${i + 1} had no items, applying fallback.`);
         const fallbackItems = buildSampleFromList(rawWardrobe, 3);
         look.items = fallbackItems.map((it) => ({ idx: it.idx }));
-        look.style_note =
-          (look.style_note || "") + " | Fallback items auto-inserted.";
+        look.style_note = look.style_note || "";
+
       }
 
       let hydrated = (look.items || [])
@@ -2491,7 +2495,10 @@ app.post("/suggest-outfit", async (req, res) => {
 
       // 🛑 If Tina repeats a disliked combo
       if (dislikedCombos.includes(combo)) {
-        look.style_note += " ⚠️ This combination matches a previously disliked look.";
+        if (!PRESERVE_STYLE_TEXT) {
+          look.style_note += " ⚠️ This combination matches a previously disliked look.";
+        }
+
         look.validation = look.validation || {};
         look.validation.comboWarning = "Disliked combo match";
 
@@ -2506,7 +2513,10 @@ app.post("/suggest-outfit", async (req, res) => {
             if (!dislikedCombos.includes(newCombo)) {
               hydrated = newItems;
               look.items = newItems;
-              look.style_note += ` | Re-weighted by swapping ${cand.name} to avoid disliked combo.`;
+              if (!PRESERVE_STYLE_TEXT) {
+                look.style_note += ` | Re-weighted by swapping ${cand.name} to avoid disliked combo.`;
+              }
+
               look.validation.comboWarning = "Fixed by single-item swap";
               fixed = true;
               break;
@@ -2526,7 +2536,10 @@ app.post("/suggest-outfit", async (req, res) => {
           if (!dislikedCombos.includes(retryCombo)) {
             hydrated = retryItems;
             look.items = retryItems;
-            look.style_note += " | Re-weighted with entirely new items.";
+            if (!PRESERVE_STYLE_TEXT) {
+              look.style_note += " | Re-weighted with entirely new items.";
+            }
+
             look.validation.comboWarning = "Replaced disliked combo";
           }
         }
@@ -2534,50 +2547,22 @@ app.post("/suggest-outfit", async (req, res) => {
 
       // 💖 If Tina repeats a liked combo → boost note
       if (likedCombos.includes(combo)) {
-        look.style_note += " ❤️ This combination is similar to one you liked before!";
+        if (!PRESERVE_STYLE_TEXT) {
+          look.style_note += " ❤️ This combination is similar to one you liked before!";
+        }
+
         look.validation = look.validation || {};
         look.validation.comboBoost = "Liked combo match";
       }
 
       // --- Reconcile title/style_note with actual items ---
-      function catKey(it=""){
-        const c = (it||"").toLowerCase();
-        return /dress|jumpsuit|gown/.test(c) ? "dress"
-             : /top|shirt|tee|t-?shirt|blouse|kurta/.test(c) ? "top"
-             : /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(c) ? "bottom"
-             : /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(c) ? "footwear"
-             : /outer|jacket|coat|cardigan|shrug/.test(c) ? "outer"
-             : "other";
-      }
-      const cats = hydrated.map(h => catKey(h.category));
-      const has = (k) => cats.includes(k);
-      const mentions = (re) => re.test((look.style_note||"") + " " + (look.title||""));
+      // Keep Tina's title & style_note as-is. Compute cats for validation only.
+      const cats = (hydrated || []).map(h =>
+        (h.category || "").toLowerCase()
+      );
+      const has = (re) => cats.some(c => re.test(c));
+      // DO NOT modify look.title or look.style_note here.
 
-      const mentionsDress = mentions(/dress|gown/i);
-      const mentionsHeels = mentions(/heels?/i);
-
-      // If note/title claims "dress" but we don't have one → neutralize the copy
-      if (mentionsDress && !has("dress")) {
-        look.title = (look.title||"").replace(/dress/ig, "look").trim() || "Polished Look";
-        look.style_note = (look.style_note||"")
-          .replace(/dress|gown/ig, "outfit")
-          .replace(/\s+\|\s*Note:.*$/i, "") // drop any trailing auto-notes
-          .trim();
-      }
-
-      // If note says "heels" but no footwear/heels → neutralize
-      if (mentionsHeels && !has("footwear")) {
-        look.style_note = (look.style_note||"").replace(/heels?/ig, "footwear").trim();
-      }
-
-      // If description is now too vague, add a factual summary of items
-      const names = hydrated.map(h => (h.name || h.category || "").toString().trim()).filter(Boolean);
-      const summary = names.slice(0,3).join(", ");
-      if (!/top|bottom|footwear|dress|jumpsuit|outer/i.test(look.style_note||"")) {
-        look.style_note = `${look.style_note ? look.style_note + " " : ""}Pieces: ${summary}.`;
-      }
-
-      // hasCoreCategories is already imported at the top of the file
 
       // 🔥 Level 2 validation
       // Level 2 validation (color + silhouette checks)
@@ -2740,19 +2725,9 @@ app.post("/suggest-outfit", async (req, res) => {
       })();
 
       let finalNote = look.style_note || "";
-      if (changedCategories) {
-      finalNote += " | Completed with real wardrobe items for balance.";
-      }
-      // If we added bag/belt implicitly, surface it:
-      const hasBag = hydrated.some(i => /(bag|handbag|tote|purse)/i.test((i.name||i.category||"")));
-      const hasBelt = hydrated.some(i => /belt/i.test((i.name||"")));
-      if (prefs.gender === "female" && hasBag && !/bag/i.test((look.style_note||""))) {
-        finalNote += " Included a bag to complete the look.";
-      }
-      if (prefs.gender === "male" && hasBelt && /(workwear|formal|interview)/i.test(occasion||"") && !/belt/i.test((look.style_note||""))) {
-        finalNote += " Added a belt for polish.";
-      }
+      // keep Tina's note verbatim; no auto-append text
 
+      
       return {
         title: look.title || `Untitled Look ${i + 1}`,
         style_note: finalNote,
@@ -2789,7 +2764,10 @@ app.post("/suggest-outfit", async (req, res) => {
       if (!look.items || look.items.length < 1) {
         // auto-fill with first wardrobe items if too small
         look.items = buildSampleFromList(rawWardrobe, 3);
-        look.style_note += " | ⚠️ Auto-filled due to missing items.";
+        if (!PRESERVE_STYLE_TEXT) {
+          look.style_note += " | ⚠️ Auto-filled due to missing items.";
+        }
+
       }
       return look;
     });
@@ -2819,17 +2797,17 @@ app.post("/suggest-outfit", async (req, res) => {
 
     console.log("🎨 Final parsed looks:", JSON.stringify(parsed, null, 2));
 
-    // 🔮 Enforce occasion in title + style_note
+    // 🔮 Optionally prefix occasion in the TITLE only; do NOT touch style_note
     if (occasion) {
       parsed.outfits = (parsed.outfits || []).map((look) => {
         const lowerOccasion = occasion.toLowerCase();
-        // Title: ensure occasion mentioned
-        if (!look.title.toLowerCase().includes(lowerOccasion)) {
-          look.title = `${occasion} Look – ${look.title}`;
+        if (!look.title?.toLowerCase().includes(lowerOccasion)) {
+          look.title = `${occasion} Look – ${look.title || "Untitled Look"}`;
         }
-        // Style_note: ensure occasion context
-        if (!look.style_note.toLowerCase().includes(lowerOccasion)) {
-          look.style_note = `${look.style_note} Styled for ${occasion}.`;
+        if (!PRESERVE_STYLE_TEXT) {
+          if (!look.style_note?.toLowerCase().includes(lowerOccasion)) {
+            look.style_note = `${look.style_note || ""} Styled for ${occasion}.`.trim();
+          }
         }
         return look;
       });
