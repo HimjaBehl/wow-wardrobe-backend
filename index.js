@@ -1842,12 +1842,13 @@ app.post("/suggest-outfit", async (req, res) => {
             if (/dinner|date/.test(occasionBoost)) {
               occNudge += (isBlazer ? 0.15 : 0);
             }
-        const occasionBoost = it._occasionBoost || 0;
+        const _occasionBoostScore = it._occasionBoost || 0;
+
         const score =
           rotationWeight * Math.min(1, days / 21) +
           harmonyWeight  * neutral +
           occNudge +
-          occasionBoost +
+          _occasionBoostScore +
           Math.random() * 0.2;
 
         return { it, score };
