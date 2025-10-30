@@ -1,3 +1,16 @@
+// ── Global Error Handlers (Prevent Crash Loops) ──
+process.on('uncaughtException', (err) => {
+  console.error('❌ UNCAUGHT EXCEPTION:', err);
+  console.error('Stack:', err.stack);
+  // Don't exit - keep server running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ UNHANDLED REJECTION at:', promise);
+  console.error('Reason:', reason);
+  // Don't exit - keep server running
+});
+
 import sharp from "sharp";
 import OpenAI from "openai";
 
