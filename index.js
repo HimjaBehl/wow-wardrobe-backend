@@ -98,10 +98,12 @@ app.use(express.json({ limit: "2mb" }));
 
 // ✅ CORS setup
 const allowedOrigins = [
-  "https://himja.app.n8n.cloud", // n8n cloud
-  "https://wow-wardrobe-ui-himjabehl.replit.app", // your frontend UI
-  "http://localhost:3000", // local dev
+  "https://himja.app.n8n.cloud",
+  "https://wow-wardrobe-ui-himjabehl.replit.app",
+  "http://localhost:3000",
+  "http://localhost:5173",
 ];
+
 
 app.use(
   cors({
@@ -419,6 +421,23 @@ function makeComboFingerprint(items = []) {
     .join("|");
 }
 
+// ---- Swap helpers (map wardrobe items to a slot we can swap) ----
+function slotOf(text = "") {
+  const t = (text || "").toLowerCase();
+  if (/dress|jumpsuit|saree/.test(t)) return "dress";
+  if (/top|tee|t-?shirt|shirt|blouse|kurta/.test(t)) return "top";
+  if (/bottom|jeans|pant|trouser|chino|skirt|short|palazzo|salwar/.test(t)) return "bottom";
+  if (/footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(t)) return "footwear";
+  if (/bag|handbag|tote|purse/.test(t)) return "bag";
+  return "misc";
+}
+// light neutral preference used in picks
+const SWAP_NEUTRALS = new Set(["black","white","cream","beige","grey","gray","navy","denim","tan","brown","off-white"]);
+const isNeutralSwap = (c="") => {
+  const s = Array.isArray(c) ? (c[0] || "") : (typeof c === "string" ? c : "");
+  return SWAP_NEUTRALS.has(s.toLowerCase());
+};
+
 // ---------------- OUTIFT COMPLETENESS HELPERS ----------------
 const NEUTRALS = ["black","white","cream","beige","grey","gray","navy","denim","tan","brown","off-white"];
 const cat = (it) => (it.category || "").toLowerCase();
@@ -677,6 +696,58 @@ app.get("/wardrobe", async (req, res) => {
   } catch (err) {
     console.error("❌ Fetch wardrobe error:", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ Swap candidates for a single slot (top|bottom|footwear|bag|dress)
+app.post("/swap-suggestions", async (req, res) => {
+  try {
+    const { uid, slot, excludeIds = [], limit = 8, occasion = "", preferNeutral = true } = req.body || {};
+    if (!uid || !slot) {
+      return res.status(400).json({ error: "uid and slot are required" });
+    }
+
+    // Load full wardrobe for the user
+    const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Same-slot candidates, excluding currently used ids
+    const used = new Set(excludeIds);
+    let candidates = all.filter(w =>
+      slotOf(w.category || w.name) === slot && !used.has(w.id)
+    );
+
+    // Soft occasion nudge (reuse occasionCategoryMap if present)
+    const occCats = (occasion && occasionCategoryMap?.[occasion.toLowerCase()]) || [];
+    if (occCats.length) {
+      candidates = candidates.map(it => {
+        const cat = (it.category || "").toLowerCase();
+        const name = (it.name || "").toLowerCase();
+        const occBoost = occCats.some(c => cat.includes(c.toLowerCase()) || name.includes(c.toLowerCase())) ? 0.25 : 0;
+        return { it, score: occBoost + (preferNeutral && isNeutralSwap(it.color) ? 0.2 : 0) + Math.random() * 0.6 };
+      }).sort((a,b)=>b.score-a.score).map(x=>x.it);
+    } else if (preferNeutral) {
+      // simple neutral bias
+      candidates = candidates.map(it => ({
+        it, score: (isNeutralSwap(it.color) ? 0.2 : 0) + Math.random()*0.8
+      })).sort((a,b)=>b.score-a.score).map(x=>x.it);
+    } else {
+      // randomize
+      candidates = candidates.sort(() => Math.random() - 0.5);
+    }
+
+    // Hydrate minimal, consistent object like the rest of the API
+    const hydrated = candidates.slice(0, limit).map(it => hydrateWardrobeItem({
+      id: it.id,
+      ...it,
+      category: normalizeCategory(it.category || "", it.name || ""),
+      taxonomyPath: it.taxonomyPath || mapTaxonomy(normalizeCategory(it.category || "", it.name || "")),
+    }));
+
+    res.json({ success: true, slot, items: hydrated });
+  } catch (err) {
+    console.error("❌ /swap-suggestions failed:", err.message);
+    res.status(500).json({ error: "Swap suggestions failed", message: err.message });
   }
 });
 
@@ -3077,15 +3148,6 @@ Preferences: ${JSON.stringify(preferences)}
     console.error("❌ Failed to build style DNA:", err.message);
     res.status(500).json({ error: "Failed to build style DNA" });
   }
-});
-
-// ✅ Global error handlers
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-  process.exit(1);
-});
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 // ✅ Start server
