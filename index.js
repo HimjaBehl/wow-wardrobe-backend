@@ -1625,6 +1625,9 @@ app.post("/suggest-outfit", async (req, res) => {
     // 🔹 Enriched user context
     const userCtx = await getUserStyleContext(uid);
 
+    const microFeedback = userCtx.micro_feedback || [];
+
+
     prefs = {
       gender: userCtx.gender,
       bodyShape: userCtx.bodyShape,
@@ -1802,6 +1805,18 @@ app.post("/suggest-outfit", async (req, res) => {
         "black","white","cream","beige","grey","gray","navy","denim","tan","brown","off-white"
       ]);
 
+      // 🎯 Occasion-aware hint (soft boost)
+      const occasionCats = occasionCategoryMap[occasion.toLowerCase()] || [];
+      if (occasionCats.length) {
+        arr.forEach(it => {
+          const match = occasionCats.some(c =>
+            (it.category || "").toLowerCase().includes(c.toLowerCase())
+          );
+          it._occasionBoost = match ? 0.25 : 0;
+        });
+      }
+
+
       const scored = arr.map((it) => {
         const lw = it.lastWorn ? new Date(it.lastWorn).getTime() : 0;
         const days = lw ? Math.max(1, (now - lw) / (1000*60*60*24)) : 999;
@@ -1827,11 +1842,14 @@ app.post("/suggest-outfit", async (req, res) => {
             if (/dinner|date/.test(occasionBoost)) {
               occNudge += (isBlazer ? 0.15 : 0);
             }
+        const occasionBoost = it._occasionBoost || 0;
         const score =
           rotationWeight * Math.min(1, days / 21) +
           harmonyWeight  * neutral +
           occNudge +
-             Math.random() * 0.2;
+          occasionBoost +
+          Math.random() * 0.2;
+
         return { it, score };
       });
 
@@ -2157,6 +2175,9 @@ app.post("/suggest-outfit", async (req, res) => {
     5) If your combination is close to any in "likedCombos", prefer it. Mark that in style_note.
     6) If the user provided an occasion or vibe, align names and notes with that context.
     7) **The title and style_note MUST accurately describe the chosen items. DO NOT mention "dress", "heels", etc. unless those categories are actually present in "items". If they would be ideal but missing, write a neutral description (e.g., "polished look with blazer and trousers").
+    8) If micro_feedback (e.g. "swap-top", "change-shoes", "lighter-colors") is present, treat as soft constraints when re-styling.
+    9) Use weather info (e.g. “light rain, 24 °C”) to prefer seasonally suitable fabrics or layers.
+
 
     FASHION KNOWLEDGE BASE (follow if relevant):
     ${rulesText || "• (No additional rules available)"}
@@ -2178,6 +2199,8 @@ app.post("/suggest-outfit", async (req, res) => {
         dislikes: prefs.dislikes,
         learning_weights: learning,
         style_summary: styleSummary,
+        micro_feedback: microFeedback,
+        weather: await getWeather(city),
         likedCombos,
         dislikedCombos,
         last_served_combo: lastServedCombo,
@@ -2895,6 +2918,24 @@ app.post("/dislike-outfit", async (req, res) => {
       reason,
       disliked_at: new Date().toISOString(),
     });
+
+    // 🪄 Micro-feedback capture
+    if (reason) {
+      const microHints = [];
+      const lower = reason.toLowerCase();
+      if (/swap|change|replace.*top/.test(lower)) microHints.push("swap-top");
+      if (/shoe|footwear/.test(lower)) microHints.push("change-shoes");
+      if (/light|brighter/.test(lower)) microHints.push("lighter-colors");
+
+      if (microHints.length) {
+        await db.collection("tina_memory").doc(uid).set(
+          { micro_feedback: microHints, updated_at: new Date().toISOString() },
+          { merge: true }
+        );
+        console.log("🧩 Stored micro-feedback:", microHints);
+      }
+    }
+
 
     // 🧠 reinforce negative learning on explicit dislike
     await updateLearning(uid, { valid: false }, false);
