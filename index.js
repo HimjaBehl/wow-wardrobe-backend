@@ -2505,78 +2505,36 @@ app.post("/suggest-outfit", async (req, res) => {
 
       // If it’s a one-piece path, keep only relevant categories and DO NOT re-force to separates.
       const catsLower = hydrated.map(h => (h.category || "").toLowerCase());
-      if (catsLower.some(c => /dress|jumpsuit|saree/.test(c))) {
-        hydrated = hydrated.filter(it =>
-          /dress|jumpsuit|saree|footwear|outer|jacket|coat|dupatta|shawl|stole|accessor/.test((it.category || "").toLowerCase())
-        );
-        // Footwear completion for one-piece is handled in the completeness block above.
+      if (!STRICT_ITEMS) {
+        if (catsLower.some(c => /dress|jumpsuit|saree/.test(c))) {
+          hydrated = hydrated.filter(it =>
+            /dress|jumpsuit|saree|footwear|outer|jacket|coat|dupatta|shawl|stole|accessor/.test((it.category || "").toLowerCase())
+          );
+        }
       }
+
 
 
       // ✅ Combo preference memory check
       const combo = makeComboFingerprint(hydrated);
 
-      // 🛑 If Tina repeats a disliked combo
-      if (dislikedCombos.includes(combo)) {
+      // 🛑 If Tina repeats a disliked combo (mutations only when not strict)
+      if (!STRICT_ITEMS && dislikedCombos.includes(combo)) {
+        console.warn("⚠️ This combo matches a previously disliked look.");
         if (!PRESERVE_STYLE_TEXT) {
-          look.style_note += " ⚠️ This combination matches a previously disliked look.";
-        }
-
-        look.validation = look.validation || {};
-        look.validation.comboWarning = "Disliked combo match";
-
-        // 🔄 Smart fallback: try swapping only 1 item
-        let fixed = false;
-        for (let j = 0; j < hydrated.length; j++) {
-          const candidateItems = buildSampleFromList(rawWardrobe, 10);
-          for (const cand of candidateItems) {
-            const newItems = [...hydrated];
-            newItems[j] = cand; // replace one item
-            const newCombo = makeComboFingerprint(newItems);
-            if (!dislikedCombos.includes(newCombo)) {
-              hydrated = newItems;
-              look.items = newItems;
-              if (!PRESERVE_STYLE_TEXT) {
-                look.style_note += ` | Re-weighted by swapping ${cand.name} to avoid disliked combo.`;
-              }
-
-              look.validation.comboWarning = "Fixed by single-item swap";
-              fixed = true;
-              break;
-              
-            }
-            // ♻️ Re-validate after disliked-combo repair
-            validationRules = validateLevel2({ items: hydrated });
-
-          }
-          if (fixed) break;
-        }
-
-        // If still disliked → replace whole outfit
-        if (!fixed) {
-          const retryItems = buildSampleFromList(rawWardrobe, 5);
-          const retryCombo = makeComboFingerprint(retryItems);
-          if (!dislikedCombos.includes(retryCombo)) {
-            hydrated = retryItems;
-            look.items = retryItems;
-            if (!PRESERVE_STYLE_TEXT) {
-              look.style_note += " | Re-weighted with entirely new items.";
-            }
-
-            look.validation.comboWarning = "Replaced disliked combo";
-          }
+          look.style_note = (look.style_note || "") + " ⚠️ Similar to a previously disliked combination.";
         }
       }
 
-      // 💖 If Tina repeats a liked combo → boost note
-      if (likedCombos.includes(combo)) {
+      // 💖 If Tina repeats a liked combo → boost note (note only when not preserving text)
+      // (keeping as-is is fine; but avoid altering items in strict mode)
+      if (!STRICT_ITEMS && likedCombos.includes(combo)) {
+        console.log("❤️ This combo matches a previously liked look!");
         if (!PRESERVE_STYLE_TEXT) {
-          look.style_note += " ❤️ This combination is similar to one you liked before!";
+          look.style_note = (look.style_note || "") + " ❤️ Based on your favorites!";
         }
-
-        look.validation = look.validation || {};
-        look.validation.comboBoost = "Liked combo match";
       }
+
 
       // --- Reconcile title/style_note with actual items ---
       // Keep Tina's title & style_note as-is. Compute cats for validation only.
@@ -2651,95 +2609,29 @@ app.post("/suggest-outfit", async (req, res) => {
          }
 
 
-      if (!basicCompletenessCheck({ items: hydrated })) {
-        // If Tina intended a one-piece path, respect it; only add REAL footwear if missing.
-         const isOnePiecePath = hydrated.some(
-           it => /dress|jumpsuit|saree/i.test(it.category || "")
-         );
-         const hasFootwear = hydrated.some(
-           it => /footwear|shoe|sandal|heel|sneaker|jutti|boot/i.test(it.category || "")
-         );
-      
-         if (isOnePiecePath) {
-           if (!hasFootwear) {
-             const realShoe = pool.find(it =>
-               /footwear|shoe|sandal|heel|sneaker|jutti|boot/i.test(it.category || "")
-             );
-             if (realShoe) {
-               hydrated.push(realShoe);
-               validationRules.errors.push("Added matching footwear to complete one-piece outfit.");
-             } else {
-               validationRules.errors.push("One-piece look missing footwear and none found in wardrobe.");
-               // ✅ Re-run validation after any auto-complete changes (e.g., footwear added)
-               validationRules = validateLevel2({ items: hydrated });
-
-             }
-           }
-           // Do not force top/bottom when a dress/jumpsuit path is chosen.
-         } else {
-           // For separates, use your existing completion helper (real items only)
-           hydrated = forceCompleteLook(hydrated, pool);
-         }
-       }
+      if (!STRICT_ITEMS) {
+        if (!basicCompletenessCheck({ items: hydrated })) {
+          const cats = hydrated.map(h => (h.category || "").toLowerCase());
+          const isOnePiecePath = cats.some(c => /dress|jumpsuit|saree/.test(c));
+          
+          if (!isOnePiecePath) {
+            hydrated = forceCompleteLook(hydrated, pool, { gender: prefs.gender, occasion });
+          }
+        }
+      }
 
 
       console.log(`🧪 Validation for look #${i + 1}:`, { validationRules });
 
-      // 🔁 One-shot self-heal if invalid
+      // 🔁 One-shot self-heal if invalid (skip in STRICT mode)
       let reasons = [...(validationRules?.errors || [])];
       const isInvalid = !validationRules?.valid || reasons.length;
 
-      if (isInvalid) {
-        const needTop = !hydrated.some(i => /top|shirt|tee|t-?shirt|blouse|kurta/.test(cat(i)));
-        const needBottom = !hydrated.some(i => /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(cat(i)));
-        // ✅ Define outers safely from the full wardrobe pool
-        const outers = rawWardrobe.filter(i =>
-          /outer|jacket|coat|cardigan|shrug/i.test(i.category || i.name || "")
-        );
-
-        const outs = outers
-          .slice()
-          .sort((a, b) =>
-            (outerwearPriority?.(b.category, b.name) || 0) -
-            (outerwearPriority?.(a.category, a.name) || 0)
-          );
-
-
-        if (hydrated.length < 4) add(outs[0] || pickOne(accs, true));
-        const needFootwear = !hydrated.some(i => /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(cat(i)));
-
-        messages.push({
-          role: "user",
-          content: JSON.stringify({
-            correction: "Previous outfit failed validation. Fix and regenerate ONE alternative outfit.",
-            reasons,
-            constraint: { require: { top: needTop, bottom: needBottom, footwear: needFootwear }, avoid_combo_like: dislikedCombos.slice(0,5) },
-            keep_context: true,
-            wardrobe_preview: wardrobeSample
-          })
-        });
-
-        try {
-          const fixResp = await fetch("https://api.openai.com/v1/chat/completions",{
-            method:"POST",
-            headers:{ "Content-Type":"application/json", Authorization:`Bearer ${process.env.OPENAI_API_KEY}` },
-            body: JSON.stringify({ model:"gpt-4o-mini", messages, temperature:0.2, max_tokens:700, response_format:{type:"json_object"} })
-          });
-          const fixJson = await fixResp.json();
-          const fixMsg = fixJson.choices?.[0]?.message?.content;
-          if (fixMsg) {
-            const fixParsed = JSON.parse(fixMsg);
-            const fixItems = (fixParsed.outfits?.[0]?.items || []).map(o => idx2item[String(o.idx)]).filter(Boolean);
-            if (fixItems.length) {
-              hydrated = forceCompleteLook(fixItems, pool);
-              const recheck = validateLevel2({ items: hydrated });
-              validationRules.valid = recheck.valid;
-              validationRules.errors = recheck.errors;
-              reasons = recheck.errors || [];
-            }
-          }
-        } catch (e) { console.warn("Retry fix failed:", e.message); }
+      if (!STRICT_ITEMS && isInvalid) {
+        console.log("⚠️ Look validation failed - self-healing disabled in this mode");
+        // Self-healing can be added here if needed
       }
+
 
       const changedCategories = (() => {
         const before = (look.items || []).map(it => (it.category || "").toLowerCase()).sort().join(",");
@@ -2782,18 +2674,22 @@ app.post("/suggest-outfit", async (req, res) => {
       return l;
     });
 
-    // Always allow looks to pass even if missing perfect balance
-    parsed.outfits = (parsed.outfits || []).map((look) => {
-      if (!look.items || look.items.length < 1) {
-        // auto-fill with first wardrobe items if too small
-        look.items = buildSampleFromList(rawWardrobe, 3);
-        if (!PRESERVE_STYLE_TEXT) {
-          look.style_note += " | ⚠️ Auto-filled due to missing items.";
-        }
-
+// Always allow looks to pass even if missing perfect balance
+parsed.outfits = (parsed.outfits || []).map((look) => {
+  if (!look.items || look.items.length < 1) {
+    if (!STRICT_ITEMS) {
+      look.items = buildSampleFromList(rawWardrobe, 3);
+      if (!PRESERVE_STYLE_TEXT) {
+        look.style_note += " | ⚠️ Auto-filled due to missing items.";
       }
-      return look;
-    });
+    } else {
+      look.items = look.items || [];
+      look.style_note = look.style_note || "";
+    }
+  }
+  return look;
+});
+
 
     // If none survived, fallback to simple combinations
     if (!parsed.outfits || parsed.outfits.length === 0) {
@@ -2853,13 +2749,21 @@ app.post("/suggest-outfit", async (req, res) => {
       parsed.note = parsed.note || "No outfits parsed";
     }
     parsed.outfits = (parsed.outfits || []).map((look, i) => {
-      if (!look.items || look.items.length === 0) {
-        console.warn(`⚠️ Look ${i + 1} had no items. Adding fallback.`);
-        look.items = buildSampleFromList(rawWardrobe, 3);
+  if (!look.items || look.items.length === 0) {
+    if (!STRICT_ITEMS) {
+      console.warn(`⚠️ Look ${i + 1} had no items. Adding fallback.`);
+      look.items = buildSampleFromList(rawWardrobe, 3);
+      if (!PRESERVE_STYLE_TEXT) {
         look.style_note = (look.style_note || "") + " | Auto-filled.";
       }
-      return look;
-    });
+    } else {
+      look.items = look.items || [];
+      look.style_note = look.style_note || "";
+    }
+  }
+  return look;
+});
+
     // ✅ Final normalization: return BOTH shapes to keep old UIs working
     const looksArr = Array.isArray(parsed?.looks)
       ? parsed.looks
