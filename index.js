@@ -72,8 +72,12 @@ import cors from "cors";
 
 const app = express();
 
+// Hard lock: do NOT change Tina's picked items at all
+const STRICT_ITEMS = true;
+
 // Lock Tina's prose exactly as generated
 const PRESERVE_STYLE_TEXT = true;
+
 
 
 // ✅ JSON body parser
@@ -2437,14 +2441,19 @@ app.post("/suggest-outfit", async (req, res) => {
     }
 
     parsed.outfits = await Promise.all((parsed.outfits || []).map(async (look, i) => {
-      // 🛑 Fallback: if Tina gave no items, inject random sample
+      // 🛑 If Tina gave no items
       if (!look.items || look.items.length === 0) {
-        console.warn(`⚠️ Look ${i + 1} had no items, applying fallback.`);
-        const fallbackItems = buildSampleFromList(rawWardrobe, 3);
-        look.items = fallbackItems.map((it) => ({ idx: it.idx }));
-        look.style_note = look.style_note || "";
-
+        if (!STRICT_ITEMS) {
+          console.warn(`⚠️ Look ${i + 1} had no items, applying fallback.`);
+          const fallbackItems = buildSampleFromList(rawWardrobe, 3);
+          look.items = fallbackItems.map((it) => ({ idx: it.idx }));
+          look.style_note = look.style_note || "";
+        } else {
+          // keep as-is in strict mode (empty look allowed)
+          look.items = [];
+        }
       }
+
 
       let hydrated = (look.items || [])
         .map((it) => {
@@ -2473,12 +2482,26 @@ app.post("/suggest-outfit", async (req, res) => {
         })
         .filter(Boolean);
 
+      // 🚫 STRICT: stop here — return exactly what Tina picked (hydrated) without any mutations
+      if (STRICT_ITEMS) {
+        return {
+          title: look.title || `Untitled Look ${i + 1}`,
+          style_note: look.style_note || "",
+          items: hydrated,
+          validation: {} // keep shape, no blocking
+        };
+      }
+
+
       // 🔍 Debug logs
       console.log(`🔍 Hydrated look #${i + 1}:`, hydrated);
 
       // 🛡️ Enforce completeness BEFORE validation
       const pool = buildSampleFromList(rawWardrobe, 80);
-       hydrated = forceCompleteLook(hydrated, pool, { gender: prefs.gender, occasion });
+      if (!STRICT_ITEMS) {
+        hydrated = forceCompleteLook(hydrated, pool, { gender: prefs.gender, occasion });
+      }
+
 
       // If it’s a one-piece path, keep only relevant categories and DO NOT re-force to separates.
       const catsLower = hydrated.map(h => (h.category || "").toLowerCase());
