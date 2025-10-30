@@ -1581,6 +1581,7 @@ async function getUserStyleContext(uid) {
     `Prefers colors: ${topColors.join(", ") || "neutral"}; categories: ${topCats.join(", ") || "mixed"}.`;
 
   return {
+    micro_feedback: Array.isArray(mem.micro_feedback) ? mem.micro_feedback : [],
     gender: (mem.gender || "").toLowerCase(),
     bodyShape: (mem.bodyShape || "").toLowerCase(),
     complexion: (mem.complexion || "").toLowerCase(),
@@ -1618,13 +1619,16 @@ app.post("/suggest-outfit", async (req, res) => {
   let dislikedCombos = [];
   let styleSummary = "";
   let lastServedCombo = null;
+  let microFeedback = []; // <— HOISTED so it’s visible everywhere in this handler
+
 
 
   // Prefetch user preferences & a basic wardrobe snapshot (we still expose function to fetch full)
   try {
     // 🔹 Enriched user context
     const userCtx = await getUserStyleContext(uid);
-    const microFeedback = userCtx.micro_feedback || [];
+    microFeedback = userCtx.micro_feedback || [];
+
 
 
 
