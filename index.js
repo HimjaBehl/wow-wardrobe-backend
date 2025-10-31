@@ -78,6 +78,8 @@ function mapTaxonomy(category) {
 import { mapToCoreCategory } from "./lib/categoryMap.js";
 import { hasCoreCategories } from "./lib/validateCategories.js";
 
+import { buildFeedbackMemory } from "./lib/feedbackMemory.js";
+
 import { validateLook } from "./lib/fashionBrain.js";
 import express from "express";
 import cors from "cors";
@@ -1731,6 +1733,8 @@ app.post("/suggest-outfit", async (req, res) => {
   let styleSummary = "";
   let lastServedCombo = null;
   let microFeedback = []; // <— HOISTED so it’s visible everywhere in this handler
+  let userFeedback = [];            // recent raw feedback docs (array)
+  let fbSets = null;                // structured sets from buildFeedbackMemory()
 
 
 
@@ -1738,7 +1742,16 @@ app.post("/suggest-outfit", async (req, res) => {
   try {
     // 🔹 Enriched user context
     const userCtx = await getUserStyleContext(uid);
-    microFeedback = userCtx.micro_feedback || [];
+    microFeedback  = userCtx.micro_feedback || [];
+    userFeedback   = Array.isArray(userCtx.feedbackMemory) ? userCtx.feedbackMemory : [];
+
+    try {
+      fbSets = await buildFeedbackMemory(db, uid); // { likedIds:Set, dislikedIds:Set, ... }
+    } catch (e) {
+      console.warn("⚠️ buildFeedbackMemory failed:", e?.message || e);
+      fbSets = null;
+    }
+
 
 
 
@@ -2315,7 +2328,14 @@ app.post("/suggest-outfit", async (req, res) => {
         complexion: prefs.complexion,
         dislikes: prefs.dislikes,
         learning_weights: learning,
-        feedback_memory: feedbackMemory,
+        feedback_memory_recent: userFeedback,
+        feedback_memory_sets: fbSets ? {
+          likedIds:        Array.from(fbSets.likedIds || []),
+          dislikedIds:     Array.from(fbSets.dislikedIds || []),
+          dislikedColors:  Array.from(fbSets.dislikedColors || []),
+          dislikedVibes:   Array.from(fbSets.dislikedVibes || []),
+          dislikedOccasions: Array.from(fbSets.dislikedOccasions || []),
+        } : null,
         style_summary: styleSummary,
         micro_feedback: microFeedback,
         weather: await getWeather(city),
