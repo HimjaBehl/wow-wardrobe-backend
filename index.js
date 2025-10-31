@@ -3283,25 +3283,25 @@ app.get("/run-trends", async (req, res) => {
 });
 
 // ✅ Debug route: fetch Tina's combo stats for a user
-app.get("/combo-stats", async (req, res) => {
-      const { uid } = req.query;
-      if (!uid) {
-        return res.status(400).json({ error: "uid is required" });
-      }
+app.get("/debug-combo-stats", async (req, res) => {
+  const { uid } = req.query;
+  if (!uid) {
+    return res.status(400).json({ error: "uid is required" });
+  }
 
-      try {
-        const doc = await db.collection("tina_memory").doc(uid).get();
-        if (!doc.exists) {
-          return res.status(404).json({ error: "No memory found for this user" });
-        }
+  try {
+    const doc = await db.collection("tina_memory").doc(uid).get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: "No memory found for this user" });
+    }
 
-        const data = doc.data();
-        res.json({ uid, combo_stats: data.combo_stats || {} });
-      } catch (err) {
-        console.error("❌ Failed to fetch combo stats:", err.message);
-        res.status(500).json({ error: "Failed to fetch combo stats" });
-      }
-    });
+    const data = doc.data();
+    res.json({ uid, combo_stats: data.combo_stats || {} });
+  } catch (err) {
+    console.error("❌ Failed to fetch combo stats:", err.message);
+    res.status(500).json({ error: "Failed to fetch combo stats" });
+  }
+});
 app.get("/version", (req, res) => {
   res.json({
     build: "post-forceComplete-fix",
