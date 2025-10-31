@@ -120,7 +120,10 @@ app.use(
   }),
 );
 
-import getTrendInsights from "./tools/getTrendInsights.js";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const getTrendInsights = require("./tools/getTrendInsights.js"); // returns the function
+
 
 import {
   validateLookAgainstRules,
@@ -2086,11 +2089,18 @@ app.post("/suggest-outfit", async (req, res) => {
     }) {
       try {
         // getTrendInsights is a tool you already imported. If it expects args adjust accordingly.
-        const trends = await getTrendInsights({ query, source, limit }).catch(
-          (e) => null,
-        );
-        // normalize response
-        return { query, source, trends: trends || [] };
+        let trendsRaw = null;
+        try {
+          trendsRaw = await getTrendInsights({ query, source, limit });
+        } catch (e) {
+          trendsRaw = null;
+        }
+        // normalize to array of short objects
+        const trends = Array.isArray(trendsRaw)
+          ? trendsRaw.map(t => (typeof t === "string" ? { content: t } : t))
+          : (typeof trendsRaw === "string" ? trendsRaw.split("\n").filter(Boolean).map(s => ({ content: s })) : []);
+        return { query, source, trends };
+
       } catch (err) {
         return { query, source, trends: [] };
       }
@@ -2329,20 +2339,20 @@ app.post("/suggest-outfit", async (req, res) => {
         dislikes: prefs.dislikes,
         learning_weights: learning,
         feedback_memory_recent: userFeedback,
-        feedback_memory_sets: fbSets ? {
-          likedIds:        Array.from(fbSets.likedIds || []),
-          dislikedIds:     Array.from(fbSets.dislikedIds || []),
-          dislikedColors:  Array.from(fbSets.dislikedColors || []),
-          dislikedVibes:   Array.from(fbSets.dislikedVibes || []),
-          dislikedOccasions: Array.from(fbSets.dislikedOccasions || []),
-        } : null,
-        style_summary: styleSummary,
-        micro_feedback: microFeedback,
-        weather: await getWeather(city),
-        likedCombos,
-        dislikedCombos,
-        last_served_combo: lastServedCombo,
-        wardrobe_preview: wardrobeSample,
+    feedback_memory_sets: fbSets ? {
+      likedIds:        Array.from(fbSets.likedIds || []),
+      dislikedIds:     Array.from(fbSets.dislikedIds || []),
+      dislikedColors:  Array.from(fbSets.dislikedColors || []),
+      dislikedVibes:   Array.from(fbSets.dislikedVibes || []),
+      dislikedOccasions: Array.from(fbSets.dislikedOccasions || []),
+    } : null,
+    style_summary: styleSummary,
+    micro_feedback: microFeedback,
+    weather: await getWeather(city),
+    likedCombos,
+    dislikedCombos,
+    last_served_combo: lastServedCombo,
+    wardrobe_preview: wardrobeSample,
         instructions: [
           "Return **only** JSON with top-level key 'outfits'. No prose.",
           "Reference items strictly by 'idx'; never invent items.",
@@ -3222,8 +3232,58 @@ app.get("/fashion-basics", (req, res) => {
   }
 });
 
-    // ✅ Debug route: fetch Tina's combo stats for a user
-    app.get("/combo-stats", async (req, res) => {
+// GET /trends?limit=8&query=cocktail
+app.get('/trends', async (req, res) => {
+  const limit = Number(req.query.limit || 8);
+  const q = (req.query.query || 'general').toLowerCase();
+
+  try {
+    const snap = await db.collection('trends').orderBy('updated_at', 'desc').limit(50).get();
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const filtered = all.filter(t => {
+      const k = (t.keyword || '').toLowerCase();
+      const vibes = (t.vibes || []).map(v => String(v).toLowerCase());
+      const occs  = (t.occasion || []).map(o => String(o).toLowerCase());
+      return (
+        q === 'general' ||
+        k.includes(q) ||
+        vibes.some(v => v.includes(q)) ||
+        occs.some(o => o.includes(q))
+      );
+    });
+
+    const ranked = (filtered.length ? filtered : all)
+      .sort((a, b) => (b.score ?? 0.5) - (a.score ?? 0.5))
+      .slice(0, limit);
+
+    res.json({ success: true, count: ranked.length, trends: ranked });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
+
+// ——— AUTO TREND REFRESH ENDPOINT ———
+import { updateTrends } from "./lib/updateTrends.js";
+
+app.get("/run-trends", async (req, res) => {
+  const key = req.query.key;
+  if (key !== process.env.CRON_SECRET_KEY) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  try {
+    await updateTrends();
+    res.json({ success: true, message: "Trends updated successfully" });
+  } catch (e) {
+    console.error("Trend update error:", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ✅ Debug route: fetch Tina's combo stats for a user
+app.get("/combo-stats", async (req, res) => {
       const { uid } = req.query;
       if (!uid) {
         return res.status(400).json({ error: "uid is required" });
