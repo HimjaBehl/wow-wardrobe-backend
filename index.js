@@ -61,7 +61,6 @@ dotenv.config();
 import { hydrateWardrobeItem } from "./lib/hydrateWardrobeItem.js";
 
 import { normalizeCategory } from "./lib/normalizeCategory.js";
-import { outerwearPriority } from "./lib/normalizeCategory.js";
 
 function mapTaxonomy(category) {
   switch (category) {
@@ -86,7 +85,7 @@ import cors from "cors";
 const app = express();
 
 // Hard lock: do NOT change Tina's picked items at all
-const STRICT_ITEMS = true;
+const STRICT_ITEMS = false;
 
 // Lock Tina's prose exactly as generated
 const PRESERVE_STYLE_TEXT = true;
@@ -94,7 +93,7 @@ const PRESERVE_STYLE_TEXT = true;
 
 
 // ✅ JSON body parser
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "5mb" }));
 
 // ✅ CORS setup
 const allowedOrigins = [
@@ -136,10 +135,10 @@ import { themeAttributes } from "./lib/themeAttributes.js";
 let fashionBasics = [];
 try {
   fashionBasics =
-    JSON.parse(fs.readFileSync("fashionbasics.json", "utf-8")).basics || [];
+    JSON.parse(fs.readFileSync("fashionBasics.json", "utf-8")).basics || [];
   console.log("✅ Loaded fashion basics:", fashionBasics.length);
 } catch (err) {
-  console.error("❌ Could not load fashionbasics.json:", err.message);
+  console.error("❌ Could not load fashionBasics.json:", err.message);
 }
 
 function getLevel1Basics() {
@@ -419,6 +418,30 @@ function makeComboFingerprint(items = []) {
     .map(it => `${safeLower(it.category)}-${safeLower(it.palette)}-${safeLower(it.silhouette)}`)
     .sort()
     .join("|");
+}
+
+// —— URL normalizer & image→id resolver ——
+function normalizeUrlForMatch(u = "") {
+  try {
+    const url = new URL(u);
+    url.search = ""; // drop ?alt=media, tokens, etc.
+    // decode firebase paths once
+    url.pathname = decodeURIComponent(url.pathname || "");
+    return url.toString();
+  } catch {
+    return (u || "").split("?")[0]; // best effort
+  }
+}
+
+async function buildUrlToIdMap(uid) {
+  const snap = await db.collection("wardrobe").where("uid","==",uid).get();
+  const map = new Map();
+  snap.docs.forEach(d => {
+    const data = d.data() || {};
+    const key = normalizeUrlForMatch(data.image_url || "");
+    if (key) map.set(key, d.id);
+  });
+  return map;
 }
 
 // ---- Swap helpers (map wardrobe items to a slot we can swap) ----
@@ -808,7 +831,8 @@ app.get("/staples", async (req, res) => {
         // ✅ Get signed URL (browser-friendly)
         const [signedUrl] = await file.getSignedUrl({
           action: "read",
-          expires: "03-01-2030", // pick a far future expiry
+          expires: "2099-12-31",
+
         });
 
         return hydrateWardrobeItem({
@@ -2483,44 +2507,29 @@ app.post("/suggest-outfit", async (req, res) => {
         console.log("🧼 Sanitized AI payload (head):", JSON.stringify(parsed).slice(0, 400));
 
       } catch (err) {
-
-        // 🛡️ Fallback: handle if Tina used "looks" instead of "outfits"
-        if (parsed && parsed.looks && !parsed.outfits) {
-          console.warn("⚠️ Tina returned 'looks' instead of 'outfits'. Remapping...");
-          parsed.outfits = parsed.looks;
-          delete parsed.looks;
-        }
-
-        // 🛡️ Normalize Tina/backend key: "looks" → "outfits"
-        if (parsed && parsed.looks && !parsed.outfits) {
-          console.warn("⚠️ Normalizing 'looks' → 'outfits'");
-          parsed.outfits = parsed.looks;
-          delete parsed.looks;
-        }
-
-
         console.warn("⚠️ Raw content not valid JSON, attempting recovery");
-        const jsonMatch = finalAssistantContent.match(/\{[\s\S]*\}/);
+        let recovered = null;
+
+        const jsonMatch = finalAssistantContent && finalAssistantContent.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
-            parsed = JSON.parse(jsonMatch[0]);
-            normalizeOutfitsKey(parsed);
-            parsed = sanitizeOutfitsPayload(parsed);
-            console.log("🧼 Sanitized (recovered) AI payload (head):", JSON.stringify(parsed).slice(0, 400));
+            recovered = JSON.parse(jsonMatch[0]);
+            normalizeOutfitsKey(recovered);
+            recovered = sanitizeOutfitsPayload(recovered);
+            console.log("🧼 Sanitized (recovered) AI payload (head):", JSON.stringify(recovered).slice(0, 400));
           } catch (e2) {
             console.error("❌ JSON recovery failed:", e2.message);
-            parsed = null;
+            recovered = null;
           }
-        } else {
-          parsed = null;
         }
 
-
-        if (!parsed) {
+        if (recovered) {
+          parsed = recovered;
+        } else {
           dlog("⚠️ Could not parse assistant JSON. Returning weighted fallback.");
           const pool = (wardrobeSample && wardrobeSample.length >= 6)
             ? wardrobeSample
-            : buildSampleFromList(rawWardrobe, 10); // weighted sample
+            : buildSampleFromList(rawWardrobe, 10);
 
           parsed = sanitizeOutfitsPayload({
             outfits: [
@@ -2537,9 +2546,9 @@ app.post("/suggest-outfit", async (req, res) => {
             ],
           });
         }
-
       }
-    }
+
+    
 
     // Hydrate parsed.outfits items into full item objects using the available wardrobe (prefer filtered rawWardrobe)
     const idx2item = Object.fromEntries(
@@ -2855,12 +2864,16 @@ parsed.outfits = (parsed.outfits || []).map((look) => {
       delete parsed.looks;
     }
 
-    if (!parsed.outfits) {
-      console.warn("⚠️ Tina returned no outfits, forcing empty array");
-      parsed.outfits = [];
-      parsed.note = parsed.note || "No outfits parsed";
-    }
-    parsed.outfits = (parsed.outfits || []).map((look, i) => {
+      if (!parsed.outfits && parsed.looks) {
+        parsed.outfits = parsed.looks;
+      }
+      if (!parsed.outfits) {
+        console.warn("⚠️ Tina returned no outfits, forcing empty array");
+        parsed.outfits = [];
+        parsed.note = parsed.note || "No outfits parsed";
+      }
+      parsed.outfits = (parsed.outfits || []).map((look, i) => {
+
   if (!look.items || look.items.length === 0) {
     if (!STRICT_ITEMS) {
       console.warn(`⚠️ Look ${i + 1} had no items. Adding fallback.`);
@@ -2888,9 +2901,10 @@ parsed.outfits = (parsed.outfits || []).map((look) => {
       note: parsed?.note || undefined
     };
 
+    console.log("🎯 Sending outfits:", (response.outfits || []).map(o => o.items?.length));
     return res.json(response);
 
-
+  }  // Close the try block
   } catch (err) {
     console.error("❌ /suggest-outfit (agent) error:", err);
     return res
@@ -3167,7 +3181,7 @@ app.use((err, req, res, next) => {
 // ✅ New Fashion Basics route
 app.get("/fashion-basics", (req, res) => {
   try {
-    const basics = JSON.parse(fs.readFileSync("fashionbasics.json", "utf-8"));
+    const basics = JSON.parse(fs.readFileSync("fashionBasics.json", "utf-8"));
     res.json(basics);
   } catch (error) {
     console.error("Error reading fashion_basics.json:", error);
