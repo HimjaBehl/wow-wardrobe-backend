@@ -1631,6 +1631,20 @@ app.get("/fashion-rules", async (req, res) => {
 async function getUserStyleContext(uid) {
   const mem = await getUserMemory(uid).catch(() => ({}));
 
+  // 🎯 Feedback memory: fetch last 10 structured feedbacks
+  let feedbackMemory = [];
+  try {
+    const feedbackSnap = await db
+      .collection("feedback")
+      .where("uid", "==", uid)
+      .orderBy("timestamp", "desc")
+      .limit(10)
+      .get();
+    feedbackMemory = feedbackSnap.docs.map(d => d.data());
+  } catch (err) {
+    console.warn("⚠️ feedback memory fetch failed:", err.message);
+  }
+
   const learning = {
     colorHarmony:      mem?.learning_weights?.colorHarmony      ?? 0.5,
     silhouetteBalance: mem?.learning_weights?.silhouetteBalance ?? 0.5,
@@ -1684,9 +1698,11 @@ async function getUserStyleContext(uid) {
     learning_weights: learning,
     likedCombos,
     dislikedCombos,
+    feedbackMemory,
     styleSummary,
     last_served_combo: mem.last_served_combo || null,
   };
+
 }
 
 // ─── Updated /suggest-outfit route: tool-calling agent loop ─────────────────
@@ -2272,11 +2288,12 @@ app.post("/suggest-outfit", async (req, res) => {
     2) Prefer (Top + Bottom + Footwear). A (Dress/Jumpsuit + Footwear) path is allowed.
     3) Enforce color harmony & silhouette balance at your level.
     4) STRICTLY avoid any combination fingerprints present in "dislikedCombos".
-    5) If your combination is close to any in "likedCombos", prefer it. Mark that in style_note.
-    6) If the user provided an occasion or vibe, align names and notes with that context.
-    7) **The title and style_note MUST accurately describe the chosen items. DO NOT mention "dress", "heels", etc. unless those categories are actually present in "items". If they would be ideal but missing, write a neutral description (e.g., "polished look with blazer and trousers").
-    8) If micro_feedback (e.g. "swap-top", "change-shoes", "lighter-colors") is present, treat as soft constraints when re-styling.
-    9) Use weather info (e.g. “light rain, 24 °C”) to prefer seasonally suitable fabrics or layers.
+    5) Consider "feedback_memory" — avoid color, vibe, or category patterns the user disliked recently (from structured feedback). Reinforce what they loved.
+    6) If your combination is close to any in "likedCombos", prefer it. Mark that in style_note.
+    7) If the user provided an occasion or vibe, align names and notes with that context.
+    8) **The title and style_note MUST accurately describe the chosen items. DO NOT mention "dress", "heels", etc. unless those categories are actually present in "items". If they would be ideal but missing, write a neutral description (e.g., "polished look with blazer and trousers").
+    9) If micro_feedback (e.g. "swap-top", "change-shoes", "lighter-colors") is present, treat as soft constraints when re-styling.
+    10) Use weather info (e.g. “light rain, 24 °C”) to prefer seasonally suitable fabrics or layers.
 
 
     FASHION KNOWLEDGE BASE (follow if relevant):
@@ -2298,6 +2315,7 @@ app.post("/suggest-outfit", async (req, res) => {
         complexion: prefs.complexion,
         dislikes: prefs.dislikes,
         learning_weights: learning,
+        feedback_memory: feedbackMemory,
         style_summary: styleSummary,
         micro_feedback: microFeedback,
         weather: await getWeather(city),
@@ -2957,37 +2975,32 @@ app.post("/mark-worn", async (req, res) => {
   }
 });
 
-// ✅ Like (save-as-favourite) outfit
-app.post("/like-outfit", async (req, res) => {
-  const { uid, outfit, context = {} } = req.body;
-
-  console.log("✅ /like-outfit HIT", { uid, itemCount: outfit?.items?.length });
-
-  if (!uid || !outfit) {
-    return res.status(400).json({ error: "uid & outfit required" });
+// ✅ Structured Feedback endpoints (❤️ + ❌)
+app.post("/feedback", async (req, res) => {
+  const { uid, outfit_ids = [], vibe = "", occasion = "", liked = null, dislike_reasons = [] } = req.body || {};
+  if (!uid || !Array.isArray(outfit_ids) || outfit_ids.length === 0) {
+    return res.status(400).json({ error: "uid and outfit_ids are required" });
   }
 
   try {
-    const combo = makeComboFingerprint(outfit.items || []);
-
-    await db.collection("liked_looks").add({
+    const data = {
       uid,
-      outfit,
-      combo,   // ✅ store fingerprint
-      context,
-      liked_at: new Date().toISOString(),
-    });
+      outfit_ids,
+      vibe,
+      occasion,
+      liked,
+      dislike_reasons,
+      timestamp: new Date().toISOString(),
+    };
 
-    // 🧠 reinforce positive learning on explicit like
-    await updateLearning(uid, { valid: true }, true);
-
-    res.json({ message: "Look liked!", combo });
-
-  } catch (e) {
-    console.error("❌ like-outfit failed:", e.message);
-    res.status(500).json({ error: "Could not save like" });
+    await db.collection("feedback").add(data);
+    res.json({ message: "Feedback recorded", data });
+  } catch (err) {
+    console.error("❌ feedback failed:", err.message);
+    res.status(500).json({ error: "Failed to record feedback" });
   }
 });
+
 
 
 // ✅ Dislike outfit (save reason for learning Tina’s preferences)
