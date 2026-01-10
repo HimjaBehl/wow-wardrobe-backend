@@ -539,7 +539,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-console.log("🔑 REMOVE_BG_API_KEY =", process.env.REMOVE_BG_API_KEY);
+
 
 // ✅ Quick Add Staples - Fixed syntax
 // This endpoint is handled by the working staples endpoint below
@@ -1089,19 +1089,45 @@ app.post("/wardrobe", async (req, res) => {
   }
 });
 
-// ✅ Delete wardrobe item
+// ✅ Secure Delete wardrobe item
 app.delete("/wardrobe/:id", async (req, res) => {
   const { id } = req.params;
-  if (!id) return res.status(400).json({ error: "Item ID is required" });
+  const { uid } = req.query;
+
+  // 1️⃣ Validate inputs
+  if (!id) {
+    return res.status(400).json({ error: "Item ID is required" });
+  }
+  if (!uid) {
+    return res.status(400).json({ error: "uid is required" });
+  }
 
   try {
-    await db.collection("wardrobe").doc(id).delete();
-    res.status(200).json({ message: "Item deleted successfully" });
+    const ref = db.collection("wardrobe").doc(id);
+    const snap = await ref.get();
+
+    // 2️⃣ Check item exists
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    const item = snap.data();
+
+    // 3️⃣ Ownership check (THIS IS THE SECURITY FIX)
+    if (item.uid !== uid) {
+      return res.status(403).json({ error: "Not authorized to delete this item" });
+    }
+
+    // 4️⃣ Delete safely
+    await ref.delete();
+
+    res.status(200).json({ message: "Item deleted securely", id });
   } catch (err) {
     console.error("❌ Error deleting item:", err.message);
     res.status(500).json({ error: "Failed to delete wardrobe item" });
   }
 });
+
 
 // ✅ Update wardrobe item
 app.put("/wardrobe/:id", async (req, res) => {
