@@ -11,8 +11,13 @@ process.on('unhandledRejection', (reason, promise) => {
   // Don't exit - keep server running
 });
 
+import dotenv from "dotenv";
+dotenv.config();
+
+
 import sharp from "sharp";
 import OpenAI from "openai";
+
 
 // ── Redaction + Safe Debug Logger ──
 function redact(obj) {
@@ -55,8 +60,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-import dotenv from "dotenv";
-dotenv.config();
+
 
 import { hydrateWardrobeItem } from "./lib/hydrateWardrobeItem.js";
 
@@ -104,6 +108,58 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
 ];
+
+// ✅ trust proxy so req.ip is correct on Replit/proxies
+app.set("trust proxy", 1);
+
+import rateLimit from "express-rate-limit";
+
+// Helper: send a clean 429
+function rateLimitResponse(req, res) {
+  return res.status(429).json({
+    error: "Too many requests",
+    message: "Slow down for a bit and try again in a minute.",
+  });
+}
+
+// ✅ Gentle limits (tune anytime)
+const limiterSuggestOutfit = rateLimit({
+  windowMs: 60 * 1000,     // 1 minute
+  max: 12,                 // 12 requests/min per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitResponse,
+});
+
+const limiterAutoTag = rateLimit({
+  windowMs: 60 * 1000,
+  max: 8,                  // 8 requests/min per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitResponse,
+});
+
+
+
+
+
+const limiterSearchProduct = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,                 // example: 20 searches/min per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitResponse,
+});
+
+const limiterWrites = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,                 // 60 writes/min per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitResponse,
+});
+
+
 
 
 app.use(
@@ -546,7 +602,8 @@ app.get("/health", (req, res) => {
 
 // ✅ Search Product via SerpAPI
 // ✅ Search Product via SerpAPI (normalized for frontend)
-app.post("/search-product", async (req, res) => {
+app.post("/search-product", limiterSearchProduct, async (req, res) => {
+
   const { query } = req.body;
   if (!query) return res.status(400).json({ error: "Query is required" });
 
@@ -590,7 +647,8 @@ app.get("/", (req, res) => {
 });
 
 // ✅ Auto-tagging (normalized keys)
-app.post("/auto-tag", async (req, res) => {
+app.post("/auto-tag", limiterAutoTag, async (req, res) => {
+
   const { image_url } = req.body || {};
   if (!image_url) return res.status(400).json({ error: "Image URL required" });
 
@@ -611,7 +669,8 @@ app.post("/auto-tag", async (req, res) => {
 
 
 // Accepts multipart/form-data with field name: "file"
-app.post("/auto-tag-upload", upload.single("file"), async (req, res) => {
+app.post("/auto-tag-upload", limiterAutoTag, upload.single("file"), async (req, res) => {
+
   try {
     if (!req.file) {
       return res
@@ -992,7 +1051,8 @@ app.post("/quick-add", async (req, res) => {
 });
 
 // ✅ Add wardrobe item
-app.post("/wardrobe", async (req, res) => {
+app.post("/wardrobe", limiterWrites, async (req, res) => {
+
   try {
     let { uid, image_path, image_url, name, editedName, category, editedCategory, color, editedColor, tags } =
       req.body;
@@ -1090,7 +1150,8 @@ app.post("/wardrobe", async (req, res) => {
 });
 
 // ✅ Secure Delete wardrobe item
-app.delete("/wardrobe/:id", async (req, res) => {
+app.delete("/wardrobe/:id", limiterWrites, async (req, res) => {
+
   const { id } = req.params;
   const { uid } = req.query;
 
@@ -1130,7 +1191,8 @@ app.delete("/wardrobe/:id", async (req, res) => {
 
 
 // ✅ Update wardrobe item
-app.put("/wardrobe/:id", async (req, res) => {
+app.put("/wardrobe/:id", limiterWrites, async (req, res) => {
+
   const { id } = req.params;
   let { uid, name, editedName, category, editedCategory, color, editedColor, tags } = req.body;
   name = (editedName ?? name);
@@ -1223,7 +1285,8 @@ app.put("/wardrobe/:id", async (req, res) => {
 });
 
 // ✅ Bulk delete wardrobe items
-app.post("/wardrobe/bulk-delete", async (req, res) => {
+  app.post("/wardrobe/bulk-delete", limiterWrites, async (req, res) => {
+
   const { uid, ids } = req.body;
 
   if (!uid) return res.status(400).json({ error: "UID is required" });
@@ -1737,7 +1800,8 @@ async function getUserStyleContext(uid) {
 }
 
 // ─── Updated /suggest-outfit route: tool-calling agent loop ─────────────────
-app.post("/suggest-outfit", async (req, res) => {
+app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
+
   console.log("HIT /suggest-outfit (agent) ", { ts: new Date().toISOString() });
 
   const {
@@ -3032,7 +3096,8 @@ app.post("/mark-worn", async (req, res) => {
 });
 
 // ✅ Structured Feedback endpoints (❤️ + ❌)
-app.post("/feedback", async (req, res) => {
+  app.post("/feedback", limiterWrites, async (req, res) => {
+
   const { uid, outfit_ids = [], vibe = "", occasion = "", liked = null, dislike_reasons = [] } = req.body || {};
   if (!uid || !Array.isArray(outfit_ids) || outfit_ids.length === 0) {
     return res.status(400).json({ error: "uid and outfit_ids are required" });
