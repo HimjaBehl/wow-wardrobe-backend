@@ -768,13 +768,15 @@ app.get("/wardrobe", async (req, res) => {
       const taxonomyPath = mapTaxonomy(normalizedCategory);
 
       return hydrateWardrobeItem({
-        id: doc.id,
+        wardrobe_id: doc.id,     // ✅ source of truth for matching
+        id: doc.id,              // ✅ keep old key for compatibility
         ...data,
         name: normalizeName(data),
         primaryTag: normalizeName(data),
         category: normalizedCategory,
         taxonomyPath,
       });
+
     });
 
     console.log("📦 Normalized wardrobe items:", items.length);
@@ -796,7 +798,7 @@ app.post("/swap-suggestions", async (req, res) => {
 
     // Load full wardrobe for the user
     const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
-    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const all = snap.docs.map(d => ({ wardrobe_id: d.id, id: d.id, ...d.data() }));
 
     // Same-slot candidates, excluding currently used ids
     const used = new Set(excludeIds);
@@ -825,11 +827,13 @@ app.post("/swap-suggestions", async (req, res) => {
 
     // Hydrate minimal, consistent object like the rest of the API
     const hydrated = candidates.slice(0, limit).map(it => hydrateWardrobeItem({
-      id: it.id,
+      wardrobe_id: it.wardrobe_id || it.id,   // ✅ preserve doc id
+      id: it.wardrobe_id || it.id,            // ✅ keep compatibility
       ...it,
       category: normalizeCategory(it.category || "", it.name || ""),
       taxonomyPath: it.taxonomyPath || mapTaxonomy(normalizeCategory(it.category || "", it.name || "")),
     }));
+
 
     res.json({ success: true, slot, items: hydrated });
   } catch (err) {
@@ -844,11 +848,13 @@ app.get("/debug-wardrobe", async (req, res) => {
   try {
     const snapshot = await db.collection("wardrobe").get();
     const items = snapshot.docs.map((doc) => ({
+      wardrobe_id: doc.id,
       id: doc.id,
       uid: doc.data().uid,
       name: doc.data().name,
       category: doc.data().category,
     }));
+
 
     console.log("🧾 DEBUG wardrobe items:", items);
     res.json(items);
@@ -1036,10 +1042,10 @@ app.post("/quick-add", async (req, res) => {
 
     return res.json({
       success: true,
-      item: { id: docRef.id, ...hydrated
-      },
+      item: { wardrobe_id: docRef.id, id: docRef.id, ...hydrated },
       message: "Item added successfully to wardrobe",
     });
+
   } catch (err) {
     console.error("❌ Quick-add failed:", err);
     return res.status(500).json({
@@ -1139,9 +1145,11 @@ app.post("/wardrobe", limiterWrites, async (req, res) => {
 
     res.status(200).json({
       message: "Item added",
+      wardrobe_id: docRef.id,
       id: docRef.id,
-      item: { id: docRef.id, ...hydrated },
+      item: { wardrobe_id: docRef.id, id: docRef.id, ...hydrated },
     });
+
 
   } catch (err) {
     console.error("❌ Error adding item:", err.message);
@@ -3330,7 +3338,7 @@ app.get('/trends', async (req, res) => {
 
   try {
     const snap = await db.collection('trends').orderBy('updated_at', 'desc').limit(50).get();
-    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    
     const filtered = all.filter(t => {
       const k = (t.keyword || '').toLowerCase();
       const vibes = (t.vibes || []).map(v => String(v).toLowerCase());
