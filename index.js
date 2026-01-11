@@ -2435,7 +2435,10 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
 
     STYLE CONSTRAINTS:
     1) Use ONLY wardrobe_preview items (by idx).
-    2) Prefer (Top + Bottom + Footwear). A (Dress/Jumpsuit + Footwear) path is allowed.
+    2) Prefer 4–6 items. Base structure:
+   - Separates: Top + Bottom + Footwear + (Bag OR Outerwear) + optional Accessory
+   - One-piece: Dress/Jumpsuit + Footwear + (Bag OR Outerwear) + optional Accessory
+   Always include Footwear when possible.
     3) Enforce color harmony & silhouette balance at your level.
     4) STRICTLY avoid any combination fingerprints present in "dislikedCombos".
     5) Consider "feedback_memory" — avoid color, vibe, or category patterns the user disliked recently (from structured feedback). Reinforce what they loved.
@@ -2483,7 +2486,7 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
         instructions: [
           "Return **only** JSON with top-level key 'outfits'. No prose.",
           "Reference items strictly by 'idx'; never invent items.",
-          "Each outfit is (Top+Bottom+Footwear) OR (Dress/Jumpsuit+Footwear).",
+          "Each outfit should include 4–6 items. Use separates or a one-piece base, plus footwear, and add bag/outerwear/accessory if available.",
           "Prefer color harmony and silhouette balance.",
           "HARD AVOID any fingerprint in dislikedCombos.",
           "If close to likedCombos, prefer that combo and call it out in style_note.",
