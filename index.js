@@ -2116,8 +2116,9 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
         const paletteGuess    = it.palette    || pickPalette(it.color || "");
 
         const sample = {
-          idx: String(idx),
-          id: it.id,
+          idx: String(it.id),        // ✅ stable key (Firestore doc id)
+          id: it.id,                 // keep
+          wardrobe_id: it.id,        // also keep for compatibility
           name: cleanName,
           category: cleanCat,
           color: Array.isArray(it.color) ? (it.color[0] || "Unknown") : (it.color || "Unknown"),
