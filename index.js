@@ -91,7 +91,7 @@ import cors from "cors";
 const app = express();
 
 // Hard lock: do NOT change Tina's picked items at all
-const STRICT_ITEMS = false;
+const STRICT_ITEMS = true;
 
 // Lock Tina's prose exactly as generated
 const PRESERVE_STYLE_TEXT = true;
