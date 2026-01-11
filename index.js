@@ -767,20 +767,21 @@ app.get("/wardrobe", async (req, res) => {
       );
       const taxonomyPath = mapTaxonomy(normalizedCategory);
 
-      return hydrateWardrobeItem({
+      const hydrated = hydrateWardrobeItem({
         ...data,
-
-        // normalized display fields
         name: normalizeName(data),
         primaryTag: normalizeName(data),
         category: normalizedCategory,
         taxonomyPath,
-
-        // ✅ ALWAYS last so Firestore data can't overwrite
-        wardrobe_id: doc.id,
-        id: doc.id,
-        idx: doc.id, // ✅ optional but strongly recommended (keeps everything aligned)
       });
+
+      // ✅ FORCE ids AFTER hydrate (hydrateWardrobeItem cannot delete these now)
+      return {
+        ...hydrated,
+        id: doc.id,
+        wardrobe_id: doc.id,
+        idx: doc.id,
+      };
 
 
     });
