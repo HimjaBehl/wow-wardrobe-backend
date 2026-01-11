@@ -768,14 +768,20 @@ app.get("/wardrobe", async (req, res) => {
       const taxonomyPath = mapTaxonomy(normalizedCategory);
 
       return hydrateWardrobeItem({
-        wardrobe_id: doc.id,     // ✅ source of truth for matching
-        id: doc.id,              // ✅ keep old key for compatibility
         ...data,
+
+        // normalized display fields
         name: normalizeName(data),
         primaryTag: normalizeName(data),
         category: normalizedCategory,
         taxonomyPath,
+
+        // ✅ ALWAYS last so Firestore data can't overwrite
+        wardrobe_id: doc.id,
+        id: doc.id,
+        idx: doc.id, // ✅ optional but strongly recommended (keeps everything aligned)
       });
+
 
     });
 
@@ -798,7 +804,13 @@ app.post("/swap-suggestions", async (req, res) => {
 
     // Load full wardrobe for the user
     const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
-    const all = snap.docs.map(d => ({ wardrobe_id: d.id, id: d.id, ...d.data() }));
+    const all = snap.docs.map(d => ({
+      ...d.data(),
+      wardrobe_id: d.id,
+      id: d.id,
+      idx: d.id,
+    }));
+
 
     // Same-slot candidates, excluding currently used ids
     const used = new Set(excludeIds);
@@ -1562,9 +1574,12 @@ app.post("/pinterest-analysis", async (req, res) => {
       return res.status(404).json({ error: "Wardrobe is empty" });
     }
     const wardrobeItems = snapshot.docs.map((doc) => ({
-      id: doc.id,
       ...doc.data(),
+      id: doc.id,
+      wardrobe_id: doc.id,
+      idx: doc.id,
     }));
+
 
     // 2️⃣ Build Pinterest search query
     const searchQuery = `${occasion} ${weather} outfits`;
