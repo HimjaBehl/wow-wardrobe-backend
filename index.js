@@ -805,12 +805,15 @@ app.post("/swap-suggestions", async (req, res) => {
 
     // Load full wardrobe for the user
     const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
-    const all = snap.docs.map(d => ({
-      ...d.data(),
-      wardrobe_id: d.id,
-      id: d.id,
-      idx: d.id,
-    }));
+    const all = snap.docs.map(d => {
+      const data = d.data() || {};
+      return {
+        ...data,
+        id: d.id,
+        wardrobe_id: d.id,
+        idx: d.id,
+      };
+    });
 
 
     // Same-slot candidates, excluding currently used ids
@@ -2170,7 +2173,16 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
           .collection("wardrobe")
           .where("uid", "==", targetUid)
           .get();
-        const fullList = fullSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const fullList = fullSnap.docs.map((d) => {
+          const data = d.data() || {};
+          return {
+            ...data,
+            id: d.id,
+            wardrobe_id: d.id,
+            idx: d.id,
+          };
+        });
+
         return {
           items: buildSampleFromList(fullList, max),
           count: fullList.length,
