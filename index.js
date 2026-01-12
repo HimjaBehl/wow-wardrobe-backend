@@ -3364,19 +3364,25 @@ app.get("/fashion-basics", (req, res) => {
 });
 
 // GET /trends?limit=8&query=cocktail
-app.get('/trends', async (req, res) => {
+app.get("/trends", async (req, res) => {
   const limit = Number(req.query.limit || 8);
-  const q = (req.query.query || 'general').toLowerCase();
+  const q = String(req.query.query || "general").toLowerCase();
 
   try {
-    const snap = await db.collection('trends').orderBy('updated_at', 'desc').limit(50).get();
-    
+    const snap = await db
+      .collection("trends")
+      .orderBy("updated_at", "desc")
+      .limit(50)
+      .get();
+
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
     const filtered = all.filter(t => {
-      const k = (t.keyword || '').toLowerCase();
-      const vibes = (t.vibes || []).map(v => String(v).toLowerCase());
-      const occs  = (t.occasion || []).map(o => String(o).toLowerCase());
+      const k = String(t.keyword || "").toLowerCase();
+      const vibes = Array.isArray(t.vibes) ? t.vibes.map(v => String(v).toLowerCase()) : [];
+      const occs  = Array.isArray(t.occasion) ? t.occasion.map(o => String(o).toLowerCase()) : [];
       return (
-        q === 'general' ||
+        q === "general" ||
         k.includes(q) ||
         vibes.some(v => v.includes(q)) ||
         occs.some(o => o.includes(q))
@@ -3384,14 +3390,16 @@ app.get('/trends', async (req, res) => {
     });
 
     const ranked = (filtered.length ? filtered : all)
-      .sort((a, b) => (b.score ?? 0.5) - (a.score ?? 0.5))
+      .sort((a, b) => (Number(b.score ?? 0.5) - Number(a.score ?? 0.5)))
       .slice(0, limit);
 
     res.json({ success: true, count: ranked.length, trends: ranked });
   } catch (e) {
+    console.error("❌ /trends failed:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
+
 
 
 
