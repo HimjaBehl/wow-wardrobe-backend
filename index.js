@@ -1445,25 +1445,44 @@ app.post("/normalize-wardrobe", async (req, res) => {
 
 
 // ✅ Get outfit plan for a given user and date
+// ✅ Get outfit plan for a given user and date (ALWAYS 200, never 404)
 app.get("/plan-outfit", async (req, res) => {
   const { uid, date } = req.query;
+
   if (!uid || !date) {
-    return res.status(400).json({ error: "uid and date are required" });
+    return res.status(400).json({ success: false, error: "uid and date are required" });
   }
 
   try {
-    const docRef = db.collection("outfit_plans").doc(uid + "_" + date);
+    const docId = `${uid}_${date}`;
+    const docRef = db.collection("outfit_plans").doc(docId);
     const docSnap = await docRef.get();
-    if (docSnap.exists) {
-      res.json(docSnap.data());
-    } else {
-      res.status(404).json({ message: "No outfit plan found for this date." });
+
+    if (!docSnap.exists) {
+      // ✅ IMPORTANT: return success true with outfit null (frontend-safe)
+      return res.status(200).json({
+        success: true,
+        outfit: null,
+        uid,
+        date,
+        message: "No outfit plan found for this date."
+      });
     }
+
+    const data = docSnap.data() || {};
+    // Normalize shape
+    return res.status(200).json({
+      success: true,
+      outfit: data.outfit || null,
+      uid: data.uid || uid,
+      date: data.date || date
+    });
   } catch (err) {
     console.error("❌ Failed to fetch outfit plan:", err.message);
-    res.status(500).json({ error: "Failed to fetch outfit plan" });
+    return res.status(500).json({ success: false, error: "Failed to fetch outfit plan" });
   }
 });
+
 
 // ─── User preference summariser ─────────────────────────────
 function buildUserStyleSummary(uid, max = 10) {
@@ -3214,23 +3233,31 @@ app.post("/dislike-outfit", async (req, res) => {
 
 
 // ✅ Save outfit plan for a date
+// ✅ Save outfit plan for a date (returns saved payload)
 app.post("/plan-outfit", async (req, res) => {
-  const { uid, date, outfit } = req.body;
+  const { uid, date, outfit } = req.body || {};
   if (!uid || !date || !outfit) {
-    return res
-      .status(400)
-      .json({ error: "uid, date, and outfit are required" });
+    return res.status(400).json({ success: false, error: "uid, date, and outfit are required" });
   }
 
   try {
-    const planRef = db.collection("outfit_plans").doc(uid + "_" + date);
-    await planRef.set({ uid, date, outfit });
-    res.status(200).json({ message: "Outfit plan saved successfully" });
+    const docId = `${uid}_${date}`;
+    const planRef = db.collection("outfit_plans").doc(docId);
+
+    const payload = { uid, date, outfit, updated_at: new Date().toISOString() };
+    await planRef.set(payload, { merge: true });
+
+    return res.status(200).json({
+      success: true,
+      message: "Outfit plan saved successfully",
+      ...payload
+    });
   } catch (err) {
     console.error("❌ Failed to save outfit plan:", err.message);
-    res.status(500).json({ error: "Failed to save outfit plan" });
+    return res.status(500).json({ success: false, error: "Failed to save outfit plan" });
   }
 });
+
 
 // ✅ Save onboarding preferences
 app.post("/onboarding", async (req, res) => {
@@ -3341,27 +3368,22 @@ Preferences: ${JSON.stringify(preferences)}
 // ✅ Start server
 const PORT = process.env.PORT || 3000;
 
-app.get("/ping", (req, res) => {
-  res.json({ ok: true, time: Date.now() });
-});
-
-app.use((err, req, res, next) => {
-  console.error("🔥 Unhandled Middleware Error:", err);
-  res
-    .status(500)
-    .json({ error: "Internal server error", message: err?.message });
-});
-
-// ✅ New Fashion Basics route
-app.get("/fashion-basics", (req, res) => {
+// ✅ Debug: verify important routes exist on deployed build
+app.get("/routes", (req, res) => {
   try {
-    const basics = JSON.parse(fs.readFileSync("fashionBasics.json", "utf-8"));
-    res.json(basics);
-  } catch (error) {
-    console.error("Error reading fashion_basics.json:", error);
-    res.status(500).json({ error: "Unable to fetch fashion basics" });
+    const routes = [];
+    app._router.stack.forEach((m) => {
+      if (m.route && m.route.path) {
+        const methods = Object.keys(m.route.methods || {}).filter(Boolean);
+        routes.push({ path: m.route.path, methods });
+      }
+    });
+    res.json({ count: routes.length, routes });
+  } catch (e) {
+    res.status(500).json({ error: "Could not list routes" });
   }
 });
+
 
 // GET /trends?limit=8&query=cocktail
 app.get("/trends", async (req, res) => {
@@ -3443,8 +3465,8 @@ app.get("/debug-combo-stats", async (req, res) => {
 });
 app.get("/version", (req, res) => {
   res.json({
-    build: "post-forceComplete-fix",
-    forceCompleteType: typeof forceCompleteLook,
+    build: "PLANOUTFIT_FIX_v1",
+    entry: "index.js",
     time: new Date().toISOString()
   });
 });
