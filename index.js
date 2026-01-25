@@ -481,6 +481,209 @@ function makeComboFingerprint(items = []) {
     .join("|");
 }
 
+// ===================
+// Outfit Candidate Engine (deterministic cohesion)
+// ===================
+
+function getSlot(item) {
+  return slotOf(`${item.category || ""} ${item.name || ""}`);
+}
+
+function buildSlotPools(wardrobe = []) {
+  const pools = { top: [], bottom: [], dress: [], footwear: [], bag: [], outer: [], accessory: [], misc: [] };
+  for (const it of wardrobe) {
+    const s = getSlot(it);
+    if (pools[s]) pools[s].push(it);
+    else pools.misc.push(it);
+  }
+
+  // accessories bucket (wider)
+  pools.accessory = wardrobe.filter(i =>
+    /accessor|watch|sunglass|scarf|dupatta|stole|shawl|belt|jewel|bag/i.test((i.category||"") + " " + (i.name||""))
+  );
+
+  // outer bucket (wider)
+  pools.outer = wardrobe.filter(i =>
+    /outer|jacket|coat|blazer|cardigan|shrug/i.test((i.category||"") + " " + (i.name||""))
+  );
+
+  // bag bucket (wider)
+  pools.bag = wardrobe.filter(i =>
+    /bag|handbag|tote|purse/i.test((i.category||"") + " " + (i.name||""))
+  );
+
+  return pools;
+}
+
+// pick helper (neutral bias optional)
+function pickFrom(pool = [], preferNeutral = false) {
+  if (!pool.length) return null;
+  if (preferNeutral) {
+    const neutrals = pool.filter(p => isNeutralColor(p.color));
+    if (neutrals.length) return neutrals[Math.floor(Math.random() * neutrals.length)];
+  }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// generate many plausible looks, then score deterministically
+function generateCandidates(pools, n = 40, opts = {}) {
+  const { preferNeutralAcc = true } = opts;
+  const looks = [];
+
+  for (let i = 0; i < n; i++) {
+    // choose base path: one-piece or separates (weighted)
+    const useOnePiece = pools.dress.length > 0 && Math.random() < 0.35;
+
+    let items = [];
+
+    if (useOnePiece) {
+      const dress = pickFrom(pools.dress, false);
+      const shoes = pickFrom(pools.footwear, true) || pickFrom(pools.footwear, false);
+      if (dress) items.push(dress);
+      if (shoes) items.push(shoes);
+
+      // add bag/outer/accessory lightly
+      const bag = pickFrom(pools.bag, preferNeutralAcc);
+      const outer = pickFrom(pools.outer, preferNeutralAcc);
+      if (bag && Math.random() < 0.65) items.push(bag);
+      if (outer && Math.random() < 0.35) items.push(outer);
+
+      const acc = pickFrom(pools.accessory, true);
+      if (acc && Math.random() < 0.25) items.push(acc);
+
+    } else {
+      const top = pickFrom(pools.top, true) || pickFrom(pools.top, false);
+      const bottom = pickFrom(pools.bottom, true) || pickFrom(pools.bottom, false);
+      const shoes = pickFrom(pools.footwear, true) || pickFrom(pools.footwear, false);
+
+      if (top) items.push(top);
+      if (bottom) items.push(bottom);
+      if (shoes) items.push(shoes);
+
+      const bag = pickFrom(pools.bag, preferNeutralAcc);
+      const outer = pickFrom(pools.outer, preferNeutralAcc);
+      if (bag && Math.random() < 0.6) items.push(bag);
+      if (outer && Math.random() < 0.3) items.push(outer);
+
+      const acc = pickFrom(pools.accessory, true);
+      if (acc && Math.random() < 0.2) items.push(acc);
+    }
+
+    // de-dupe by id
+    const seen = new Set();
+    items = items.filter(it => {
+      const id = it.id || it.wardrobe_id || it.idx;
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
+    looks.push(items);
+  }
+
+  return looks;
+}
+
+function scoreLook(items = [], ctx = {}) {
+  const occasion = (ctx.occasion || "").toLowerCase();
+
+  // 1) completeness (hard-ish)
+  const cats = items.map(i => (i.category || "").toLowerCase()).join(" | ");
+  const hasTop = /top|shirt|tee|t-?shirt|blouse|kurta/.test(cats);
+  const hasBottom = /bottom|jeans|pants|trouser|skirt|shorts|palazzo|salwar/.test(cats);
+  const hasFootwear = /footwear|shoe|sandal|heel|sneaker|jutti|boot/.test(cats);
+  const hasOnePiece = /dress|jumpsuit|saree/.test(cats);
+
+  let score = 0;
+  if ((hasTop && hasBottom && hasFootwear) || (hasOnePiece && hasFootwear)) score += 3;
+  else score -= 4; // missing base
+
+  // 2) palette cohesion (keep to 1–2 non-neutral palettes)
+  const palettes = items.map(i => (i.palette || pickPalette(i.color || "") || "").toLowerCase()).filter(Boolean);
+  const uniq = Array.from(new Set(palettes));
+  const nonNeutral = uniq.filter(p => !["black","white","grey","gray","beige","cream","navy","denim","tan","brown","off-white"].includes(p));
+  if (nonNeutral.length <= 1) score += 2;
+  else if (nonNeutral.length === 2) score += 1;
+  else score -= 2;
+
+  // 3) occasion sanity (simple penalties/bonuses)
+  const nameblob = items.map(i => ((i.name||"") + " " + (i.category||"")).toLowerCase()).join(" ");
+  const isTee = /tee|t-?shirt/.test(nameblob);
+  const isSandal = /sandal|flip/.test(nameblob);
+  const isShirt = /shirt|blouse/.test(nameblob);
+  const isBlazer = /blazer|suit|jacket/.test(nameblob);
+  const isTrouser = /trouser|pants|chinos|slacks/.test(nameblob);
+  const isClosedToe = /loafer|oxford|derby|heel|pump|boot|sneaker/.test(nameblob);
+
+  if (/(workwear|formal|interview)/.test(occasion)) {
+    if (isShirt) score += 1;
+    if (isBlazer) score += 1;
+    if (isTrouser) score += 0.5;
+    if (isClosedToe) score += 0.5;
+    if (isTee) score -= 2;
+    if (isSandal) score -= 1.5;
+  }
+
+  // 4) neutral accessory preference: if base has color pop, keep bag neutral
+  const base = items.filter(i => ["top","bottom","dress"].includes(getSlot(i)));
+  const accs = items.filter(i => ["bag","accessory"].includes(getSlot(i)));
+  const baseHasPop = base.some(i => !isNeutralColor(i.color));
+  const accAllNeutral = accs.length ? accs.every(i => isNeutralColor(i.color)) : true;
+  if (baseHasPop && accAllNeutral) score += 0.6;
+
+  // 5) slight reward for 4–6 items
+  if (items.length >= 4 && items.length <= 6) score += 0.7;
+  if (items.length > 6) score -= 0.7;
+
+  return score;
+}
+
+async function rerankWithLLM({ candidates = [], wardrobePreview = [], ctx = {} }) {
+  // candidates: array of arrays of items (full objects)
+  // We pass only idx references to the model, plus lightweight metadata.
+  const compact = candidates.slice(0, 12).map((items, i) => ({
+    rank_id: i,
+    items: items.map(it => ({
+      idx: String(it.id || it.wardrobe_id || it.idx),
+      name: it.name || "",
+      category: it.category || "",
+      color: Array.isArray(it.color) ? (it.color[0] || "") : (it.color || ""),
+      palette: it.palette || pickPalette(it.color || "") || "",
+    }))
+  }));
+
+  const sys = {
+    role: "system",
+    content:
+`You are Tina. Choose the most cohesive outfit among candidates.
+Rules:
+- pick ONE candidate
+- respond ONLY JSON: { "outfits":[{ "title": string, "style_note": string, "items":[{"idx":string}, ...]}] }
+- title/style_note must reflect actual items (no hallucinations).
+- prefer: complete base + color harmony + occasion match.`
+  };
+
+  const user = {
+    role: "user",
+    content: JSON.stringify({
+      occasion: ctx.occasion || "",
+      vibe: ctx.vibe || "",
+      weather: ctx.weather || "",
+      candidates: compact
+    })
+  };
+
+  const resp = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [sys, user],
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    max_tokens: 500,
+  });
+
+  return resp.choices?.[0]?.message?.content || null;
+}
+
 // —— URL normalizer & image→id resolver ——
 function normalizeUrlForMatch(u = "") {
   try {
@@ -1150,7 +1353,13 @@ app.post("/wardrobe", limiterWrites, async (req, res) => {
       image_url,
       tags: capitalizedTags,
       taxonomyPath,
+
+      // ✅ Step 3: persist these so reranker/validator is stable
+      silhouette: guessSilhouette(`${capitalizedName} ${normalizedCategory}`),
+      palette: pickPalette(capitalizedColor),
     });
+
+
 
 
 
@@ -1298,6 +1507,17 @@ app.put("/wardrobe/:id", limiterWrites, async (req, res) => {
         updateData.taxonomyPath = `${taxonomyMatch.mainCategory}/${taxonomyMatch.subCategory}`;
         updateData.attributes = getAttributes(taxonomyMatch.subCategory) || {};
       }
+    }
+    // ✅ keep silhouette/palette in sync when core fields change
+    const finalName = updateData.name ?? itemData.name ?? "";
+    const finalCategory = updateData.category ?? itemData.category ?? "";
+    const finalColor = updateData.color ?? itemData.color ?? "";
+
+    if (updateData.name !== undefined || updateData.category !== undefined) {
+      updateData.silhouette = guessSilhouette(`${finalName} ${finalCategory}`);
+    }
+    if (updateData.color !== undefined) {
+      updateData.palette = pickPalette(finalColor);
     }
 
     await docRef.update(updateData);
@@ -2379,6 +2599,77 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
       rawWardrobe.length > 0 ? buildSampleFromList(rawWardrobe, 50) : [];
 
     console.log("👕 wardrobeSample built:", wardrobeSample.length, "items");
+
+    // =============================
+    // ✅ NEW: Cohesive outfit engine (candidate + score + LLM rerank)
+    // Flip with USE_RERANKER=1
+    // =============================
+    if (process.env.USE_RERANKER === "1") {
+      try {
+        const pools = buildSlotPools(wardrobeSample);
+
+        // 1) generate candidates
+        const rawCandidates = generateCandidates(pools, 60, { preferNeutralAcc: true });
+
+        // 2) score + sort
+        const scored = rawCandidates
+          .map(items => ({ items, score: scoreLook(items, { occasion, vibe }) }))
+          .sort((a,b) => b.score - a.score);
+
+        const top = scored.slice(0, 12).map(x => x.items);
+
+        // 3) hard avoid disliked fingerprints
+        const filteredTop = top.filter(items => {
+          const fp = makeComboFingerprint(items);
+          return !(dislikedCombos || []).includes(fp);
+        });
+
+        const finalPool = filteredTop.length ? filteredTop : top;
+
+        // 4) ask LLM to pick best and write title/style_note (but ONLY using idx)
+        const llmJson = await rerankWithLLM({
+          candidates: finalPool,
+          wardrobePreview: wardrobeSample,
+          ctx: { occasion, vibe, weather: await getWeather(city) }
+        });
+
+        let parsed = null;
+        try { parsed = llmJson ? JSON.parse(llmJson) : null; } catch { parsed = null; }
+
+        // fallback if model returns nonsense
+        if (!parsed?.outfits?.[0]?.items?.length) {
+          const best = finalPool[0] || [];
+          parsed = {
+            outfits: [{
+              title: "Polished Look",
+              style_note: "Pulled-together look with balanced pieces and clean palette.",
+              items: best.map(it => ({ idx: String(it.id || it.wardrobe_id || it.idx) }))
+            }]
+          };
+        }
+
+        // hydrate idx references back into full objects (like your frontend expects)
+        const idx2item = Object.fromEntries((wardrobeSample || []).map(it => [String(it.idx), it]));
+        const hydratedOutfits = (parsed.outfits || []).map(o => ({
+          title: o.title || "Outfit",
+          style_note: o.style_note || "",
+          items: (o.items || []).map(x => idx2item[String(x.idx)]).filter(Boolean),
+          validation: { styleRules: validateLevel2({ items: (o.items||[]).map(x => idx2item[String(x.idx)]).filter(Boolean) }) }
+        }));
+
+        // mirror looks/outfits like your API already does
+        return res.json({
+          outfits: hydratedOutfits,
+          looks: hydratedOutfits,
+          note: "reranker_v1"
+        });
+
+      } catch (e) {
+        console.error("❌ Reranker path failed, falling back to agent:", e.message);
+        // fall through to your existing agent logic below
+      }
+    }
+
 
     const FEWSHOTS = [
       { role: "user", content: JSON.stringify({
