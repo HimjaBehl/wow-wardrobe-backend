@@ -674,6 +674,29 @@ function scoreLook(items = [], ctx = {}) {
 // 4) Encourage using blazer/jacket if wardrobe has it
   // (bonus already handled in occasion scoring above)
 
+  // =========================
+  // Adventure occasion rules
+  // =========================
+  const isAdventure = /(adventure|travel|explore|outing|walk|trip)/.test(occasion);
+
+  // Detect risky / impractical items
+  const hasDress = /dress|gown|maxi|mini/.test(nameblob);
+  const hasHeels = /heel|pump|stiletto|court/.test(nameblob);
+  const hasOpenFootwear = /sandal|slide|flipflop/.test(nameblob);
+  const hasSneakersOrBoots = /sneaker|trainer|boot|walking|running/.test(nameblob);
+  const hasPants = /pant|trouser|jean|cargo|jogger|legging/.test(nameblob);
+
+  if (isAdventure) {
+    // HARD penalties
+    if (hasDress) score -= 45;        // dresses are impractical
+    if (hasHeels) score -= 60;        // heels are a hard no
+    if (hasOpenFootwear) score -= 30;
+
+    // Soft encouragements
+    if (!hasSneakersOrBoots) score -= 25;
+    if (!hasPants) score -= 20;
+  }
+
   return score;
 }
 
