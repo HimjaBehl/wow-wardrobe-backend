@@ -17,6 +17,7 @@ dotenv.config();
 
 import sharp from "sharp";
 import OpenAI from "openai";
+import { updateTrends } from "./lib/updateTrends.js";
 
 
 // ── Redaction + Safe Debug Logger ──
@@ -633,6 +634,45 @@ function scoreLook(items = [], ctx = {}) {
   // 5) slight reward for 4–6 items
   if (items.length >= 4 && items.length <= 6) score += 0.7;
   if (items.length > 6) score -= 0.7;
+
+  // =========================
+  // Penalties (hard-ish rules)
+  // =========================
+
+  // Helper: parse "light rain, 24°C" -> 24
+  function parseTempC(w) {
+    const m = String(w || "").match(/(-?\d+)\s*°\s*c/i);
+    return m ? Number(m[1]) : null;
+  }
+
+  const weatherStr = ctx.weather || "";
+  const tempC = parseTempC(weatherStr);
+  const isChilly = tempC !== null && tempC <= 18;
+
+  const hasOuterwear = /blazer|jacket|coat|cardigan|shrug/.test(nameblob);
+  const hasShortBottom = /skirt|short|skort/.test(nameblob);
+  const hasLightTop = /tank|sleeveless|tube|strapless|crop/.test(nameblob);
+
+  // 1) Weather penalties (if chilly)
+  if (isChilly) {
+    if (hasShortBottom) score -= 3.0;      // too exposed
+    if (hasLightTop) score -= 2.0;         // too exposed
+    if (!hasOuterwear) score -= 2.5;       // missing layer
+  }
+
+  // 2) Workwear penalties: sportswear / too casual
+  const isWork = /(workwear|formal|interview|office)/.test(occasion);
+  const isAthleisure =
+    /gym|athleisure|track|training|running|sportswear/.test(nameblob);
+
+  if (isWork && isAthleisure) score -= 4.0;
+
+  // 3) Penalize “too many loud palettes”
+  // (you already score palette cohesion, this makes it stricter)
+  if (nonNeutral.length >= 3) score -= 2.0;
+
+// 4) Encourage using blazer/jacket if wardrobe has it
+  // (bonus already handled in occasion scoring above)
 
   return score;
 }
@@ -2623,9 +2663,22 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
         const rawCandidates = generateCandidates(pools, 60, { preferNeutralAcc: true });
 
         // 2) score + sort
+        const weatherNow = await getWeather(city);
+
         const scored = rawCandidates
-          .map(items => ({ items, score: scoreLook(items, { occasion, vibe }) }))
+          .map(items => ({
+            items,
+            score: scoreLook(items, {
+              occasion,
+              vibe,
+              weather: weatherNow,
+              likedCombos,
+              dislikedCombos,
+              lastServedCombo
+            })
+          }))
           .sort((a,b) => b.score - a.score);
+
 
         const top = scored.slice(0, 12).map(x => x.items);
 
@@ -3729,8 +3782,6 @@ app.get("/trends", async (req, res) => {
 
 
 // ——— AUTO TREND REFRESH ENDPOINT ———
-import { updateTrends } from "./lib/updateTrends.js";
-
 app.get("/run-trends", async (req, res) => {
   const key = req.query.key;
   if (key !== process.env.CRON_SECRET_KEY) {
