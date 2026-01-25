@@ -1,16 +1,10 @@
-
-import { execSync } from 'child_process';
-
-// Function that uses the Python script for trend insights
-async function getTrendInsights(query) {
-  try {
-    const command = `python3 trend_insight_tool.py "${query}"`;
-    const output = execSync(command).toString();
-    return output.trim();
-  } catch (err) {
-    console.error("❌ Trend tool error:", err.message);
-    return "Sorry, I couldn't fetch the latest trends right now.";
-  }
+// tools/getTrendInsights.js
+export default async function getTrendInsights({ query = "", source = "disabled", limit = 0 } = {}) {
+  return {
+    query,
+    source,
+    trends: [],
+    disabled: true,
+    message: "Trend insights disabled (python tool not used)."
+  };
 }
-
-export default getTrendInsights;

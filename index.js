@@ -176,9 +176,8 @@ app.use(
   }),
 );
 
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const getTrendInsights = require("./tools/getTrendInsights.js"); // returns the function
+import getTrendInsights from "./tools/getTrendInsights.js";
+
 
 
 import {
@@ -2450,27 +2449,39 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
 
     async function fn_getTrends({
       query = vibe || "general",
-      source = "pinterest",
+      source = "disabled",
       limit = 5,
-    }) {
+    } = {}) {
       try {
-        // getTrendInsights is a tool you already imported. If it expects args adjust accordingly.
-        let trendsRaw = null;
-        try {
-          trendsRaw = await getTrendInsights({ query, source, limit });
-        } catch (e) {
-          trendsRaw = null;
-        }
-        // normalize to array of short objects
-        const trends = Array.isArray(trendsRaw)
-          ? trendsRaw.map(t => (typeof t === "string" ? { content: t } : t))
-          : (typeof trendsRaw === "string" ? trendsRaw.split("\n").filter(Boolean).map(s => ({ content: s })) : []);
-        return { query, source, trends };
+        const out = await getTrendInsights({ query, source, limit });
 
+        // Option A returns an object { trends:[], disabled:true, ... }
+        if (out && typeof out === "object") {
+          const trends = Array.isArray(out.trends) ? out.trends : [];
+          return {
+            query: out.query ?? query,
+            source: out.source ?? source,
+            trends,
+            disabled: !!out.disabled,
+            message: out.message || undefined,
+          };
+        }
+
+        // legacy fallback (if something returns string)
+        if (typeof out === "string") {
+          return {
+            query,
+            source,
+            trends: out.split("\n").filter(Boolean).map(s => ({ content: s })),
+          };
+        }
+
+        return { query, source, trends: [], disabled: true };
       } catch (err) {
-        return { query, source, trends: [] };
+        return { query, source, trends: [], disabled: true };
       }
     }
+
 
     async function fn_validateLook({
       items = [],
