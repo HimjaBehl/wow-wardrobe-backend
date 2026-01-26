@@ -677,25 +677,189 @@ function scoreLook(items = [], ctx = {}) {
   // =========================
   // Adventure occasion rules
   // =========================
-  const isAdventure = /(adventure|travel|explore|outing|walk|trip)/.test(occasion);
+  // =========================
+  // OCCASION-BASED RERANKING
+  // =========================
 
-  // Detect risky / impractical items
-  const hasDress = /dress|gown|maxi|mini/.test(nameblob);
+  // Common detectors
+  const hasDress = /dress|gown|maxi|mini|anarkali|lehenga/.test(nameblob);
   const hasHeels = /heel|pump|stiletto|court/.test(nameblob);
-  const hasOpenFootwear = /sandal|slide|flipflop/.test(nameblob);
-  const hasSneakersOrBoots = /sneaker|trainer|boot|walking|running/.test(nameblob);
+  const hasSneakers = /sneaker|trainer|running|walking/.test(nameblob);
+  const hasBoots = /boot/.test(nameblob);
+  const hasFormalShoes = /loafer|oxford|derby|formal/.test(nameblob);
+  const hasSandals = /sandal|slide|flipflop/.test(nameblob);
+  const hasAthletic = /gym|sport|track|jogger|athletic/.test(nameblob);
   const hasPants = /pant|trouser|jean|cargo|jogger|legging/.test(nameblob);
+  const hasShorts = /short/.test(nameblob);
+  const hasTopItem = /top|shirt|tee|blouse|kurta/.test(nameblob);
+  const hasLounge = /pyjama|pajama|night|sleep|loungewear/.test(nameblob);
 
-  if (isAdventure) {
-    // HARD penalties
-    if (hasDress) score -= 45;        // dresses are impractical
-    if (hasHeels) score -= 60;        // heels are a hard no
-    if (hasOpenFootwear) score -= 30;
+  // =========================
+  // Outdoor Adventure / Hiking
+  // =========================
+  if (/adventure|hiking|outdoor|explore|trek/.test(occasion)) {
+    if (hasDress) score -= 45;
+    if (hasHeels) score -= 60;
+    if (hasSandals) score -= 30;
 
-    // Soft encouragements
-    if (!hasSneakersOrBoots) score -= 25;
+    if (!hasSneakers && !hasBoots) score -= 30;
     if (!hasPants) score -= 20;
   }
+
+  // =========================
+  // Gym / Workout
+  // =========================
+  if (/gym|workout|fitness/.test(occasion)) {
+    if (hasDress) score -= 60;
+    if (hasHeels || hasFormalShoes) score -= 70;
+    if (!hasAthletic) score -= 40;
+
+    if (hasSneakers) score += 10;
+  }
+
+  // =========================
+  // Athleisure
+  // =========================
+  if (/athleisure/.test(occasion)) {
+    if (hasHeels) score -= 40;
+    if (hasFormalShoes) score -= 30;
+
+    if (hasSneakers) score += 10;
+    if (hasAthletic) score += 5;
+  }
+
+  // =========================
+  // Travel / Airport
+  // =========================
+  if (/travel|airport/.test(occasion)) {
+    if (hasHeels) score -= 45;
+    if (hasTightDress = /bodycon|tight/.test(nameblob)) score -= 25;
+
+    if (hasSneakers || hasBoots) score += 10;
+    if (hasPants) score += 5;
+  }
+
+  // =========================
+  // Date Night
+  // =========================
+  if (/date/.test(occasion)) {
+    if (hasAthletic) score -= 40;
+    if (hasLounge) score -= 60;
+
+    if (hasDress) score += 15;
+    if (hasHeels) score += 10;
+  }
+
+  // =========================
+  // Wedding / Festive
+  // =========================
+  if (/wedding|festive|ethnic/.test(occasion)) {
+    if (hasAthletic) score -= 70;
+    if (hasSneakers) score -= 40;
+
+    if (hasDress) score += 20;
+    if (hasHeels || hasSandals) score += 10;
+  }
+
+  // =========================
+  // Beach / Resort
+  // =========================
+  if (/beach|resort|vacation/.test(occasion)) {
+    if (hasHeels) score -= 40;
+    if (hasOuterwear) score -= 20;
+
+    if (hasSandals) score += 10;
+    if (hasDress || hasShorts) score += 5;
+  }
+
+  // =========================
+  // Formal Event / Gala
+  // =========================
+  if (/formal|gala/.test(occasion)) {
+    if (hasSneakers || hasAthletic) score -= 60;
+    if (hasLounge) score -= 80;
+
+    if (hasDress) score += 20;
+    if (hasHeels || hasFormalShoes) score += 15;
+  }
+
+  // =========================
+  // Interview / Presentation
+  // =========================
+  if (/interview|presentation/.test(occasion)) {
+    if (hasDress && /party|mini/.test(nameblob)) score -= 40;
+    if (hasSneakers || hasSandals) score -= 50;
+
+    if (hasOuterwear) score += 15;
+    if (hasFormalShoes) score += 10;
+  }
+
+  // =========================
+  // Shopping / Errands
+  // =========================
+  if (/shopping|errand/.test(occasion)) {
+    if (hasHeels) score -= 30;
+
+    if (hasSneakers) score += 10;
+  }
+
+  // =========================
+  // Concert / Festival
+  // =========================
+  if (/concert|festival/.test(occasion)) {
+    if (hasFormalShoes) score -= 30;
+
+    if (hasSneakers || hasBoots) score += 10;
+  }
+
+  // =========================
+  // Winter Casual / Layered
+  // =========================
+  if (/winter/.test(occasion)) {
+    if (hasSandals) score -= 50;
+
+    if (hasOuterwear) score += 15;
+    if (hasBoots) score += 10;
+  }
+
+  // =========================
+  // Summer Casual / Lightwear
+  // =========================
+  if (/summer/.test(occasion)) {
+    if (hasOuterwear) score -= 20;
+
+    if (hasDress || hasSandals) score += 5;
+  }
+
+  // =========================
+  // Lounge / Homewear
+  // =========================
+  if (/lounge|home/.test(occasion)) {
+    if (hasHeels || hasFormalShoes) score -= 80;
+
+    if (hasLounge) score += 20;
+  }
+
+  // =========================
+  // Streetwear / Urban
+  // =========================
+  if (/streetwear|urban/.test(occasion)) {
+    if (hasFormalShoes) score -= 30;
+
+    if (hasSneakers) score += 10;
+  }
+
+  // =========================
+  // Business Casual
+  // =========================
+  if (/business/.test(occasion)) {
+    if (hasAthletic || hasLounge) score -= 60;
+    if (hasHeels && !hasDress) score -= 15;
+
+    if (hasOuterwear) score += 15;
+    if (hasFormalShoes || hasLoafers) score += 10;
+  }
+
 
   return score;
 }
