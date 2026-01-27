@@ -1075,6 +1075,107 @@ app.get("/", (req, res) => {
   });
 });
 
+app.post("/admin/recompute-taste", async (req, res) => {
+  try {
+    // ── Admin auth ─────────────────────────
+    const adminKey = req.headers["x-admin-key"];
+    if (!process.env.ADMIN_KEY || adminKey !== process.env.ADMIN_KEY) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    console.log("🔁 Recomputing taste stats...");
+
+    // ── Load feedback sources ──────────────
+    const likedSnap = await db.collection("liked_looks").get();
+    const dislikedSnap = await db.collection("disliked_looks").get();
+
+    const global = {};     // dimension:key → stats
+    const perUser = {};    // uid → dimension:key → stats
+
+    function bump(store, uid, dimension, key, delta) {
+      if (!key) return;
+      const k = `${dimension}:${key.toLowerCase()}`;
+
+      store[k] ??= { loves: 0, dislikes: 0, total: 0 };
+      store[k].total++;
+      if (delta === 1) store[k].loves++;
+      if (delta === -1) store[k].dislikes++;
+
+      if (uid) {
+        perUser[uid] ??= {};
+        perUser[uid][k] ??= { loves: 0, dislikes: 0, total: 0 };
+        perUser[uid][k].total++;
+        if (delta === 1) perUser[uid][k].loves++;
+        if (delta === -1) perUser[uid][k].dislikes++;
+      }
+    }
+
+    // ── Extract signals ────────────────────
+    function processLook(doc, delta) {
+      const { uid, outfit } = doc.data();
+      const items = outfit?.items || [];
+
+      items.forEach((it) => {
+        bump(global, uid, "category", it.category, delta);
+        bump(global, uid, "color", it.color, delta);
+        (it.tags || []).forEach(tag =>
+          bump(global, uid, "tag", tag, delta)
+        );
+      });
+    }
+
+    likedSnap.docs.forEach(d => processLook(d, +1));
+    dislikedSnap.docs.forEach(d => processLook(d, -1));
+
+    // ── Write stats + weights ──────────────
+    const batch = db.batch();
+
+    function writeStats(baseRef, store) {
+      Object.entries(store).forEach(([k, v]) => {
+        const [dimension, key] = k.split(":");
+        const score = (v.loves - v.dislikes) / (v.total + 3);
+        const confidence = Math.min(1, v.total / 12);
+        const weight = score * confidence;
+
+        batch.set(baseRef.doc(`${dimension}_${key}`), {
+          dimension,
+          key,
+          ...v,
+          score,
+          confidence,
+          weight,
+          updated_at: new Date().toISOString(),
+        });
+      });
+    }
+
+    // global
+    writeStats(db.collection("taste_stats_global"), global);
+
+    // per user
+    Object.entries(perUser).forEach(([uid, stats]) => {
+      writeStats(
+        db.collection("taste_stats_user").doc(uid).collection("stats"),
+        stats
+      );
+    });
+
+    await batch.commit();
+
+    console.log("✅ Taste recompute complete");
+
+    res.json({
+      ok: true,
+      global_keys: Object.keys(global).length,
+      users: Object.keys(perUser).length,
+    });
+
+  } catch (e) {
+    console.error("❌ recompute-taste failed:", e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ✅ Auto-tagging (normalized keys)
 app.post("/auto-tag", limiterAutoTag, async (req, res) => {
 
