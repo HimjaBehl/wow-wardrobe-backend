@@ -19,6 +19,7 @@ import sharp from "sharp";
 import OpenAI from "openai";
 import { updateTrends } from "./lib/updateTrends.js";
 
+import crypto from "crypto";
 
 // ── Redaction + Safe Debug Logger ──
 function redact(obj) {
@@ -1077,14 +1078,22 @@ app.get("/", (req, res) => {
 });
 
 function safeDocId(s) {
-  return String(s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\/\\]/g, "_")   // replace / and \ with _
-    .replace(/\s+/g, " ")      // collapse spaces
-    .replace(/[^\w\- ]/g, "")  // remove weird symbols
-    .replace(/\s/g, "_");      // spaces -> _
+  const raw = String(s || "").trim().toLowerCase();
+
+  const cleaned = raw
+    .replace(/[\/\\]/g, "_")      // Firestore disallows /
+    .replace(/\s+/g, " ")         // collapse whitespace
+    .replace(/[^\w\- ]/g, "")     // remove weird symbols
+    .replace(/\s/g, "_");         // spaces -> _
+
+  // Hash keeps uniqueness even after truncation
+  const hash = crypto.createHash("sha1").update(raw).digest("hex").slice(0, 8);
+
+  // Firestore doc ids can be long, but long tag strings are risky.
+  const base = cleaned.slice(0, 60) || "empty";
+  return `${base}_${hash}`;
 }
+
 
 app.post("/admin/recompute-taste", async (req, res) => {
   try {
@@ -1105,7 +1114,8 @@ app.post("/admin/recompute-taste", async (req, res) => {
 
     function bump(store, uid, dimension, key, delta) {
       if (!key) return;
-      const k = `${dimension}:${key.toLowerCase()}`;
+      const k = `${dimension}::${String(key).toLowerCase()}`; // safer separator
+
 
       store[k] ??= { loves: 0, dislikes: 0, total: 0 };
       store[k].total++;
@@ -1139,21 +1149,31 @@ app.post("/admin/recompute-taste", async (req, res) => {
     dislikedSnap.docs.forEach(d => processLook(d, -1));
 
     // ── Write stats + weights ──────────────
-    const batch = db.batch();
+    let batch = db.batch();
+    let opCount = 0;
 
-    function writeStats(baseRef, store) {
-      Object.entries(store).forEach(([k, v]) => {
-        const [dimension, key] = k.split(":");
+    async function commitIfNeeded(force = false) {
+      if (opCount >= 450 || force) { // keep buffer under 500
+        await batch.commit();
+        batch = db.batch();
+        opCount = 0;
+      }
+    }
+
+    async function writeStats(baseRef, store) {
+      for (const [k, v] of Object.entries(store)) {
+        // parse dimension + key safely
+        const sep = k.indexOf("::");
+        const dimension = sep >= 0 ? k.slice(0, sep) : "unknown";
+        const key = sep >= 0 ? k.slice(sep + 2) : k;
+
         const score = (v.loves - v.dislikes) / (v.total + 3);
         const confidence = Math.min(1, v.total / 12);
         const weight = score * confidence;
 
-        if (String(key || "").includes("\\") || String(key || "").includes("/")) {
-          console.log("⚠️ cleaned bad key:", { dimension, key, cleaned: safeDocId(key) });
-        }
+        const docId = `${dimension}_${safeDocId(key)}`;
 
-          const docId = `${dimension}_${safeDocId(key)}`;
-          batch.set(baseRef.doc(docId), {
+        batch.set(baseRef.doc(docId), {
           dimension,
           key,
           ...v,
@@ -1162,21 +1182,26 @@ app.post("/admin/recompute-taste", async (req, res) => {
           weight,
           updated_at: new Date().toISOString(),
         });
-      });
+
+        opCount++;
+        await commitIfNeeded(false);
+      }
     }
 
     // global
-    writeStats(db.collection("taste_stats_global"), global);
+    await writeStats(db.collection("taste_stats_global"), global);
 
     // per user
-    Object.entries(perUser).forEach(([uid, stats]) => {
-      writeStats(
+    for (const [uid, stats] of Object.entries(perUser)) {
+      await writeStats(
         db.collection("taste_stats_user").doc(uid).collection("stats"),
         stats
       );
-    });
+    }
 
-    await batch.commit();
+    // final flush
+    await commitIfNeeded(true);
+
 
     console.log("✅ Taste recompute complete");
 
