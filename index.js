@@ -483,6 +483,95 @@ function makeComboFingerprint(items = []) {
     .join("|");
 }
 
+// ─────────────────────────────────────────────────────────────
+// Taste Learning Helpers (Phase B + C)
+// ─────────────────────────────────────────────────────────────
+
+async function loadAllFeedbackEvents(db) {
+  const out = [];
+
+  // Canonical (Phase A → B)
+  try {
+    const snap = await db.collection("feedback_events").get();
+    snap.docs.forEach(d => out.push({ src: "feedback_events", id: d.id, ...d.data() }));
+  } catch (e) {
+    console.warn("loadAllFeedbackEvents: feedback_events read failed:", e?.message || e);
+  }
+
+  // Legacy (keep for back-compat)
+  try {
+    const liked = await db.collection("liked_looks").get();
+    liked.docs.forEach(d => out.push({ src: "liked_looks", id: d.id, liked: true, ...d.data() }));
+  } catch {}
+
+  try {
+    const disliked = await db.collection("disliked_looks").get();
+    disliked.docs.forEach(d => out.push({ src: "disliked_looks", id: d.id, liked: false, ...d.data() }));
+  } catch {}
+
+  // Optional legacy collection name some earlier versions used:
+  try {
+    const legacy = await db.collection("feedback").get();
+    legacy.docs.forEach(d => out.push({ src: "feedback", id: d.id, ...d.data() }));
+  } catch {}
+
+  return out;
+}
+
+function normalizeFeedbackToLook(ev) {
+  const uid = ev?.uid || ev?.user_id || ev?.userId;
+  if (!uid) return null;
+
+  const liked =
+    (ev?.liked === true) ? true :
+    (ev?.liked === false) ? false :
+    (ev?.event_type === "like") ? true :
+    (ev?.event_type === "dislike") ? false :
+    null;
+
+  if (liked === null) return null;
+  const delta = liked ? +1 : -1;
+
+  const outfit = ev?.outfit || ev?.look || null;
+  const items = outfit?.items || ev?.items || [];
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  return { uid, delta, items };
+}
+
+function inc(map, key, by = 1) {
+  if (!key) return;
+  map[key] = (map[key] || 0) + by;
+}
+
+function addToMapPruned(map, key, value, maxKeys = 200) {
+  if (!key) return;
+  map[key] = value;
+  const keys = Object.keys(map);
+  if (keys.length <= maxKeys) return;
+
+  keys.sort((a, b) => (map[b] || 0) - (map[a] || 0));
+  for (const k of keys.slice(maxKeys)) delete map[k];
+}
+
+async function getTasteWeights(db, uid) {
+  const base = { category: {}, color: {}, tag: {} };
+  let userW = base;
+  let globalW = base;
+
+  try {
+    const u = await db.collection("taste_weights").doc(uid).get();
+    if (u.exists && u.data()?.weights) userW = u.data().weights;
+  } catch {}
+
+  try {
+    const g = await db.collection("taste_weights_global").doc("global").get();
+    if (g.exists && g.data()?.weights) globalW = g.data().weights;
+  } catch {}
+
+  return { userW, globalW };
+}
+
 // ===================
 // Outfit Candidate Engine (deterministic cohesion)
 // ===================
@@ -586,7 +675,33 @@ function generateCandidates(pools, n = 40, opts = {}) {
   return looks;
 }
 
-function scoreLook(items = [], ctx = {}) {
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+function getItemTasteScore(it, userW, globalW) {
+  const cat = safeLower(it.category || "");
+  const col = safeLower(Array.isArray(it.color) ? (it.color[0] || "") : (it.color || ""));
+  const tags = Array.isArray(it.tags) ? it.tags.map(safeLower) : [];
+
+  // prefer user weights; fallback to global
+  const wCat = (userW?.category?.[cat] ?? globalW?.category?.[cat] ?? 0);
+  const wCol = (userW?.color?.[col] ?? globalW?.color?.[col] ?? 0);
+
+  let wTags = 0;
+  for (const t of tags.slice(0, 8)) {
+    wTags += (userW?.tag?.[t] ?? globalW?.tag?.[t] ?? 0);
+  }
+
+  // tags can dominate—dampen
+  wTags = clamp(wTags, -1.2, 1.2);
+
+  // weighted sum
+  return (0.55 * wCat) + (0.30 * wCol) + (0.15 * wTags);
+}
+
+  function scoreLook(items = [], ctx = {}, taste = null) {
+    const userW = taste?.userW || { category:{}, color:{}, tag:{} };
+    const globalW = taste?.globalW || { category:{}, color:{}, tag:{} };
+
   const occasion = (ctx.occasion || "").toLowerCase();
 
   // 1) completeness (hard-ish)
@@ -862,6 +977,15 @@ function scoreLook(items = [], ctx = {}) {
     if (hasFormalShoes || hasLoafers) score += 10;
   }
 
+    // 6) taste-learning boost (Phase C)
+    // average item taste score; keep it gentle so it doesn't break basic style rules
+    const tasteScores = items.map(it => getItemTasteScore(it, userW, globalW));
+    const avgTaste = tasteScores.length
+      ? tasteScores.reduce((a,b)=>a+b,0) / tasteScores.length
+      : 0;
+
+    score += (avgTaste * 2.2); // tune 1.5–3.0
+
 
   return score;
 }
@@ -1106,47 +1230,58 @@ app.post("/admin/recompute-taste", async (req, res) => {
     console.log("🔁 Recomputing taste stats...");
 
     // ── Load feedback sources ──────────────
-    const likedSnap = await db.collection("liked_looks").get();
-    const dislikedSnap = await db.collection("disliked_looks").get();
+    // ── Load feedback sources (canonical) ──
+    const events = await loadAllFeedbackEvents(db);
 
-    const global = {};     // dimension:key → stats
-    const perUser = {};    // uid → dimension:key → stats
+    const global = {};   // { "dim::key": { loves, dislikes, total } }
+    const perUser = {};  // { [uid]: { "dim::key": { loves, dislikes, total } } }
 
-    function bump(store, uid, dimension, key, delta) {
-      if (!key) return;
-      const k = `${dimension}::${String(key).toLowerCase()}`; // safer separator
+    // ── Extract signals from canonical events ──
+    for (const ev of events) {
+      const norm = normalizeFeedbackToLook(ev);
+      if (!norm) continue;
 
-
-      store[k] ??= { loves: 0, dislikes: 0, total: 0 };
-      store[k].total++;
-      if (delta === 1) store[k].loves++;
-      if (delta === -1) store[k].dislikes++;
-
-      if (uid) {
-        perUser[uid] ??= {};
-        perUser[uid][k] ??= { loves: 0, dislikes: 0, total: 0 };
-        perUser[uid][k].total++;
-        if (delta === 1) perUser[uid][k].loves++;
-        if (delta === -1) perUser[uid][k].dislikes++;
-      }
-    }
-
-    // ── Extract signals ────────────────────
-    function processLook(doc, delta) {
-      const { uid, outfit } = doc.data();
-      const items = outfit?.items || [];
+      const { uid, delta, items } = norm;
 
       items.forEach((it) => {
-        bump(global, uid, "category", it.category, delta);
-        bump(global, uid, "color", it.color, delta);
-        (it.tags || []).forEach(tag =>
-          bump(global, uid, "tag", tag, delta)
-        );
+        bump(global, perUser, uid, "category", it.category, delta);
+        bump(global, perUser, uid, "color", it.color, delta);
+        (it.tags || []).forEach(tag => bump(global, perUser, uid, "tag", tag, delta));
       });
+
     }
 
-    likedSnap.docs.forEach(d => processLook(d, +1));
-    dislikedSnap.docs.forEach(d => processLook(d, -1));
+    function toWeightBucketsFromStore(store) {
+      // store: { "dim::key": {loves, dislikes, total} }
+      const out = { category: {}, color: {}, tag: {} };
+
+      for (const [k, v] of Object.entries(store)) {
+        const sep = k.indexOf("::");
+        const dim = sep >= 0 ? k.slice(0, sep) : "unknown";
+        const key = sep >= 0 ? k.slice(sep + 2) : k;
+
+        if (!["category", "color", "tag"].includes(dim)) continue;
+
+        const score = (v.loves - v.dislikes) / (v.total + 3);
+        const confidence = Math.min(1, v.total / 12);
+        const weight = score * confidence;
+
+        // keep it small, stable keys
+        out[dim][String(key).trim().toLowerCase()] = weight;
+      }
+
+      return out;
+    }
+
+    function pruneWeightBuckets(buckets, maxPerDim = 120) {
+      const pruned = {};
+      for (const dim of Object.keys(buckets)) {
+        const entries = Object.entries(buckets[dim] || {});
+        entries.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+        pruned[dim] = Object.fromEntries(entries.slice(0, maxPerDim));
+      }
+      return pruned;
+    }
 
     // ── Write stats + weights ──────────────
     let batch = db.batch();
@@ -1159,6 +1294,27 @@ app.post("/admin/recompute-taste", async (req, res) => {
         opCount = 0;
       }
     }
+
+    function bump(globalStore, perUserStore, uid, dimension, key, delta) {
+      if (!dimension || !key) return;
+
+      const k = `${dimension}::${String(key).trim().toLowerCase()}`;
+
+      // global
+      if (!globalStore[k]) globalStore[k] = { loves: 0, dislikes: 0, total: 0 };
+      if (delta > 0) globalStore[k].loves += 1;
+      else globalStore[k].dislikes += 1;
+      globalStore[k].total += 1;
+
+      // per user
+      if (!perUserStore[uid]) perUserStore[uid] = {};
+      if (!perUserStore[uid][k]) perUserStore[uid][k] = { loves: 0, dislikes: 0, total: 0 };
+      if (delta > 0) perUserStore[uid][k].loves += 1;
+      else perUserStore[uid][k].dislikes += 1;
+      perUserStore[uid][k].total += 1;
+    }
+
+    
 
     async function writeStats(baseRef, store) {
       for (const [k, v] of Object.entries(store)) {
@@ -1201,6 +1357,27 @@ app.post("/admin/recompute-taste", async (req, res) => {
 
     // final flush
     await commitIfNeeded(true);
+
+    // ✅ ALSO write compact weights maps for fast reads in Phase C
+    // global weights
+    {
+      const globalBuckets = pruneWeightBuckets(toWeightBucketsFromStore(global), 150);
+      await db.collection("taste_weights_global").doc("global").set({
+        weights: globalBuckets,
+        updated_at: new Date().toISOString(),
+        version: 1,
+      }, { merge: true });
+    }
+
+    // per-user weights
+    for (const [uid, stats] of Object.entries(perUser)) {
+      const userBuckets = pruneWeightBuckets(toWeightBucketsFromStore(stats), 150);
+      await db.collection("taste_weights").doc(uid).set({
+        weights: userBuckets,
+        updated_at: new Date().toISOString(),
+        version: 1,
+      }, { merge: true });
+    }
 
 
     console.log("✅ Taste recompute complete");
@@ -3027,20 +3204,18 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
         // 2) score + sort
         const weatherNow = await getWeather(city);
 
-        const scored = rawCandidates
-          .map(items => ({
-            items,
-            score: scoreLook(items, {
-              occasion,
-              vibe,
-              weather: weatherNow,
-              likedCombos,
-              dislikedCombos,
-              lastServedCombo
-            })
-          }))
-          .sort((a,b) => b.score - a.score);
+          const taste = await getTasteWeights(db, uid).catch(() => null);
 
+          const scored = rawCandidates
+            .map(items => ({
+              items,
+              score: scoreLook(
+                items,
+                { occasion, vibe, weather: weatherNow, likedCombos, dislikedCombos, lastServedCombo },
+                taste
+              )
+            }))
+            .sort((a,b) => b.score - a.score);
 
         const top = scored.slice(0, 12).map(x => x.items);
 
@@ -3872,33 +4047,74 @@ app.post("/mark-worn", async (req, res) => {
 });
 
 // ✅ Structured Feedback endpoints (❤️ + ❌)
-  app.post("/feedback", limiterWrites, async (req, res) => {
-
-  const { uid, outfit_ids = [], vibe = "", occasion = "", liked = null, dislike_reasons = [] } = req.body || {};
-  if (!uid || !Array.isArray(outfit_ids) || outfit_ids.length === 0) {
-    return res.status(400).json({ error: "uid and outfit_ids are required" });
-  }
-
+app.post("/feedback", limiterWrites, async (req, res) => {
   try {
-    const data = {
+    const {
       uid,
-      outfit_ids,
-      vibe,
-      occasion,
+      event_type,          // "like" | "dislike"
+      outfit,              // { items: [...] }  ← REQUIRED
+      vibe = "",
+      occasion = "",
+      city = "",
+      weather = "",
+      reason = "",
+    } = req.body || {};
+
+    if (!uid || !event_type || !outfit?.items?.length) {
+      return res.status(400).json({
+        error: "uid, event_type, and outfit.items[] are required",
+      });
+    }
+
+    const liked =
+      event_type === "like" ? true :
+      event_type === "dislike" ? false :
+      null;
+
+    if (liked === null) {
+      return res.status(400).json({ error: "event_type must be like or dislike" });
+    }
+
+    // Build combo fingerprint (VERY important for ranking memory)
+    const combo = makeComboFingerprint(outfit.items);
+
+    const feedbackEvent = {
+      uid,
+      event_type,
       liked,
-      dislike_reasons,
-      timestamp: new Date().toISOString(),
+      combo,
+
+      // 👇 THIS is the canonical payload Phase B needs
+      outfit: {
+        items: outfit.items.map(it => ({
+          id: it.id || it.idx || null,
+          category: it.category || "",
+          color: it.color || "",
+          tags: it.tags || [],
+          name: it.name || "",
+        })),
+      },
+
+      ctx: {
+        vibe,
+        occasion,
+        city,
+        weather,
+      },
+
+      reason,
+      created_at: new Date().toISOString(),
+      version: 1,
     };
 
-    await db.collection("feedback").add(data);
-    res.json({ message: "Feedback recorded", data });
+    await db.collection("feedback_events").add(feedbackEvent);
+
+    res.json({ ok: true, message: "Feedback recorded" });
   } catch (err) {
-    console.error("❌ feedback failed:", err.message);
+    console.error("❌ feedback failed:", err);
     res.status(500).json({ error: "Failed to record feedback" });
   }
 });
-
-
 
 // ✅ Dislike outfit (save reason for learning Tina’s preferences)
 app.post("/dislike-outfit", async (req, res) => {
