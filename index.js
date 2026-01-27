@@ -163,6 +163,7 @@ const limiterWrites = rateLimit({
 
 
 
+
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -1075,6 +1076,16 @@ app.get("/", (req, res) => {
   });
 });
 
+function safeDocId(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\/\\]/g, "_")   // replace / and \ with _
+    .replace(/\s+/g, " ")      // collapse spaces
+    .replace(/[^\w\- ]/g, "")  // remove weird symbols
+    .replace(/\s/g, "_");      // spaces -> _
+}
+
 app.post("/admin/recompute-taste", async (req, res) => {
   try {
     // ── Admin auth ─────────────────────────
@@ -1137,7 +1148,12 @@ app.post("/admin/recompute-taste", async (req, res) => {
         const confidence = Math.min(1, v.total / 12);
         const weight = score * confidence;
 
-        batch.set(baseRef.doc(`${dimension}_${key}`), {
+        if (String(key || "").includes("\\") || String(key || "").includes("/")) {
+          console.log("⚠️ cleaned bad key:", { dimension, key, cleaned: safeDocId(key) });
+        }
+
+          const docId = `${dimension}_${safeDocId(key)}`;
+          batch.set(baseRef.doc(docId), {
           dimension,
           key,
           ...v,
