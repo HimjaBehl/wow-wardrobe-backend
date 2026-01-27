@@ -1295,6 +1295,39 @@ app.post("/auto-tag-upload", limiterAutoTag, upload.single("file"), async (req, 
   }
 });
 
+app.get("/admin/taste-sample", async (req, res) => {
+  try {
+    const adminKey = req.headers["x-admin-key"];
+    if (adminKey !== process.env.ADMIN_KEY) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ error: "uid required" });
+
+    const userSnap = await db
+      .collection("taste_stats_user")
+      .doc(uid)
+      .collection("stats")
+      .orderBy("weight", "desc")
+      .limit(10)
+      .get();
+
+    const globalSnap = await db
+      .collection("taste_stats_global")
+      .orderBy("weight", "desc")
+      .limit(10)
+      .get();
+
+    res.json({
+      user_top: userSnap.docs.map(d => d.data()),
+      global_top: globalSnap.docs.map(d => d.data()),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ✅ Fetch wardrobe by user ID (normalized + hydrated)
 app.get("/wardrobe", async (req, res) => {
   try {
