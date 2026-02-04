@@ -1,0 +1,219 @@
+  // =========================
+  // OCCASION-BASED RERANKING (gender-aware)
+  // =========================
+
+  const gender = (ctx.gender || "").toLowerCase(); // ✅ FIX: define gender
+
+  // Common detectors
+  const hasDress   = /dress|gown|maxi|mini|bodycon|anarkali|lehenga/.test(nameblob);
+  const hasSaree   = /saree|sari/.test(nameblob);
+  const hasHeels   = /heel|pump|stiletto|court/.test(nameblob);
+  const hasSneakers= /sneaker|trainer|running|walking/.test(nameblob);
+  const hasBoots   = /boot/.test(nameblob);
+  const hasLoafers = /loafer/.test(nameblob);
+  const hasFormalShoes = /oxford|derby|brogue|formal/.test(nameblob) || hasLoafers;
+
+  const hasSandals = /sandal|slide|flipflop/.test(nameblob);
+  const hasAthletic= /gym|sport|track|jogger|athletic|training/.test(nameblob);
+  const hasPants   = /pant|trouser|jean|cargo|chino|slack/.test(nameblob);
+  const hasShorts  = /short/.test(nameblob);
+  const hasLounge  = /pyjama|pajama|night|sleep|loungewear/.test(nameblob);
+
+  const hasTightDress = /bodycon|tight/.test(nameblob); // ✅ FIX: no assignment
+
+  // ✅ Gender gating (soft/hard)
+  // If user is male, strongly penalize traditionally feminine items.
+  // If user is female, do NOT penalize these.
+  if (gender === "male") {
+    if (hasDress || hasSaree || /lehenga|anarkali/.test(nameblob)) score -= 120; // hard veto territory
+    if (hasHeels) score -= 120;
+  }
+
+  // =========================
+  // Outdoor Adventure / Hiking
+  // =========================
+  if (/adventure|hiking|outdoor|explore|trek/.test(occasion)) {
+    if (hasDress || hasSaree) score -= 45;
+    if (hasHeels) score -= 60;
+    if (hasSandals) score -= 30;
+
+    if (!hasSneakers && !hasBoots) score -= 30;
+    if (!hasPants) score -= 20;
+  }
+
+  // =========================
+  // Gym / Workout
+  // =========================
+  if (/gym|workout|fitness/.test(occasion)) {
+    if (hasDress || hasSaree) score -= 60;
+    if (hasHeels || hasFormalShoes) score -= 70;
+    if (!hasAthletic) score -= 40;
+
+    if (hasSneakers) score += 10;
+  }
+
+  // =========================
+  // Athleisure
+  // =========================
+  if (/athleisure/.test(occasion)) {
+    if (hasHeels) score -= 40;
+    if (hasFormalShoes) score -= 30;
+
+    if (hasSneakers) score += 10;
+    if (hasAthletic) score += 5;
+  }
+
+  // =========================
+  // Travel / Airport
+  // =========================
+  if (/travel|airport/.test(occasion)) {
+    if (hasHeels) score -= 45;
+    if (hasTightDress) score -= 25;
+
+    if (hasSneakers || hasBoots) score += 10;
+    if (hasPants) score += 5;
+  }
+
+  // =========================
+  // Date Night
+  // =========================
+  if (/date/.test(occasion)) {
+    if (hasAthletic) score -= 40;
+    if (hasLounge) score -= 60;
+
+    // female-coded boosts
+    if (gender === "female") {
+      if (hasDress) score += 15;
+      if (hasHeels) score += 10;
+    }
+
+    // male-coded boosts
+    if (gender === "male") {
+      if (hasFormalShoes) score += 10;
+      if (/blazer|jacket|suit/.test(nameblob)) score += 10;
+    }
+  }
+
+  // =========================
+  // Wedding / Festive
+  // =========================
+  if (/wedding|festive|ethnic/.test(occasion)) {
+    if (hasAthletic) score -= 70;
+    if (hasSneakers) score -= 40;
+
+    // female boosts: saree/lehenga/anarkali
+    if (gender === "female") {
+      if (hasDress || hasSaree || /lehenga|anarkali/.test(nameblob)) score += 20;
+      if (hasHeels || hasSandals) score += 10;
+    }
+
+    // male boosts: kurta/sherwani/bandhgala + formal shoes/loafers
+    if (gender === "male") {
+      if (/kurta|sherwani|bandhgala|nehru|waistcoat/.test(nameblob)) score += 25;
+      if (hasFormalShoes) score += 12;
+    }
+  }
+
+  // =========================
+  // Beach / Resort
+  // =========================
+  if (/beach|resort|vacation/.test(occasion)) {
+    if (hasHeels) score -= 40;
+    if (hasOuterwear) score -= 20;
+
+    if (hasSandals) score += 10;
+    if (hasDress || hasShorts) score += 5;
+  }
+
+  // =========================
+  // Formal Event / Gala
+  // =========================
+  if (/formal|gala/.test(occasion)) {
+    if (hasSneakers || hasAthletic) score -= 60;
+    if (hasLounge) score -= 80;
+
+    if (gender === "female") {
+      if (hasDress) score += 20;
+      if (hasHeels) score += 15;
+    }
+
+    if (gender === "male") {
+      if (/suit|blazer|tux|formal/.test(nameblob)) score += 20;
+      if (hasFormalShoes) score += 15;
+    }
+  }
+
+  // =========================
+  // Interview / Presentation
+  // =========================
+  if (/interview|presentation/.test(occasion)) {
+    if (hasDress && /party|mini/.test(nameblob)) score -= 40;
+    if (hasSneakers || hasSandals) score -= 50;
+
+    if (hasOuterwear) score += 15;
+    if (hasFormalShoes) score += 10;
+
+    // gender-specific extra strictness
+    if (gender === "male" && (hasHeels || hasDress || hasSaree)) score -= 120;
+  }
+
+  // =========================
+  // Shopping / Errands
+  // =========================
+  if (/shopping|errand/.test(occasion)) {
+    if (hasHeels) score -= 30;
+    if (hasSneakers) score += 10;
+  }
+
+  // =========================
+  // Concert / Festival
+  // =========================
+  if (/concert|festival/.test(occasion)) {
+    if (hasFormalShoes) score -= 30;
+    if (hasSneakers || hasBoots) score += 10;
+  }
+
+  // =========================
+  // Winter Casual / Layered
+  // =========================
+  if (/winter/.test(occasion)) {
+    if (hasSandals) score -= 50;
+    if (hasOuterwear) score += 15;
+    if (hasBoots) score += 10;
+  }
+
+  // =========================
+  // Summer Casual / Lightwear
+  // =========================
+  if (/summer/.test(occasion)) {
+    if (hasOuterwear) score -= 20;
+    if (hasDress || hasSandals) score += 5;
+    if (hasFormalShoes) score -= 25;
+  }
+
+  // =========================
+  // Lounge / Homewear
+  // =========================
+  if (/lounge|home/.test(occasion)) {
+    if (hasHeels || hasFormalShoes) score -= 80;
+    if (hasLounge) score += 20;
+  }
+
+  // =========================
+  // Streetwear / Urban
+  // =========================
+  if (/streetwear|urban/.test(occasion)) {
+    if (hasFormalShoes) score -= 30;
+    if (hasSneakers) score += 10;
+  }
+
+  // =========================
+  // Business Casual
+  // =========================
+  if (/business/.test(occasion)) {
+    if (hasAthletic || hasLounge) score -= 60;
+    if (gender === "female" && hasHeels && !hasDress) score -= 15;
+
+    if (hasOuterwear) score += 15;
+    if (hasFormalShoes) score += 10;
+  }

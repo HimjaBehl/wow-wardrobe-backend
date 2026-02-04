@@ -404,7 +404,23 @@ async function cropAndSaveObject(originalImageUrl, boundingBox, objectName) {
 
     // Crop the image using Sharp
     const croppedBuffer = await sharp(imageBuffer)
-      .extract({
+
+    let left, top, cropW, cropH;
+
+
+      if ("x" in boundingBox) {
+        ({ x: left, y: top, width: cropW, height: cropH } = boundingBox);
+      } else if ("xmin" in boundingBox) {
+        left = boundingBox.xmin;
+        top = boundingBox.ymin;
+        cropW = boundingBox.xmax - boundingBox.xmin;
+        cropH = boundingBox.ymax - boundingBox.ymin;
+
+      } else {
+        throw new Error("Unknown boundingBox format");
+      }
+
+      extract({
         left: Math.round(x),
         top: Math.round(y),
         width: Math.round(width),
@@ -701,6 +717,7 @@ function getItemTasteScore(it, userW, globalW) {
   function scoreLook(items = [], ctx = {}, taste = null) {
     const userW = taste?.userW || { category:{}, color:{}, tag:{} };
     const globalW = taste?.globalW || { category:{}, color:{}, tag:{} };
+    const gender = (ctx.gender || "").toLowerCase(); // "male" | "female" | ""
 
   const occasion = (ctx.occasion || "").toLowerCase();
 
@@ -794,33 +811,41 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   // Adventure occasion rules
   // =========================
+    // =========================
+  // OCCASION-BASED RERANKING (gender-aware)
   // =========================
-  // OCCASION-BASED RERANKING
-  // =========================
+
 
   // Common detectors
-  const hasDress = /dress|gown|maxi|mini|anarkali|lehenga/.test(nameblob);
-  const hasHeels = /heel|pump|stiletto|court/.test(nameblob);
-  const hasSneakers = /sneaker|trainer|running|walking/.test(nameblob);
-  const hasBoots = /boot/.test(nameblob);
-  const hasFormalShoes = /loafer|oxford|derby|formal/.test(nameblob);
+  const hasDress   = /dress|gown|maxi|mini|bodycon|anarkali|lehenga/.test(nameblob);
+  const hasSaree   = /saree|sari/.test(nameblob);
+  const hasHeels   = /heel|pump|stiletto|court/.test(nameblob);
+  const hasSneakers= /sneaker|trainer|running|walking/.test(nameblob);
+  const hasBoots   = /boot/.test(nameblob);
+  const hasLoafers = /loafer/.test(nameblob);
+  const hasFormalShoes = /oxford|derby|brogue|formal/.test(nameblob) || hasLoafers;
+
   const hasSandals = /sandal|slide|flipflop/.test(nameblob);
-  const hasAthletic = /gym|sport|track|jogger|athletic/.test(nameblob);
-  const hasPants = /pant|trouser|jean|cargo|jogger|legging/.test(nameblob);
-  const hasShorts = /short/.test(nameblob);
-  const hasTopItem = /top|shirt|tee|blouse|kurta/.test(nameblob);
-  const hasLounge = /pyjama|pajama|night|sleep|loungewear/.test(nameblob);
+  const hasAthletic= /gym|sport|track|jogger|athletic|training/.test(nameblob);
+  const hasPants   = /pant|trouser|jean|cargo|chino|slack/.test(nameblob);
+  const hasShorts  = /short/.test(nameblob);
+  const hasLounge  = /pyjama|pajama|night|sleep|loungewear/.test(nameblob);
 
+  const hasTightDress = /bodycon|tight/.test(nameblob); // ✅ FIX: no assignment
 
-    if (gender === "male" && hasDress) {
-      score -= 100; // hard veto
-    }
+  // ✅ Gender gating (soft/hard)
+  // If user is male, strongly penalize traditionally feminine items.
+  // If user is female, do NOT penalize these.
+  if (gender === "male") {
+    if (hasDress || hasSaree || /lehenga|anarkali/.test(nameblob)) score -= 120; // hard veto territory
+    if (hasHeels) score -= 120;
+  }
 
   // =========================
   // Outdoor Adventure / Hiking
   // =========================
   if (/adventure|hiking|outdoor|explore|trek/.test(occasion)) {
-    if (hasDress) score -= 45;
+    if (hasDress || hasSaree) score -= 45;
     if (hasHeels) score -= 60;
     if (hasSandals) score -= 30;
 
@@ -832,7 +857,7 @@ function getItemTasteScore(it, userW, globalW) {
   // Gym / Workout
   // =========================
   if (/gym|workout|fitness/.test(occasion)) {
-    if (hasDress) score -= 60;
+    if (hasDress || hasSaree) score -= 60;
     if (hasHeels || hasFormalShoes) score -= 70;
     if (!hasAthletic) score -= 40;
 
@@ -855,7 +880,7 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   if (/travel|airport/.test(occasion)) {
     if (hasHeels) score -= 45;
-    if (hasTightDress = /bodycon|tight/.test(nameblob)) score -= 25;
+    if (hasTightDress) score -= 25;
 
     if (hasSneakers || hasBoots) score += 10;
     if (hasPants) score += 5;
@@ -868,8 +893,17 @@ function getItemTasteScore(it, userW, globalW) {
     if (hasAthletic) score -= 40;
     if (hasLounge) score -= 60;
 
-    if (hasDress) score += 15;
-    if (hasHeels) score += 10;
+    // female-coded boosts
+    if (gender === "female") {
+      if (hasDress) score += 15;
+      if (hasHeels) score += 10;
+    }
+
+    // male-coded boosts
+    if (gender === "male") {
+      if (hasFormalShoes) score += 10;
+      if (/blazer|jacket|suit/.test(nameblob)) score += 10;
+    }
   }
 
   // =========================
@@ -879,8 +913,17 @@ function getItemTasteScore(it, userW, globalW) {
     if (hasAthletic) score -= 70;
     if (hasSneakers) score -= 40;
 
-    if (hasDress) score += 20;
-    if (hasHeels || hasSandals) score += 10;
+    // female boosts: saree/lehenga/anarkali
+    if (gender === "female") {
+      if (hasDress || hasSaree || /lehenga|anarkali/.test(nameblob)) score += 20;
+      if (hasHeels || hasSandals) score += 10;
+    }
+
+    // male boosts: kurta/sherwani/bandhgala + formal shoes/loafers
+    if (gender === "male") {
+      if (/kurta|sherwani|bandhgala|nehru|waistcoat/.test(nameblob)) score += 25;
+      if (hasFormalShoes) score += 12;
+    }
   }
 
   // =========================
@@ -901,8 +944,15 @@ function getItemTasteScore(it, userW, globalW) {
     if (hasSneakers || hasAthletic) score -= 60;
     if (hasLounge) score -= 80;
 
-    if (hasDress) score += 20;
-    if (hasHeels || hasFormalShoes) score += 15;
+    if (gender === "female") {
+      if (hasDress) score += 20;
+      if (hasHeels) score += 15;
+    }
+
+    if (gender === "male") {
+      if (/suit|blazer|tux|formal/.test(nameblob)) score += 20;
+      if (hasFormalShoes) score += 15;
+    }
   }
 
   // =========================
@@ -914,6 +964,9 @@ function getItemTasteScore(it, userW, globalW) {
 
     if (hasOuterwear) score += 15;
     if (hasFormalShoes) score += 10;
+
+    // gender-specific extra strictness
+    if (gender === "male" && (hasHeels || hasDress || hasSaree)) score -= 120;
   }
 
   // =========================
@@ -921,7 +974,6 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   if (/shopping|errand/.test(occasion)) {
     if (hasHeels) score -= 30;
-
     if (hasSneakers) score += 10;
   }
 
@@ -930,7 +982,6 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   if (/concert|festival/.test(occasion)) {
     if (hasFormalShoes) score -= 30;
-
     if (hasSneakers || hasBoots) score += 10;
   }
 
@@ -939,7 +990,6 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   if (/winter/.test(occasion)) {
     if (hasSandals) score -= 50;
-
     if (hasOuterwear) score += 15;
     if (hasBoots) score += 10;
   }
@@ -949,7 +999,6 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   if (/summer/.test(occasion)) {
     if (hasOuterwear) score -= 20;
-
     if (hasDress || hasSandals) score += 5;
     if (hasFormalShoes) score -= 25;
   }
@@ -959,7 +1008,6 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   if (/lounge|home/.test(occasion)) {
     if (hasHeels || hasFormalShoes) score -= 80;
-
     if (hasLounge) score += 20;
   }
 
@@ -968,7 +1016,6 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   if (/streetwear|urban/.test(occasion)) {
     if (hasFormalShoes) score -= 30;
-
     if (hasSneakers) score += 10;
   }
 
@@ -977,11 +1024,12 @@ function getItemTasteScore(it, userW, globalW) {
   // =========================
   if (/business/.test(occasion)) {
     if (hasAthletic || hasLounge) score -= 60;
-    if (hasHeels && !hasDress) score -= 15;
+    if (gender === "female" && hasHeels && !hasDress) score -= 15;
 
     if (hasOuterwear) score += 15;
-    if (hasFormalShoes || hasLoafers) score += 10;
+    if (hasFormalShoes) score += 10;
   }
+
 
     // 6) taste-learning boost (Phase C)
     // average item taste score; keep it gentle so it doesn't break basic style rules
@@ -2849,7 +2897,11 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
     // 🎯 Occasion-aware filter (strict)
     //if (occasion && occasionCategoryMap[occasion.toLowerCase()]) {
 
-     // const allowedCats = occasionCategoryMap[occasion.toLowerCase()];
+     // import { getOccasionCategoryMap } from "./lib/occasionMap.js";
+
+    const allowed = (occasionCategoryMap?.[occasion?.toLowerCase()] || []);
+
+
     //  rawWardrobe = rawWardrobe.filter((it) => {
       //  const cat = (it.category || "").toLowerCase();
       //  return allowedCats.some((allowed) => {
@@ -3233,16 +3285,25 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
 
           const taste = await getTasteWeights(db, uid).catch(() => null);
 
-          const scored = rawCandidates
-            .map(items => ({
-              items,
-              score: scoreLook(
-                items,
-                { occasion, vibe, weather: weatherNow, likedCombos, dislikedCombos, lastServedCombo },
-                taste
-              )
-            }))
-            .sort((a,b) => b.score - a.score);
+        const scored = rawCandidates
+        .map((items) => ({
+          items,
+          score: scoreLook(
+            items,
+            {
+              occasion,
+              vibe,
+              weather: weatherNow,
+              likedCombos,
+              dislikedCombos,
+              lastServedCombo,
+              gender: prefs.gender,
+            },
+            taste
+          ),
+        }))
+        .sort((a, b) => b.score - a.score);
+
 
         const top = scored.slice(0, 12).map(x => x.items);
 
