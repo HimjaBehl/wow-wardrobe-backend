@@ -811,6 +811,11 @@ function getItemTasteScore(it, userW, globalW) {
   const hasTopItem = /top|shirt|tee|blouse|kurta/.test(nameblob);
   const hasLounge = /pyjama|pajama|night|sleep|loungewear/.test(nameblob);
 
+
+    if (gender === "male" && hasDress) {
+      score -= 100; // hard veto
+    }
+
   // =========================
   // Outdoor Adventure / Hiking
   // =========================
@@ -946,6 +951,7 @@ function getItemTasteScore(it, userW, globalW) {
     if (hasOuterwear) score -= 20;
 
     if (hasDress || hasSandals) score += 5;
+    if (hasFormalShoes) score -= 25;
   }
 
   // =========================
