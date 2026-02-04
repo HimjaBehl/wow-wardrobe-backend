@@ -1682,44 +1682,65 @@ app.get("/debug-uniform", async (req, res) => {
 });
 
 
-// ✅ Get Staples - Load directly from Firebase Storage (gender-aware)
+// ✅ Get Staples - from Firestore (v2 collections)
 app.get("/staples", async (req, res) => {
-  const gender = req.query.gender || "male";
-  const bucketName = "wowapp1406.appspot.com";
-  const folder = gender === "female" ? "staples_female" : "staples_male";
-
   try {
-    const [files] = await bucket.getFiles({ prefix: folder + "/" });
-    const staples = await Promise.all(
-      files.map(async (file) => {
-        const fileName = file.name.split("/").pop();
-        const displayName = fileName.replace(/\.[^/.]+$/, "");
+    const gender = String(req.query.gender || "male").toLowerCase();
+    const version = String(req.query.version || "v2").toLowerCase();
 
-        // ✅ Get signed URL (browser-friendly)
-        const [signedUrl] = await file.getSignedUrl({
-          action: "read",
-          expires: "2099-12-31",
+    const col =
+      gender === "female"
+        ? (version === "v2" ? "staples_female_v2" : "staples_female")
+        : (version === "v2" ? "staples_male_v2" : "staples_male");
 
-        });
+    const snap = await db.collection(col).get();
 
-        return hydrateWardrobeItem({
-          uid: "staples-global",  // global staples fallback UID
-          name: displayName,
-          category: "Staple",
-          color: "Default",
-          image_url: signedUrl,
-          tags: [displayName, "Staple"],
-        });
-      }),
-    );
+    const staples = snap.docs.map((doc) => {
+      const data = doc.data() || {};
+      const name = data.name || doc.id;
+      const category = data.category || "Staple";
+      const color = data.color || "Default";
 
-    res.json({ success: true, staples, items: staples });
+      const hydrated = hydrateWardrobeItem({
+        uid: "staples-global",
+        name,
+        primaryTag: name,
+        category: normalizeCategory(category, name),
+        color,
+        image_url: data.image_url || "",
+        tags: Array.isArray(data.tags) ? data.tags : [name, "Staple"],
+        taxonomyPath:
+          data.taxonomyPath || mapTaxonomy(normalizeCategory(category, name)),
+        silhouette: data.silhouette || guessSilhouette(`${name} ${category}`),
+        palette: data.palette || pickPalette(color),
 
+        gender: data.gender || gender,
+        version: data.version || version,
+      });
+
+      return {
+        ...hydrated,
+        id: doc.id,
+        wardrobe_id: doc.id,
+        idx: doc.id,
+        source: "staple",
+      };
+    });
+
+    return res.json({
+      success: true,
+      staples,
+      items: staples,
+      count: staples.length,
+      collection: col,
+    });
   } catch (err) {
-    console.error("Error fetching staples:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("❌ /staples failed:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
+
+
 
 // ✅ Enhanced Quick Add - Manual item entry with optional image
 app.post("/quick-add", async (req, res) => {
