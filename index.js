@@ -402,32 +402,36 @@ async function cropAndSaveObject(originalImageUrl, boundingBox, objectName) {
     // Calculate crop dimensions from bounding box
     const { x, y, width, height } = boundingBox;
 
-    // Crop the image using Sharp
-    const croppedBuffer = await sharp(imageBuffer)
-
+    // ✅ Crop the image using Sharp (fixed)
     let left, top, cropW, cropH;
 
+    if ("x" in boundingBox) {
+      ({ x: left, y: top, width: cropW, height: cropH } = boundingBox);
+    } else if ("xmin" in boundingBox) {
+      left = boundingBox.xmin;
+      top = boundingBox.ymin;
+      cropW = boundingBox.xmax - boundingBox.xmin;
+      cropH = boundingBox.ymax - boundingBox.ymin;
+    } else {
+      throw new Error("Unknown boundingBox format");
+    }
 
-      if ("x" in boundingBox) {
-        ({ x: left, y: top, width: cropW, height: cropH } = boundingBox);
-      } else if ("xmin" in boundingBox) {
-        left = boundingBox.xmin;
-        top = boundingBox.ymin;
-        cropW = boundingBox.xmax - boundingBox.xmin;
-        cropH = boundingBox.ymax - boundingBox.ymin;
+    // ✅ Clamp crop region to image bounds (prevents Sharp extract errors)
+    const meta = await sharp(imageBuffer).metadata();
+    const imgW = meta.width || 0;
+    const imgH = meta.height || 0;
 
-      } else {
-        throw new Error("Unknown boundingBox format");
-      }
+    left = Math.max(0, Math.min(Math.round(left), Math.max(0, imgW - 1)));
+    top  = Math.max(0, Math.min(Math.round(top),  Math.max(0, imgH - 1)));
 
-      extract({
-        left: Math.round(x),
-        top: Math.round(y),
-        width: Math.round(width),
-        height: Math.round(height),
-      })
+    cropW = Math.max(1, Math.min(Math.round(cropW), imgW - left));
+    cropH = Math.max(1, Math.min(Math.round(cropH), imgH - top));
+
+    const croppedBuffer = await sharp(imageBuffer)
+      .extract({ left, top, width: cropW, height: cropH })
       .jpeg({ quality: 90 })
       .toBuffer();
+
 
     // Save cropped image to Firebase
     const croppedPath = `wardrobe/cropped/${uuidv4()}_${objectName}.jpg`;
