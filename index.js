@@ -1565,6 +1565,9 @@ app.get("/admin/taste-sample", async (req, res) => {
 
 // ✅ Fetch wardrobe by user ID (normalized + hydrated)
 app.get("/wardrobe", async (req, res) => {
+  const includeStaples = String(req.query.include_staples || "0") === "1";
+  const staplesGender = String(req.query.gender || "male").toLowerCase();
+  const staplesVersion = String(req.query.version || "v2").toLowerCase();
   try {
     let { uid } = req.query;
     uid = (uid || "").trim();
@@ -1597,7 +1600,7 @@ app.get("/wardrobe", async (req, res) => {
       return data.name || "Unnamed";
     }
 
-    const items = snapshot.docs.map((doc) => {
+    let items = snapshot.docs.map((doc) => {
       const data = doc.data();
 
       const normalizedCategory = normalizeCategory(
@@ -1625,8 +1628,51 @@ app.get("/wardrobe", async (req, res) => {
 
     });
 
-    console.log("📦 Normalized wardrobe items:", items.length);
-    res.json(Array.isArray(items) ? items : []);
+                                            // ✅ Optionally merge staples into wardrobe response (frontend can render both)
+                                            if (includeStaples) {
+                                              const col =
+                                                staplesGender === "female"
+                                                  ? (staplesVersion === "v2" ? "staples_female_v2" : "staples_female")
+                                                  : (staplesVersion === "v2" ? "staples_male_v2" : "staples_male");
+
+                                              const stapleSnap = await db.collection(col).get();
+
+                                              const staples = stapleSnap.docs.map((doc) => {
+                                                const data = doc.data() || {};
+                                                const name = data.name || doc.id;
+                                                const category = data.category || "Staple";
+                                                const color = data.color || "Default";
+
+                                                const hydrated = hydrateWardrobeItem({
+                                                  uid: "staples-global",
+                                                  name,
+                                                  primaryTag: name,
+                                                  category: normalizeCategory(category, name),
+                                                  color,
+                                                  image_url: data.image_url || "",
+                                                  tags: Array.isArray(data.tags) ? data.tags : [name, "Staple"],
+                                                  taxonomyPath:
+                                                    data.taxonomyPath || mapTaxonomy(normalizeCategory(category, name)),
+                                                  silhouette: data.silhouette || guessSilhouette(`${name} ${category}`),
+                                                  palette: data.palette || pickPalette(color),
+                                                  gender: data.gender || staplesGender,
+                                                  version: data.version || staplesVersion,
+                                                });
+
+                                                return {
+                                                  ...hydrated,
+                                                  id: doc.id,
+                                                  wardrobe_id: doc.id,
+                                                  idx: doc.id,
+                                                  source: "staple",
+                                                };
+                                              });
+
+                                              items = [...items, ...staples];
+                                            }
+
+                                            console.log("📦 Normalized wardrobe items:", items.length);
+                                            return res.json(Array.isArray(items) ? items : []);
 
   } catch (err) {
     console.error("❌ Fetch wardrobe error:", err.message);
@@ -1801,17 +1847,20 @@ app.get("/staples", async (req, res) => {
 
 
 // ✅ Enhanced Quick Add - Manual item entry with optional image
-app.post("/quick-add", async (req, res) => {
-  let {
-    uid,
-    name,
-    editedName,
-    category = "Staple",
-    editedCategory,
-    color = "Default",
-    editedColor,
-    image_url
-  } = req.body;
+  app.post("/quick-add", async (req, res) => {
+    let {
+      uid,
+      name,
+      editedName,
+      category = "Staple",
+      editedCategory,
+      color = "Default",
+      editedColor,
+      image_url,
+      save_to_staples = false,
+      gender = "male",
+      version = "v2",
+    } = req.body;
 
   // Prefer edited values if provided
   name = (editedName ?? name);
@@ -1819,11 +1868,13 @@ app.post("/quick-add", async (req, res) => {
   color = (editedColor ?? color);
 
 
-  // ⚡ Auto-fallback UID for staples
+  // ✅ Do NOT silently default uid (prevents cross-user mixing)
   if (!uid) {
-    uid = "staples-global"; // change to real user uid if you want to duplicate into each user’s wardrobe
+    return res.status(400).json({
+      success: false,
+      message: "uid is required",
+    });
   }
-
 
 
   console.log("⚡ Quick-add request:", {
@@ -1903,6 +1954,37 @@ app.post("/quick-add", async (req, res) => {
     });
 
 
+        // ✅ If saving as a staple, write into staples_* collection instead of wardrobe
+    if (save_to_staples) {
+      const g = String(gender || "male").toLowerCase();
+      const v = String(version || "v2").toLowerCase();
+
+      const col =
+        g === "female"
+          ? (v === "v2" ? "staples_female_v2" : "staples_female")
+          : (v === "v2" ? "staples_male_v2" : "staples_male");
+
+      const stapleDocId = safeDocId(`${capitalizedName}_${capitalizedColor}_${normalizedCategory}`);
+      await db.collection(col).doc(stapleDocId).set({
+        ...hydrated,
+        name: capitalizedName,
+        category: normalizedCategory,
+        color: capitalizedColor,
+        image_url: image_url || "",
+        gender: g,
+        version: v,
+        updated_at: new Date().toISOString(),
+      }, { merge: true });
+
+      return res.json({
+        success: true,
+        item: { wardrobe_id: stapleDocId, id: stapleDocId, ...hydrated, source: "staple" },
+        message: "Staple saved successfully",
+        collection: col,
+      });
+    }
+
+    // Default: normal wardrobe add
     const docRef = await db.collection("wardrobe").add(hydrated);
 
 
@@ -2020,6 +2102,37 @@ app.post("/wardrobe", limiterWrites, async (req, res) => {
 
 
 
+        // ✅ If saving as a staple, write into staples_* collection instead of wardrobe
+    if (save_to_staples) {
+      const g = String(gender || "male").toLowerCase();
+      const v = String(version || "v2").toLowerCase();
+
+      const col =
+        g === "female"
+          ? (v === "v2" ? "staples_female_v2" : "staples_female")
+          : (v === "v2" ? "staples_male_v2" : "staples_male");
+
+      const stapleDocId = safeDocId(`${capitalizedName}_${capitalizedColor}_${normalizedCategory}`);
+      await db.collection(col).doc(stapleDocId).set({
+        ...hydrated,
+        name: capitalizedName,
+        category: normalizedCategory,
+        color: capitalizedColor,
+        image_url: image_url || "",
+        gender: g,
+        version: v,
+        updated_at: new Date().toISOString(),
+      }, { merge: true });
+
+      return res.json({
+        success: true,
+        item: { wardrobe_id: stapleDocId, id: stapleDocId, ...hydrated, source: "staple" },
+        message: "Staple saved successfully",
+        collection: col,
+      });
+    }
+
+    // Default: normal wardrobe add
     const docRef = await db.collection("wardrobe").add(hydrated);
 
     
