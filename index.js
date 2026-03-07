@@ -1198,6 +1198,205 @@ function pickOne(arr=[], preferNeutral=false){ if(!arr.length)return null; if(pr
 }
 // -------------------------------------------------------------
 
+// ==========================================================
+// STYLE-PIECE HELPERS (anchor-item styling pivot)
+// ==========================================================
+
+function normalizeText(v = "") {
+  return String(v || "").trim().toLowerCase();
+}
+
+function safeArray(v) {
+  return Array.isArray(v) ? v : [];
+}
+
+function detectSlotFromItem(item = {}) {
+  const text = `${item.category || ""} ${item.name || ""} ${safeArray(item.tags).join(" ")}`.toLowerCase();
+
+  if (/dress|jumpsuit|saree|kurta set|co-ord/.test(text)) return "onepiece";
+  if (/top|shirt|tee|t-shirt|blouse|kurta|sweater|tank|camisole/.test(text)) return "top";
+  if (/bottom|jeans|pants|trouser|skirt|shorts|palazzo|leggings|salwar/.test(text)) return "bottom";
+  if (/jacket|coat|blazer|cardigan|shrug|outerwear/.test(text)) return "outer";
+  if (/shoe|sneaker|heel|sandal|boot|loafer|footwear|jutti/.test(text)) return "footwear";
+  if (/bag|handbag|tote|purse|sling/.test(text)) return "bag";
+  if (/watch|belt|scarf|dupatta|stole|jewelry|jewellery|sunglass|cap|hat|accessory/.test(text)) return "accessory";
+
+  return "misc";
+}
+
+function colorToOptions(color = "") {
+  const c = normalizeText(color);
+
+  if (!c) return [];
+  if (c.includes("white")) return ["White", "Off-white", "Cream"];
+  if (c.includes("black")) return ["Black", "Charcoal", "Dark grey"];
+  if (c.includes("blue")) return ["Blue", "Navy", "Light blue"];
+  if (c.includes("beige")) return ["Beige", "Tan", "Cream"];
+  if (c.includes("brown")) return ["Brown", "Tan", "Camel"];
+  if (c.includes("grey") || c.includes("gray")) return ["Grey", "Charcoal", "Light grey"];
+
+  return [color];
+}
+
+function buildStapleCollectionName(gender = "female", version = "v2") {
+  const g = String(gender || "female").toLowerCase();
+  const v = String(version || "v2").toLowerCase();
+
+  if (g === "male") {
+    return v === "v2" ? "staples_male_v2" : "staples_male";
+  }
+  return v === "v2" ? "staples_female_v2" : "staples_female";
+}
+
+async function fetchStaplesForStyling({ gender = "female", version = "v2" } = {}) {
+  const col = buildStapleCollectionName(gender, version);
+  const snap = await db.collection(col).get();
+
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {};
+    const name = data.name || doc.id;
+    const category = data.category || "Staple";
+    const color = data.color || "Default";
+
+    return {
+      ...hydrateWardrobeItem({
+        uid: "staples-global",
+        name,
+        primaryTag: name,
+        category: normalizeCategory(category, name),
+        color,
+        image_url: data.image_url || "",
+        tags: Array.isArray(data.tags) ? data.tags : [name, "Staple"],
+        taxonomyPath:
+          data.taxonomyPath || mapTaxonomy(normalizeCategory(category, name)),
+        silhouette: data.silhouette || guessSilhouette(`${name} ${category}`),
+        palette: data.palette || pickPalette(color),
+        gender: data.gender || gender,
+        version: data.version || version,
+      }),
+      id: doc.id,
+      wardrobe_id: doc.id,
+      idx: doc.id,
+      source: "staple",
+      in_closet: false,
+    };
+  });
+}
+
+async function fetchWardrobeForStyling(uid) {
+  const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {};
+    const normalizedCategory = normalizeCategory(data.category || "", data.name || "");
+    const taxonomyPath = mapTaxonomy(normalizedCategory);
+
+    return {
+      ...hydrateWardrobeItem({
+        ...data,
+        name: data.name || "Unnamed",
+        primaryTag: data.primaryTag || data.name || "Unnamed",
+        category: normalizedCategory,
+        taxonomyPath,
+      }),
+      id: doc.id,
+      wardrobe_id: doc.id,
+      idx: doc.id,
+      source: "wardrobe",
+      in_closet: true,
+    };
+  });
+}
+
+function itemMatchesAnchorContext(item = {}, anchor = {}) {
+  const itemColor = normalizeText(item.color);
+  const anchorColor = normalizeText(anchor.color);
+  const itemPalette = normalizeText(item.palette);
+  const anchorPalette = normalizeText(anchor.palette);
+  const itemSlot = detectSlotFromItem(item);
+  const anchorSlot = detectSlotFromItem(anchor);
+
+  if (itemSlot === anchorSlot && !["accessory", "bag"].includes(itemSlot)) {
+    return false;
+  }
+
+  let score = 0;
+
+  if (itemColor && anchorColor && itemColor === anchorColor) score += 2;
+  if (itemPalette && anchorPalette && itemPalette === anchorPalette) score += 2;
+
+  if (isNeutralColor(item.color)) score += 1.5;
+
+  const text = `${item.name || ""} ${item.category || ""} ${safeArray(item.tags).join(" ")}`.toLowerCase();
+  if (/classic|basic|staple|minimal|essential/.test(text)) score += 1;
+
+  return score >= 1.5;
+}
+
+function groupCandidatesBySlot(items = [], anchor = {}) {
+  const grouped = {
+    top: [],
+    bottom: [],
+    outer: [],
+    footwear: [],
+    bag: [],
+    accessory: [],
+    onepiece: [],
+    misc: [],
+  };
+
+  for (const item of items) {
+    const slot = detectSlotFromItem(item);
+    if (!grouped[slot]) grouped[slot] = [];
+    grouped[slot].push(item);
+  }
+
+  Object.keys(grouped).forEach((slot) => {
+    grouped[slot] = grouped[slot].sort((a, b) => {
+      const aScore = itemMatchesAnchorContext(a, anchor) ? 1 : 0;
+      const bScore = itemMatchesAnchorContext(b, anchor) ? 1 : 0;
+      if (bScore !== aScore) return bScore - aScore;
+      if ((b.in_closet ? 1 : 0) !== (a.in_closet ? 1 : 0)) return (b.in_closet ? 1 : 0) - (a.in_closet ? 1 : 0);
+      return 0;
+    });
+  });
+
+  return grouped;
+}
+
+function buildAnchorPieceContext(anchorItem = {}) {
+  return {
+    name: anchorItem.name || "Uploaded item",
+    category: anchorItem.category || "",
+    color: anchorItem.color || "",
+    palette: anchorItem.palette || pickPalette(anchorItem.color || ""),
+    silhouette: anchorItem.silhouette || guessSilhouette(`${anchorItem.name || ""} ${anchorItem.category || ""}`),
+    tags: safeArray(anchorItem.tags),
+    slot: detectSlotFromItem(anchorItem),
+    image_url: anchorItem.image_url || "",
+    source: "uploaded_item",
+    in_closet: true,
+    color_options: colorToOptions(anchorItem.color || ""),
+  };
+}
+
+function compactItemsForPrompt(items = [], limit = 60) {
+  return items.slice(0, limit).map((it) => ({
+    idx: String(it.idx || it.id || it.wardrobe_id || ""),
+    name: it.name || "",
+    category: it.category || "",
+    color: Array.isArray(it.color) ? (it.color[0] || "") : (it.color || ""),
+    palette: it.palette || pickPalette(it.color || ""),
+    silhouette: it.silhouette || guessSilhouette(`${it.name || ""} ${it.category || ""}`),
+    source: it.source || "wardrobe",
+    in_closet: !!it.in_closet,
+    slot: detectSlotFromItem(it),
+    tags: safeArray(it.tags).slice(0, 6),
+    color_options: colorToOptions(it.color || ""),
+  }));
+}
+
+
 app.get("/health", (req, res) => {
   res.status(200).json({
     ok: true,
@@ -2018,8 +2217,21 @@ app.get("/staples", async (req, res) => {
 app.post("/wardrobe", limiterWrites, async (req, res) => {
 
   try {
-    let { uid, image_path, image_url, name, editedName, category, editedCategory, color, editedColor, tags } =
-      req.body;
+    let {
+      uid,
+      image_path,
+      image_url,
+      name,
+      editedName,
+      category,
+      editedCategory,
+      color,
+      editedColor,
+      tags,
+      save_to_staples = false,
+      gender = "female",
+      version = "v2",
+    } = req.body;
 
     // Prefer edited values if provided
     name = (editedName ?? name);
@@ -2834,6 +3046,214 @@ async function getUserStyleContext(uid) {
   };
 
 }
+
+
+// ✅ New pivot route: style one uploaded piece into 3 complete looks
+app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
+  try {
+    const {
+      uid,
+      anchor_item,
+      occasion = "",
+      vibe = "",
+      city = "Delhi",
+      gender = "",
+      include_wardrobe = true,
+      include_staples = true,
+      staples_version = "v2",
+    } = req.body || {};
+
+    if (!anchor_item || !anchor_item.name) {
+      return res.status(400).json({
+        error: "anchor_item is required and must include at least name",
+      });
+    }
+
+    let prefs = { gender: "", bodyShape: "", complexion: "", dislikes: [] };
+    let styleSummary = "";
+    let userFeedback = [];
+    let fbSets = null;
+
+    if (uid) {
+      try {
+        const userCtx = await getUserStyleContext(uid);
+        prefs = {
+          gender: userCtx.gender,
+          bodyShape: userCtx.bodyShape,
+          complexion: userCtx.complexion,
+          dislikes: userCtx.dislikes,
+        };
+        styleSummary = userCtx.styleSummary || "";
+        userFeedback = Array.isArray(userCtx.feedbackMemory) ? userCtx.feedbackMemory : [];
+        try {
+          fbSets = await buildFeedbackMemory(db, uid);
+        } catch (e) {
+          fbSets = null;
+        }
+      } catch (e) {
+        console.warn("⚠️ Could not load user style context for /style-piece:", e.message);
+      }
+    }
+
+    const effectiveGender = String(gender || prefs.gender || "female").toLowerCase();
+
+    const anchor = buildAnchorPieceContext({
+      ...anchor_item,
+      category: normalizeCategory(anchor_item.category || "", anchor_item.name || ""),
+      palette: anchor_item.palette || pickPalette(anchor_item.color || ""),
+      silhouette:
+        anchor_item.silhouette ||
+        guessSilhouette(`${anchor_item.name || ""} ${anchor_item.category || ""}`),
+    });
+
+    const weather = await getWeather(city);
+
+    let wardrobeItems = [];
+    if (uid && include_wardrobe) {
+      wardrobeItems = await fetchWardrobeForStyling(uid);
+    }
+
+    let stapleItems = [];
+    if (include_staples) {
+      stapleItems = await fetchStaplesForStyling({
+        gender: effectiveGender,
+        version: staples_version,
+      });
+    }
+
+    const combinedPool = [...wardrobeItems, ...stapleItems];
+    const grouped = groupCandidatesBySlot(combinedPool, anchor);
+
+    const promptPayload = {
+      task: "Style one anchor clothing piece into 3 distinct complete outfit options.",
+      context: {
+        occasion,
+        vibe,
+        city,
+        weather,
+        gender: effectiveGender,
+        bodyShape: prefs.bodyShape || "",
+        complexion: prefs.complexion || "",
+        style_summary: styleSummary,
+      },
+      anchor_item: anchor,
+      wardrobe_candidates: compactItemsForPrompt(wardrobeItems, 40),
+      staple_candidates: compactItemsForPrompt(stapleItems, 40),
+      grouped_candidates: {
+        top: compactItemsForPrompt(grouped.top, 12),
+        bottom: compactItemsForPrompt(grouped.bottom, 12),
+        outer: compactItemsForPrompt(grouped.outer, 12),
+        footwear: compactItemsForPrompt(grouped.footwear, 12),
+        bag: compactItemsForPrompt(grouped.bag, 12),
+        accessory: compactItemsForPrompt(grouped.accessory, 12),
+        onepiece: compactItemsForPrompt(grouped.onepiece, 12),
+      },
+      feedback_memory_recent: userFeedback,
+      feedback_memory_sets: fbSets
+        ? {
+            likedIds: Array.from(fbSets.likedIds || []),
+            dislikedIds: Array.from(fbSets.dislikedIds || []),
+            dislikedColors: Array.from(fbSets.dislikedColors || []),
+            dislikedVibes: Array.from(fbSets.dislikedVibes || []),
+            dislikedOccasions: Array.from(fbSets.dislikedOccasions || []),
+          }
+        : null,
+    };
+
+    const systemPrompt = `
+You are Tina, an expert AI stylist.
+Your job is to style ONE uploaded anchor item into 3 complete outfit options.
+
+CRITICAL RULES:
+1. The anchor_item must appear in ALL 3 outfits.
+2. Use wardrobe candidates first where suitable.
+3. If wardrobe lacks good matches, use staple candidates.
+4. Staples should feel realistic and common, not aspirational or rare.
+5. Each look must be DISTINCT:
+   - Look 1 = safest / easiest / everyday
+   - Look 2 = elevated / polished / social
+   - Look 3 = expressive / slightly more styled / personality-led
+6. Respect weather, occasion, body shape, and comfort.
+7. Prefer breathable, realistic combinations for hot weather.
+8. Do not invent products outside the provided candidates except as color options in notes.
+9. For each piece say whether it comes from uploaded_item, wardrobe, or staple.
+10. If using staples, include flexible color options where helpful.
+
+RETURN ONLY VALID JSON with this exact structure:
+{
+  "outfits": [
+    {
+      "id": "look_1",
+      "title": "string",
+      "direction": "safe|elevated|expressive",
+      "occasion_fit": "string",
+      "why_it_works": "string",
+      "pieces": [
+        {
+          "role": "anchor|top|bottom|outer|footwear|bag|accessory",
+          "source": "uploaded_item|wardrobe|staple",
+          "idx": "string|null",
+          "name": "string",
+          "category": "string",
+          "color": "string",
+          "in_closet": true,
+          "color_options": ["string"]
+        }
+      ],
+      "styling_tips": ["string"]
+    }
+  ]
+}
+`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.35,
+      response_format: { type: "json_object" },
+      max_tokens: 2200,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: JSON.stringify(promptPayload) },
+      ],
+    });
+
+    const raw = response.choices?.[0]?.message?.content || "{}";
+    let parsed;
+
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      console.error("❌ /style-piece JSON parse failed:", e.message);
+      return res.status(500).json({
+        error: "Failed to parse Tina style-piece response",
+        raw,
+      });
+    }
+
+    const outfits = Array.isArray(parsed?.outfits) ? parsed.outfits : [];
+
+    return res.json({
+      success: true,
+      flow: "style-piece",
+      anchor_item: anchor,
+      context: {
+        occasion,
+        vibe,
+        city,
+        weather,
+        gender: effectiveGender,
+      },
+      outfits,
+    });
+  } catch (err) {
+    console.error("❌ /style-piece failed:", err);
+    return res.status(500).json({
+      error: "style-piece failed",
+      message: err?.message || String(err),
+    });
+  }
+});
+
 
 // ─── Updated /suggest-outfit route: tool-calling agent loop ─────────────────
 app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
