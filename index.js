@@ -1250,7 +1250,9 @@ function buildStapleCollectionName(gender = "female", version = "v2") {
 
 async function fetchStaplesForStyling({ gender = "female", version = "v2" } = {}) {
   const col = buildStapleCollectionName(gender, version);
+  console.log("📦 fetchStaplesForStyling: querying collection:", col);
   const snap = await db.collection(col).get();
+  console.log("📦 fetchStaplesForStyling: found", snap.size, "docs in", col);
 
   return snap.docs.map((doc) => {
     const data = doc.data() || {};
@@ -1284,7 +1286,9 @@ async function fetchStaplesForStyling({ gender = "female", version = "v2" } = {}
 }
 
 async function fetchWardrobeForStyling(uid) {
+  console.log("👕 fetchWardrobeForStyling: querying wardrobe for uid:", JSON.stringify(uid));
   const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+  console.log("👕 fetchWardrobeForStyling: found", snap.size, "docs for uid:", uid);
 
   return snap.docs.map((doc) => {
     const data = doc.data() || {};
@@ -3198,18 +3202,19 @@ Your job is to style ONE uploaded anchor item into up to 3 outfit options using 
 
 CRITICAL RULES:
 1. The anchor_item must appear in ALL outfits.
-2. Use wardrobe candidates first where suitable.
-3. ${includeStaples ? "If wardrobe lacks good matches, use staple candidates." : "Do NOT use staple candidates. They are disabled."}
-4. Staples should feel realistic and common, not aspirational or rare.
-5. Each look must be DISTINCT:
+2. You may ONLY use items from the provided wardrobe_candidates and staple_candidates lists. Do NOT invent, fabricate, or imagine any item that is not explicitly listed in those arrays.
+3. Use wardrobe candidates first where suitable.
+4. ${includeStaples ? "If wardrobe lacks good matches, use staple candidates." : "Do NOT use staple candidates. They are disabled. Never output source 'staple'."}
+5. Staples should feel realistic and common, not aspirational or rare.
+6. Each look must be DISTINCT:
    - Look 1 = safest / easiest / everyday
    - Look 2 = elevated / polished / social
    - Look 3 = expressive / slightly more styled / personality-led
-6. Respect weather, occasion, body shape, and comfort.
-7. Prefer breathable, realistic combinations for hot weather.
-8. Do not invent products outside the provided candidates except as color options in notes.
-9. For each piece say whether it comes from uploaded_item, wardrobe, or staple.
+7. Respect weather, occasion, body shape, and comfort.
+8. Prefer breathable, realistic combinations for hot weather.
+9. For each piece, use the exact idx from the candidate list it came from.
 10. ${includeStaples ? "If using staples, include flexible color options where helpful." : "Staples are disabled. Do not reference them."}
+11. If no candidates are available, return outfits with ONLY the anchor item and general styling tips. Do NOT fill in missing roles with invented items.
 
 ${sourceRulesBlock}
 
