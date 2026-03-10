@@ -1,0 +1,512 @@
+Yes — this is a backend bug, not a Postman bug.
+
+Since I cannot see the exact code in this chat right now, I’ll give you the **most likely exact search → replace fixes** that cause this behavior in Node/Express apps like yours.
+
+## Fix 1: boolean flags being forced to `true`
+
+### Search for this
+
+```js
+req.body.include_staples || true
+```
+
+and also search for:
+
+```js
+req.body.include_wardrobe || true
+```
+
+### Replace with this
+
+```js
+req.body.include_staples === undefined ? true : req.body.include_staples === true
+```
+
+and:
+
+```js
+req.body.include_wardrobe === undefined ? true : req.body.include_wardrobe === true
+```
+
+### So the final lines should look like
+
+```js
+const includeStaples =
+  req.body.include_staples === undefined ? true : req.body.include_staples === true;
+
+const includeWardrobe =
+  req.body.include_wardrobe === undefined ? true : req.body.include_wardrobe === true;
+```
+
+### Why
+
+Because this is wrong:
+
+```js
+const includeStaples = req.body.include_staples || true;
+```
+
+If Postman sends `false`, JavaScript turns that into `true`.
+
+---
+
+## Fix 2: hard stop when both are false
+
+Inside your `/style-piece` route, right after you read the body flags:
+
+### Search for route start
+
+```js
+app.post("/style-piece"
+```
+
+### Add this block immediately after your flag variables
+
+```js
+if (!includeWardrobe && !includeStaples) {
+  return res.status(400).json({
+    success: false,
+    error: "No styling sources enabled. Set include_wardrobe or include_staples to true."
+  });
+}
+```
+
+---
+
+## Fix 3: staples pool should only exist when enabled
+
+### Search for
+
+```js
+getStaples
+```
+
+and also search for:
+
+```js
+staplesPool
+```
+
+```js
+const staples
+```
+
+```js
+...staples
+```
+
+### You want the logic to look like this
+
+```js
+let wardrobePool = [];
+let staplesPool = [];
+
+if (includeWardrobe) {
+  wardrobePool = await getWardrobeItemsForUser(uid);
+}
+
+if (includeStaples) {
+  staplesPool = getStaplesForContext({
+    gender,
+    occasion,
+    vibe,
+    weather,
+    city,
+    staplesVersion,
+  });
+}
+
+const sourcePool = [...wardrobePool, ...staplesPool];
+```
+
+### If you currently have something like this, replace it
+
+#### Search
+
+```js
+const sourcePool = [...wardrobePool, ...getStaplesForContext(
+```
+
+#### Replace with
+
+```js
+let sourcePool = [...wardrobePool];
+if (includeStaples) {
+  sourcePool = [
+    ...sourcePool,
+    ...getStaplesForContext({
+      gender,
+      occasion,
+      vibe,
+      weather,
+      city,
+      staplesVersion,
+    }),
+  ];
+}
+```
+
+---
+
+## Fix 4: remove silent staple fallback
+
+This is the second most likely bug.
+
+### Search for all of these one by one
+
+```js
+if (!sourcePool.length)
+```
+
+```js
+if (!matches.length)
+```
+
+```js
+if (!pieces.length)
+```
+
+```js
+fallback
+```
+
+```js
+getStaplesForContext(
+```
+
+```js
+getDefaultStaples(
+```
+
+```js
+staple
+```
+
+You are looking for code that does this kind of thing:
+
+```js
+if (!matches.length) {
+  matches = getStaplesForContext(...);
+}
+```
+
+or
+
+```js
+if (!sourcePool.length) {
+  sourcePool = getStaplesForContext(...);
+}
+```
+
+or
+
+```js
+top = top || stapleTop;
+bottom = bottom || stapleBottom;
+```
+
+### Replace that pattern with guarded logic
+
+```js
+if (!sourcePool.length) {
+  return res.status(400).json({
+    success: false,
+    error: "No eligible styling items found for the selected sources."
+  });
+}
+```
+
+And for role-level fallbacks, replace things like:
+
+#### Search
+
+```js
+top = top || stapleTop;
+bottom = bottom || stapleBottom;
+footwear = footwear || stapleFootwear;
+```
+
+#### Replace with
+
+```js
+if (includeStaples) {
+  top = top || stapleTop;
+  bottom = bottom || stapleBottom;
+  footwear = footwear || stapleFootwear;
+}
+```
+
+---
+
+## Fix 5: prompt is probably still telling OpenAI to complete outfits
+
+Even if JS flags are fixed, the model may still invent staple pieces.
+
+### Search for
+
+```js
+Create 3 outfits
+```
+
+or
+
+```js
+Complete outfit
+```
+
+or
+
+```js
+buildStylePiecePrompt
+```
+
+or
+
+```js
+const prompt =
+```
+
+### Add these exact rules into the prompt
+
+```text
+SOURCE RULES:
+- If include_staples is false, do not use or invent staple items.
+- If include_wardrobe is false, do not use wardrobe items except the provided anchor_item.
+- If both sources are insufficient, return partial outfits rather than inventing missing pieces.
+- Never output any piece with source "staple" when include_staples is false.
+- Never complete a role using an imagined default basic item unless include_staples is true.
+```
+
+If your prompt contains wording like:
+
+```text
+Create 3 complete outfits
+```
+
+replace it with:
+
+```text
+Create up to 3 outfits using only allowed sources. Partial outfits are allowed if source restrictions prevent a complete look.
+```
+
+---
+
+## Fix 6: add a final response safety filter
+
+This gives you one last protection even if the model still returns staples.
+
+### Search for
+
+```js
+return res.json({
+```
+
+Before that response, add this:
+
+```js
+if (!includeStaples) {
+  outfits = outfits.map((outfit) => ({
+    ...outfit,
+    pieces: (outfit.pieces || []).filter((piece) => piece.source !== "staple"),
+  }));
+}
+```
+
+And if you also want to drop wardrobe items when wardrobe is off:
+
+```js
+if (!includeWardrobe) {
+  outfits = outfits.map((outfit) => ({
+    ...outfit,
+    pieces: (outfit.pieces || []).filter(
+      (piece) => piece.source !== "wardrobe"
+    ),
+  }));
+}
+```
+
+Then clean empty looks if needed:
+
+```js
+outfits = outfits.filter((outfit) => (outfit.pieces || []).length > 0);
+```
+
+---
+
+## Fix 7: add debug to prove the live route is updated
+
+### Search for
+
+```js
+return res.json({
+```
+
+### Add this inside the response
+
+```js
+debug: {
+  includeWardrobe,
+  includeStaples,
+  routeVersion: "style-piece-source-fix-v1"
+},
+```
+
+If Postman does not show this, the code you edited is not the code being served.
+
+---
+
+# Exact order to do this in Replit
+
+## 1. Search and replace
+
+Search:
+
+```js
+req.body.include_staples || true
+```
+
+Replace:
+
+```js
+req.body.include_staples === undefined ? true : req.body.include_staples === true
+```
+
+Search:
+
+```js
+req.body.include_wardrobe || true
+```
+
+Replace:
+
+```js
+req.body.include_wardrobe === undefined ? true : req.body.include_wardrobe === true
+```
+
+---
+
+## 2. In `/style-piece`, make sure these lines exist
+
+```js
+const includeStaples =
+  req.body.include_staples === undefined ? true : req.body.include_staples === true;
+
+const includeWardrobe =
+  req.body.include_wardrobe === undefined ? true : req.body.include_wardrobe === true;
+
+if (!includeWardrobe && !includeStaples) {
+  return res.status(400).json({
+    success: false,
+    error: "No styling sources enabled. Set include_wardrobe or include_staples to true."
+  });
+}
+```
+
+---
+
+## 3. Search all fallback staple injections
+
+Search these one by one:
+
+```js
+getStaples
+```
+
+```js
+fallback
+```
+
+```js
+|| staple
+```
+
+```js
+source: "staple"
+```
+
+```js
+complete outfits
+```
+
+Wherever staples are being added, wrap them in:
+
+```js
+if (includeStaples) {
+  // staple logic here
+}
+```
+
+---
+
+## 4. Add final safety filter before response
+
+```js
+if (!includeStaples) {
+  outfits = outfits.map((outfit) => ({
+    ...outfit,
+    pieces: (outfit.pieces || []).filter((piece) => piece.source !== "staple"),
+  }));
+}
+```
+
+---
+
+## 5. Restart backend fully
+
+Not just save. Actually restart the server.
+
+---
+
+## 6. Re-test in Postman with
+
+```json
+"include_wardrobe": false,
+"include_staples": false
+```
+
+### Expected
+
+You should get:
+
+```json
+{
+  "success": false,
+  "error": "No styling sources enabled. Set include_wardrobe or include_staples to true."
+}
+```
+
+Then test:
+
+```json
+"include_wardrobe": true,
+"include_staples": false
+```
+
+### Expected
+
+No piece should have:
+
+```json
+"source": "staple"
+```
+
+---
+
+# If you want the fastest single patch
+
+Paste this near the end of `/style-piece` right before `return res.json(...)`:
+
+```js
+if (!includeStaples) {
+  outfits = (outfits || []).map((outfit) => ({
+    ...outfit,
+    pieces: (outfit.pieces || []).filter((piece) => piece.source !== "staple"),
+  }));
+}
+```
+
+That alone will stop staple items from appearing in the response, even if they are still being generated upstream.
+
+---
+
+If you paste just the `/style-piece` route here, I’ll turn this into exact line-by-line search/replace against your code.
