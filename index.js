@@ -3085,6 +3085,24 @@ function candidateIncludesAnchor(items = [], anchor = {}) {
   });
 }
 
+function mapLookItemsToStylePiecePieces(items = [], anchorHydrated = {}) {
+  return items.map((it) => {
+    const isAnchor = it.is_anchor || it.source === "uploaded_item" ||
+      String(it.id || it.wardrobe_id || it.idx || "") === String(anchorHydrated.id || "");
+    const slot = getSlot(it);
+    return {
+      role: isAnchor ? "anchor" : (slot === "dress" ? "onepiece" : slot),
+      source: isAnchor ? "uploaded_item" : (it.source || "wardrobe"),
+      idx: String(it.id || it.wardrobe_id || it.idx || ""),
+      name: it.name || "Unnamed",
+      category: it.category || "",
+      color: Array.isArray(it.color) ? it.color[0] || "" : (it.color || ""),
+      in_closet: it.in_closet !== false,
+      color_options: [],
+    };
+  });
+}
+
 // ✅ New pivot route: style one uploaded piece into 3 complete looks
 app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
   try {
