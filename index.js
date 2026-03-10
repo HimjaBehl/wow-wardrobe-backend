@@ -104,7 +104,7 @@ app.use(
   })
 );
 
-app.options("{*path}", cors());
+app.options("*", cors());
 // Hard lock: do NOT change Tina's picked items at all
 const STRICT_ITEMS = true;
 
@@ -3064,6 +3064,39 @@ async function getUserStyleContext(uid) {
 
 }
 
+function anchorIdOf(anchor = {}) {
+  return String(anchor.id || anchor.wardrobe_id || anchor.idx || "anchor_uploaded");
+}
+
+function candidateIncludesAnchor(items = [], anchor = {}) {
+  const aid = anchorIdOf(anchor);
+  return items.some((it) => {
+    const id = String(it.id || it.wardrobe_id || it.idx || "");
+    const sameId = id === aid;
+    const sameUrl =
+      !!anchor.image_url &&
+      !!it.image_url &&
+      normalizeUrlForMatch(anchor.image_url) === normalizeUrlForMatch(it.image_url);
+    const sameName =
+      normalizeText(it.name || "") === normalizeText(anchor.name || "");
+    return sameId || sameUrl || sameName;
+  });
+}
+
+function candidateIncludesAnchor(items = [], anchor = {}) {
+  const aid = anchorIdOf(anchor);
+  return items.some((it) => {
+    const id = String(it.id || it.wardrobe_id || it.idx || "");
+    const sameId = id === aid;
+    const sameUrl =
+      !!anchor.image_url &&
+      !!it.image_url &&
+      normalizeUrlForMatch(anchor.image_url) === normalizeUrlForMatch(it.image_url);
+    const sameName =
+      normalizeText(it.name || "") === normalizeText(anchor.name || "");
+    return sameId || sameUrl || sameName;
+  });
+}
 
 // ✅ New pivot route: style one uploaded piece into 3 complete looks
 app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
@@ -3156,135 +3189,155 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       console.warn("⚠️ /style-piece: Pool is empty (wardrobe:", wardrobeItems.length, "staples:", stapleItems.length, "). Proceeding with anchor only.");
     }
 
-    const grouped = groupCandidatesBySlot(combinedPool, anchor);
-
-    const promptPayload = {
-      task: "Style one anchor clothing piece into up to 3 outfit options using only allowed sources. Partial outfits are allowed if source restrictions prevent a complete look.",
-      context: {
-        occasion,
-        vibe,
-        city,
-        weather,
-        gender: effectiveGender,
-        bodyShape: prefs.bodyShape || "",
-        complexion: prefs.complexion || "",
-        style_summary: styleSummary,
-      },
-      anchor_item: anchor,
-      wardrobe_candidates: includeWardrobe ? compactItemsForPrompt(wardrobeItems, 40) : [],
-      staple_candidates: includeStaples ? compactItemsForPrompt(stapleItems, 40) : [],
-      grouped_candidates: {
-        top: compactItemsForPrompt(grouped.top, 12),
-        bottom: compactItemsForPrompt(grouped.bottom, 12),
-        outer: compactItemsForPrompt(grouped.outer, 12),
-        footwear: compactItemsForPrompt(grouped.footwear, 12),
-        bag: compactItemsForPrompt(grouped.bag, 12),
-        accessory: compactItemsForPrompt(grouped.accessory, 12),
-        onepiece: compactItemsForPrompt(grouped.onepiece, 12),
-      },
-      feedback_memory_recent: userFeedback,
-      feedback_memory_sets: fbSets
-        ? {
-            likedIds: Array.from(fbSets.likedIds || []),
-            dislikedIds: Array.from(fbSets.dislikedIds || []),
-            dislikedColors: Array.from(fbSets.dislikedColors || []),
-            dislikedVibes: Array.from(fbSets.dislikedVibes || []),
-            dislikedOccasions: Array.from(fbSets.dislikedOccasions || []),
-          }
-        : null,
+    const anchorHydrated = {
+      ...hydrateWardrobeItem({
+        uid: uid || "style-piece",
+        name: anchor.name || "Uploaded item",
+        primaryTag: anchor.name || "Uploaded item",
+        category: normalizeCategory(anchor.category || "", anchor.name || ""),
+        color: anchor.color || "",
+        image_url: anchor.image_url || "",
+        tags: Array.isArray(anchor.tags) ? anchor.tags : [],
+        taxonomyPath: mapTaxonomy(
+          normalizeCategory(anchor.category || "", anchor.name || "")
+        ),
+        silhouette:
+          anchor.silhouette ||
+          guessSilhouette(`${anchor.name || ""} ${anchor.category || ""}`),
+        palette: anchor.palette || pickPalette(anchor.color || ""),
+      }),
+      id: anchorIdOf(anchor),
+      wardrobe_id: anchorIdOf(anchor),
+      idx: anchorIdOf(anchor),
+      source: "uploaded_item",
+      in_closet: true,
+      is_anchor: true,
     };
 
-    const sourceRules = [];
-    if (!includeStaples) {
-      sourceRules.push("- NEVER output any item with source 'staple'. Do not invent or use staple items under any circumstances.");
-      sourceRules.push("- Do not complete an outfit role using an imagined default basic item.");
-    }
-    if (!includeWardrobe) {
-      sourceRules.push("- Do not use wardrobe items except the provided anchor_item.");
-    }
-    sourceRules.push("- If sources are insufficient, return partial outfits rather than inventing missing pieces.");
+    const stylePool = [
+      anchorHydrated,
+      ...combinedPool.filter((it) => {
+        const id = String(it.id || it.wardrobe_id || it.idx || "");
+        return id !== anchorIdOf(anchorHydrated);
+      }),
+    ];
 
-    const sourceRulesBlock = `
-SOURCE RULES (STRICT — override all other rules):
-${sourceRules.join("\n")}
-`;
+    const pools = buildSlotPools(stylePool);
 
-    const systemPrompt = `
-You are Tina, an expert AI stylist.
-Your job is to style ONE uploaded anchor item into up to 3 outfit options using only allowed sources.
-
-CRITICAL RULES:
-1. The anchor_item must appear in ALL outfits.
-2. You may ONLY use items from the provided wardrobe_candidates and staple_candidates lists. Do NOT invent, fabricate, or imagine any item that is not explicitly listed in those arrays.
-3. Use wardrobe candidates first where suitable.
-4. ${includeStaples ? "If wardrobe lacks good matches, use staple candidates." : "Do NOT use staple candidates. They are disabled. Never output source 'staple'."}
-5. Staples should feel realistic and common, not aspirational or rare.
-6. Each look must be DISTINCT:
-   - Look 1 = safest / easiest / everyday
-   - Look 2 = elevated / polished / social
-   - Look 3 = expressive / slightly more styled / personality-led
-7. Respect weather, occasion, body shape, and comfort.
-8. Prefer breathable, realistic combinations for hot weather.
-9. For each piece, use the exact idx from the candidate list it came from.
-10. ${includeStaples ? "If using staples, include flexible color options where helpful." : "Staples are disabled. Do not reference them."}
-11. If no candidates are available, return outfits with ONLY the anchor item and general styling tips. Do NOT fill in missing roles with invented items.
-
-${sourceRulesBlock}
-
-Partial outfits are acceptable if source restrictions prevent a complete look.
-
-RETURN ONLY VALID JSON with this exact structure:
-{
-  "outfits": [
-    {
-      "id": "look_1",
-      "title": "string",
-      "direction": "safe|elevated|expressive",
-      "occasion_fit": "string",
-      "why_it_works": "string",
-      "pieces": [
-        {
-          "role": "anchor|top|bottom|outer|footwear|bag|accessory",
-          "source": "uploaded_item|wardrobe|staple",
-          "idx": "string|null",
-          "name": "string",
-          "category": "string",
-          "color": "string",
-          "in_closet": true,
-          "color_options": ["string"]
-        }
-      ],
-      "styling_tips": ["string"]
-    }
-  ]
-}
-`;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.35,
-      response_format: { type: "json_object" },
-      max_tokens: 2200,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: JSON.stringify(promptPayload) },
-      ],
+    let candidates = generateCandidates(pools, 60, {
+      preferNeutralAcc: true,
     });
 
-    const raw = response.choices?.[0]?.message?.content || "{}";
-    let parsed;
+    candidates = candidates
+      .map((items) => {
+        const withAnchor = candidateIncludesAnchor(items, anchorHydrated)
+          ? items
+          : [anchorHydrated, ...items.filter((it) => !it.is_anchor)];
 
+        return forceCompleteLook(withAnchor, stylePool, {
+          gender: effectiveGender,
+          occasion,
+        });
+      })
+      .filter((items) => candidateIncludesAnchor(items, anchorHydrated));
+
+    const taste = uid ? await getTasteWeights(db, uid) : null;
+
+    const scored = candidates
+      .map((items) => ({
+        items,
+        score: scoreLook(items, {
+          gender: effectiveGender,
+          occasion,
+          vibe,
+          weather,
+        }, taste),
+      }))
+      .sort((a, b) => b.score - a.score);
+
+    const topCandidates = scored.slice(0, 12).map((x) => x.items);
+
+    let llmPicked = null;
     try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      console.error("❌ /style-piece JSON parse failed:", e.message);
-      return res.status(500).json({
-        error: "Failed to parse Tina style-piece response",
-        raw,
+      llmPicked = await rerankWithLLM({
+        candidates: topCandidates,
+        wardrobePreview: stylePool,
+        ctx: {
+          occasion,
+          vibe,
+          weather,
+          gender: effectiveGender,
+        },
       });
+    } catch (e) {
+      console.warn("⚠️ rerankWithLLM failed in /style-piece:", e.message);
     }
 
-    let outfits = Array.isArray(parsed?.outfits) ? parsed.outfits : [];
+    let finalCandidateLooks = [];
+
+    if (llmPicked) {
+      try {
+        const parsedPick = JSON.parse(llmPicked);
+        const pickedOutfits = Array.isArray(parsedPick?.outfits)
+          ? parsedPick.outfits
+          : [];
+
+        finalCandidateLooks = pickedOutfits.map((look, idx) => {
+          const pickedItems = (look.items || [])
+            .map((ref) => {
+              const rid = String(ref.idx || "");
+              return stylePool.find(
+                (it) => String(it.id || it.wardrobe_id || it.idx || "") === rid
+              );
+            })
+            .filter(Boolean);
+
+          const ensured =
+            candidateIncludesAnchor(pickedItems, anchorHydrated)
+              ? pickedItems
+              : [anchorHydrated, ...pickedItems];
+
+          return {
+            id: look.id || `look_${idx + 1}`,
+            title: look.title || `Look ${idx + 1}`,
+            direction:
+              idx === 0 ? "safe" : idx === 1 ? "elevated" : "expressive",
+            occasion_fit: occasion || "Styled for your context",
+            why_it_works: look.style_note || look.why_it_works || "Styled around your anchor piece.",
+            pieces: mapLookItemsToStylePiecePieces(ensured, anchorHydrated),
+            styling_tips: [],
+          };
+        });
+      } catch (e) {
+        console.warn("⚠️ Failed to parse rerankWithLLM result:", e.message);
+      }
+    }
+
+    if (!finalCandidateLooks.length) {
+      finalCandidateLooks = scored.slice(0, 3).map((entry, idx) => ({
+        id: `look_${idx + 1}`,
+        title:
+          idx === 0 ? "Easy Everyday Look" :
+          idx === 1 ? "Elevated Look" :
+          "Expressive Look",
+        direction:
+          idx === 0 ? "safe" :
+          idx === 1 ? "elevated" :
+          "expressive",
+        occasion_fit: occasion || "Styled for your context",
+        why_it_works:
+          idx === 0
+            ? "A reliable, balanced outfit built around your selected piece."
+            : idx === 1
+              ? "A more polished version anchored by your selected piece."
+              : "A more expressive styling direction built around your selected piece.",
+        pieces: mapLookItemsToStylePiecePieces(entry.items, anchorHydrated),
+        styling_tips: [],
+      }));
+    }
+
+    let outfits = finalCandidateLooks;
+
 
     if (!includeStaples) {
       outfits = outfits.map((outfit) => ({
@@ -3360,7 +3413,7 @@ RETURN ONLY VALID JSON with this exact structure:
         includeStaples,
         wardrobePoolCount: wardrobeItems.length,
         staplesPoolCount: stapleItems.length,
-        routeVersion: "style-piece-source-fix-v1",
+        routeVersion: "style-piece-tina-engine-v2",
       },
     });
   } catch (err) {
