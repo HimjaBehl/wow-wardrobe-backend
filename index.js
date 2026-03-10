@@ -3289,6 +3289,36 @@ RETURN ONLY VALID JSON with this exact structure:
       }));
     }
 
+    function normalizePieceRole(piece) {
+      if (piece.role === "anchor" || piece.source === "uploaded_item") return piece;
+      const cat = (piece.category || "").toLowerCase();
+      let correctedRole = piece.role;
+      if (/dress|jumpsuit|romper|one\s?piece|playsuit|saree|sari|gown|kaftan/.test(cat)) {
+        correctedRole = "onepiece";
+      } else if (/\bbag\b|purse|clutch|tote|handbag|backpack|satchel|crossbody/.test(cat)) {
+        correctedRole = "bag";
+      } else if (/shoe|sneaker|boot|sandal|heel|footwear|slipper|loafer|mule|flat|pump|oxford|espadrille/.test(cat)) {
+        correctedRole = "footwear";
+      } else if (/pant|jeans|skirt|short|trouser|legging|palazzo|chino|cargo\s?pant|culottes/.test(cat)) {
+        correctedRole = "bottom";
+      } else if (/\bshirt\b|blouse|tee\b|t-shirt|\btop\b|tank|crop|cami|polo|henley|tunic|kurta|bustier|corset|bodysuit/.test(cat)) {
+        correctedRole = "top";
+      } else if (/jacket|coat|blazer|cardigan|hoodie|sweater|shrug|vest|poncho|windbreaker|parka|overcoat|trench/.test(cat)) {
+        correctedRole = "outer";
+      } else if (/earring|necklace|bracelet|ring|watch|scarf|hat|belt|sunglasses|accessory|jewel|tiara|brooch|hair\s?clip|bandana/.test(cat)) {
+        correctedRole = "accessory";
+      }
+      if (correctedRole !== piece.role) {
+        console.log("🔄 Role normalized:", piece.name, "category:", piece.category, "role:", piece.role, "→", correctedRole);
+      }
+      return { ...piece, role: correctedRole };
+    }
+
+    outfits = outfits.map((outfit) => ({
+      ...outfit,
+      pieces: (outfit.pieces || []).map(normalizePieceRole),
+    }));
+
     outfits = outfits.filter((outfit) => (outfit.pieces || []).length > 0);
 
     console.log("🎯 /style-piece result:", {
