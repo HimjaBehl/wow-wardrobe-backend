@@ -104,7 +104,7 @@ app.use(
   })
 );
 
-app.options("*", cors());
+app.options("{*path}", cors());
 // Hard lock: do NOT change Tina's picked items at all
 const STRICT_ITEMS = true;
 
@@ -3068,20 +3068,7 @@ function anchorIdOf(anchor = {}) {
   return String(anchor.id || anchor.wardrobe_id || anchor.idx || "anchor_uploaded");
 }
 
-function candidateIncludesAnchor(items = [], anchor = {}) {
-  const aid = anchorIdOf(anchor);
-  return items.some((it) => {
-    const id = String(it.id || it.wardrobe_id || it.idx || "");
-    const sameId = id === aid;
-    const sameUrl =
-      !!anchor.image_url &&
-      !!it.image_url &&
-      normalizeUrlForMatch(anchor.image_url) === normalizeUrlForMatch(it.image_url);
-    const sameName =
-      normalizeText(it.name || "") === normalizeText(anchor.name || "");
-    return sameId || sameUrl || sameName;
-  });
-}
+
 
 function candidateIncludesAnchor(items = [], anchor = {}) {
   const aid = anchorIdOf(anchor);
