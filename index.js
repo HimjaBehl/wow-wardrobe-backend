@@ -92,6 +92,19 @@ import cors from "cors";
 
 const app = express();
 
+app.use(
+  cors({
+    origin: [
+      "https://wow-wardrobe-ui-himjabehl.replit.app",
+      "http://localhost:5173",
+      "http://localhost:3000"
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  })
+);
+
+app.options("{*path}", cors());
 // Hard lock: do NOT change Tina's picked items at all
 const STRICT_ITEMS = true;
 
