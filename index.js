@@ -5179,7 +5179,7 @@ app.get("/debug-combo-stats", async (req, res) => {
 });
 app.get("/version", (req, res) => {
   res.json({
-    build: "PLANOUTFIT_FIX_v1",
+    build: "style-piece-source-fix-v3",
     entry: "index.js",
     time: new Date().toISOString()
   });
