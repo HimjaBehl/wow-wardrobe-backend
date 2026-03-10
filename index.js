@@ -3136,13 +3136,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     const combinedPool = [...wardrobeItems, ...stapleItems];
 
     if (!combinedPool.length) {
-      if (!includeWardrobe || !includeStaples) {
-        return res.status(400).json({
-          success: false,
-          error: "No eligible styling items found for the selected sources."
-        });
-      }
-      console.warn("⚠️ /style-piece: Both sources enabled but pool is empty. Proceeding with anchor only.");
+      console.warn("⚠️ /style-piece: Pool is empty (wardrobe:", wardrobeItems.length, "staples:", stapleItems.length, "). Proceeding with anchor only.");
     }
 
     const grouped = groupCandidatesBySlot(combinedPool, anchor);
