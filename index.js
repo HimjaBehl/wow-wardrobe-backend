@@ -3058,10 +3058,20 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       vibe = "",
       city = "Delhi",
       gender = "",
-      include_wardrobe = true,
-      include_staples = true,
       staples_version = "v2",
     } = req.body || {};
+
+    const includeWardrobe = req.body.include_wardrobe === undefined ? true : req.body.include_wardrobe === true;
+    const includeStaples = req.body.include_staples === undefined ? true : req.body.include_staples === true;
+
+    console.log("🎯 /style-piece flags:", { includeWardrobe, includeStaples });
+
+    if (!includeWardrobe && !includeStaples) {
+      return res.status(400).json({
+        success: false,
+        error: "No styling sources enabled. Set include_wardrobe or include_staples to true."
+      });
+    }
 
     if (!anchor_item || !anchor_item.name) {
       return res.status(400).json({
@@ -3109,23 +3119,33 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     const weather = await getWeather(city);
 
     let wardrobeItems = [];
-    if (uid && include_wardrobe) {
+    if (uid && includeWardrobe) {
       wardrobeItems = await fetchWardrobeForStyling(uid);
     }
 
     let stapleItems = [];
-    if (include_staples) {
+    if (includeStaples) {
       stapleItems = await fetchStaplesForStyling({
         gender: effectiveGender,
         version: staples_version,
       });
     }
 
+    console.log("🎯 /style-piece pools:", { wardrobeCount: wardrobeItems.length, staplesCount: stapleItems.length });
+
     const combinedPool = [...wardrobeItems, ...stapleItems];
+
+    if (!combinedPool.length) {
+      return res.status(400).json({
+        success: false,
+        error: "No eligible styling items found for the selected sources."
+      });
+    }
+
     const grouped = groupCandidatesBySlot(combinedPool, anchor);
 
     const promptPayload = {
-      task: "Style one anchor clothing piece into 3 distinct complete outfit options.",
+      task: "Style one anchor clothing piece into up to 3 outfit options using only allowed sources. Partial outfits are allowed if source restrictions prevent a complete look.",
       context: {
         occasion,
         vibe,
@@ -3137,8 +3157,8 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         style_summary: styleSummary,
       },
       anchor_item: anchor,
-      wardrobe_candidates: compactItemsForPrompt(wardrobeItems, 40),
-      staple_candidates: compactItemsForPrompt(stapleItems, 40),
+      wardrobe_candidates: includeWardrobe ? compactItemsForPrompt(wardrobeItems, 40) : [],
+      staple_candidates: includeStaples ? compactItemsForPrompt(stapleItems, 40) : [],
       grouped_candidates: {
         top: compactItemsForPrompt(grouped.top, 12),
         bottom: compactItemsForPrompt(grouped.bottom, 12),
@@ -3160,14 +3180,29 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         : null,
     };
 
+    const sourceRules = [];
+    if (!includeStaples) {
+      sourceRules.push("- NEVER output any item with source 'staple'. Do not invent or use staple items under any circumstances.");
+      sourceRules.push("- Do not complete an outfit role using an imagined default basic item.");
+    }
+    if (!includeWardrobe) {
+      sourceRules.push("- Do not use wardrobe items except the provided anchor_item.");
+    }
+    sourceRules.push("- If sources are insufficient, return partial outfits rather than inventing missing pieces.");
+
+    const sourceRulesBlock = `
+SOURCE RULES (STRICT — override all other rules):
+${sourceRules.join("\n")}
+`;
+
     const systemPrompt = `
 You are Tina, an expert AI stylist.
-Your job is to style ONE uploaded anchor item into 3 complete outfit options.
+Your job is to style ONE uploaded anchor item into up to 3 outfit options using only allowed sources.
 
 CRITICAL RULES:
-1. The anchor_item must appear in ALL 3 outfits.
+1. The anchor_item must appear in ALL outfits.
 2. Use wardrobe candidates first where suitable.
-3. If wardrobe lacks good matches, use staple candidates.
+3. ${includeStaples ? "If wardrobe lacks good matches, use staple candidates." : "Do NOT use staple candidates. They are disabled."}
 4. Staples should feel realistic and common, not aspirational or rare.
 5. Each look must be DISTINCT:
    - Look 1 = safest / easiest / everyday
@@ -3177,7 +3212,11 @@ CRITICAL RULES:
 7. Prefer breathable, realistic combinations for hot weather.
 8. Do not invent products outside the provided candidates except as color options in notes.
 9. For each piece say whether it comes from uploaded_item, wardrobe, or staple.
-10. If using staples, include flexible color options where helpful.
+10. ${includeStaples ? "If using staples, include flexible color options where helpful." : "Staples are disabled. Do not reference them."}
+
+${sourceRulesBlock}
+
+Partial outfits are acceptable if source restrictions prevent a complete look.
 
 RETURN ONLY VALID JSON with this exact structure:
 {
@@ -3230,7 +3269,34 @@ RETURN ONLY VALID JSON with this exact structure:
       });
     }
 
-    const outfits = Array.isArray(parsed?.outfits) ? parsed.outfits : [];
+    let outfits = Array.isArray(parsed?.outfits) ? parsed.outfits : [];
+
+    if (!includeStaples) {
+      outfits = outfits.map((outfit) => ({
+        ...outfit,
+        pieces: (outfit.pieces || []).filter((piece) => piece.source !== "staple"),
+      }));
+    }
+
+    if (!includeWardrobe) {
+      outfits = outfits.map((outfit) => ({
+        ...outfit,
+        pieces: (outfit.pieces || []).filter(
+          (piece) => piece.source !== "wardrobe"
+        ),
+      }));
+    }
+
+    outfits = outfits.filter((outfit) => (outfit.pieces || []).length > 0);
+
+    console.log("🎯 /style-piece result:", {
+      includeWardrobe,
+      includeStaples,
+      wardrobePoolCount: wardrobeItems.length,
+      staplesPoolCount: stapleItems.length,
+      outfitCount: outfits.length,
+      pieceSources: outfits.map(o => (o.pieces || []).map(p => p.source)),
+    });
 
     return res.json({
       success: true,
@@ -3244,6 +3310,13 @@ RETURN ONLY VALID JSON with this exact structure:
         gender: effectiveGender,
       },
       outfits,
+      debug: {
+        includeWardrobe,
+        includeStaples,
+        wardrobePoolCount: wardrobeItems.length,
+        staplesPoolCount: stapleItems.length,
+        routeVersion: "style-piece-source-fix-v1",
+      },
     });
   } catch (err) {
     console.error("❌ /style-piece failed:", err);
