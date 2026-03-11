@@ -3591,8 +3591,21 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         occasion,
       });
     })
-    .filter((items) => candidateIncludesAnchor(items, anchorHydrated))
-    .filter((items) => !hasConflictingSilhouette(items));
+      .filter((items) => candidateIncludesAnchor(items, anchorHydrated))
+      .filter((items) => !hasConflictingSilhouette(items))
+      .filter((items) => {
+        const weatherText = String(weather || "").toLowerCase();
+        const hot =
+          /\b(2[8-9]|3[0-9]|4[0-9])°c\b/.test(weatherText) ||
+          /hot|warm|haze|humid/.test(weatherText);
+
+        if (!hot) return true;
+
+        return !items.some((it) => {
+          const v = `${it?.name || ""} ${it?.category || ""}`.toLowerCase();
+          return /sweater|hoodie|pullover|heavy jacket|coat|trench|cardigan|blazer/.test(v);
+        });
+      });
 
     const taste = uid ? await getTasteWeights(db, uid) : null;
 
@@ -3613,7 +3626,73 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       }))
       .sort((a, b) => b.score - a.score);
 
-    const topCandidates = scored.slice(0, 20).map((x) => x.items);
+    function getItemId(it) {
+      return String(it?.id || it?.wardrobe_id || it?.idx || "");
+    }
+
+    function slotMap(items = []) {
+      const map = {};
+      for (const it of items) {
+        const slot = detectSlotFromItem(it);
+        map[slot] = getItemId(it);
+      }
+      return map;
+    }
+
+    function overlapCount(a = [], b = []) {
+      const aIds = new Set(a.map(getItemId).filter(Boolean));
+      const bIds = new Set(b.map(getItemId).filter(Boolean));
+      let count = 0;
+      for (const id of aIds) {
+        if (bIds.has(id)) count++;
+      }
+      return count;
+    }
+
+    function sameCoreCombo(a = [], b = []) {
+      const sa = slotMap(a);
+      const sb = slotMap(b);
+      const keys = ["top", "bottom", "footwear", "bag", "outer", "onepiece"];
+      let same = 0;
+      for (const key of keys) {
+        if (sa[key] && sb[key] && sa[key] === sb[key]) same++;
+      }
+      return same >= 3;
+    }
+
+    function pickDiverseLooks(scoredLooks = [], limit = 20) {
+      const picked = [];
+
+      for (const candidate of scoredLooks) {
+        const items = candidate.items || [];
+
+        const tooSimilar = picked.some((prev) => {
+          const prevItems = prev.items || [];
+          return (
+            sameCoreCombo(items, prevItems) ||
+            overlapCount(items, prevItems) >= 3
+          );
+        });
+
+        if (!tooSimilar) {
+          picked.push(candidate);
+        }
+
+        if (picked.length >= limit) break;
+      }
+
+      if (picked.length < limit) {
+        for (const candidate of scoredLooks) {
+          if (picked.includes(candidate)) continue;
+          picked.push(candidate);
+          if (picked.length >= limit) break;
+        }
+      }
+
+      return picked;
+    }
+    const diverseScored = pickDiverseLooks(scored, 20);
+    const topCandidates = diverseScored.map((x) => x.items);
 
     function lookSignature(items = []) {
       return items
@@ -3667,16 +3746,8 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
 
           return {
             id: look.id || `look_${idx + 1}`,
-            title:
-              look.title ||
-              (idx === 0
-                ? "Easy Everyday Look"
-                : idx === 1
-                  ? "Elevated Look"
-                  : "Expressive Look"),
-            direction:
-              look.direction ||
-              (idx === 0 ? "safe" : idx === 1 ? "elevated" : "expressive"),
+            title: look.title || `Look ${idx + 1}`,
+            direction: look.direction || "alternate",
             occasion_fit:
               look.occasion_fit || occasion || "Styled for your context",
             why_it_works:
@@ -3694,28 +3765,27 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       }
     }
 
+    function pieceSignatureFromPieces(pieces = []) {
+      return pieces
+        .map((p) => `${String(p.role || "")}:${String(p.idx || p.name || "")}`)
+        .sort()
+        .join("|");
+    }
     // ✅ Backfill to 3 looks if LLM returned fewer
     if (finalCandidateLooks.length < 3) {
       const usedSignatures = new Set(
         finalCandidateLooks.map((look) =>
-          JSON.stringify(
-            (look.pieces || [])
-              .map((p) => String(p.idx || p.name || ""))
-              .sort(),
-          ),
+          pieceSignatureFromPieces(look.pieces || []),
         ),
       );
 
-      const fallbackLooks = scored
-        .slice(0, 12)
+      const fallbackLooks = pickDiverseLooks(scored, 12)
         .map((entry, idx) => {
           const pieces = mapLookItemsToStylePiecePieces(
             entry.items,
             anchorHydrated,
           );
-          const signature = JSON.stringify(
-            pieces.map((p) => String(p.idx || p.name || "")).sort(),
-          );
+          const signature = pieceSignatureFromPieces(pieces);
           return { entry, idx, pieces, signature };
         })
         .filter((x) => !usedSignatures.has(x.signature))
@@ -3724,21 +3794,10 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
           const idx = finalCandidateLooks.length + addIdx;
           return {
             id: `look_${idx + 1}`,
-            title:
-              idx === 0
-                ? "Easy Everyday Look"
-                : idx === 1
-                  ? "Elevated Look"
-                  : "Expressive Look",
-            direction:
-              idx === 0 ? "safe" : idx === 1 ? "elevated" : "expressive",
-            occasion_fit: occasion || "Styled for your context",
+            title: `Look ${idx + 1}`,
+            direction: "alternate",
             why_it_works:
-              idx === 0
-                ? "A reliable, balanced outfit built around your selected piece."
-                : idx === 1
-                  ? "A more polished version anchored by your selected piece."
-                  : "A more expressive styling direction built around your selected piece.",
+              "A wearable styling option built around your selected piece.",
             pieces: x.pieces,
             styling_tips: [],
           };
@@ -3751,20 +3810,10 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     if (!finalCandidateLooks.length) {
       finalCandidateLooks = scored.slice(0, 3).map((entry, idx) => ({
         id: `look_${idx + 1}`,
-        title:
-          idx === 0
-            ? "Easy Everyday Look"
-            : idx === 1
-              ? "Elevated Look"
-              : "Expressive Look",
-        direction: idx === 0 ? "safe" : idx === 1 ? "elevated" : "expressive",
-        occasion_fit: occasion || "Styled for your context",
+        title: `Look ${idx + 1}`,
+        direction: "alternate",
         why_it_works:
-          idx === 0
-            ? "A reliable, balanced outfit built around your selected piece."
-            : idx === 1
-              ? "A more polished version anchored by your selected piece."
-              : "A more expressive styling direction built around your selected piece.",
+          "A wearable styling option built around your selected piece.",
         pieces: mapLookItemsToStylePiecePieces(entry.items, anchorHydrated),
         styling_tips: [],
       }));
