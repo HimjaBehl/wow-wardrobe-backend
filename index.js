@@ -1608,6 +1608,239 @@ function buildAnchorPieceContext(anchorItem = {}) {
   };
 }
 
+function getItemIdSafe(it = {}) {
+  return String(it.id || it.wardrobe_id || it.idx || "");
+}
+
+function uniqueById(items = []) {
+  const seen = new Set();
+  return items.filter((it) => {
+    const id = getItemIdSafe(it);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+function pickBestFromSlot(items = [], anchor = {}, opts = {}) {
+  const {
+    preferNeutral = false,
+    excludeIds = new Set(),
+  } = opts;
+
+  const filtered = (items || []).filter((it) => {
+    const id = getItemIdSafe(it);
+    return id && !excludeIds.has(id);
+  });
+
+  if (!filtered.length) return null;
+
+  const scored = filtered
+    .map((it) => {
+      let score = 0;
+
+      if (itemMatchesAnchorContext(it, anchor)) score += 4;
+      if (it.in_closet) score += 2;
+      if (preferNeutral && isNeutralColor(it.color)) score += 1.5;
+
+      const text =
+        `${it.name || ""} ${it.category || ""} ${(it.tags || []).join(" ")}`.toLowerCase();
+
+      if (/classic|basic|staple|minimal|essential/.test(text)) score += 1;
+
+      return { it, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.it || null;
+}
+
+function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
+  const {
+    gender = "",
+    occasion = "",
+    count = 24,
+  } = opts;
+
+  const grouped = groupCandidatesBySlot(pool, anchor);
+  const anchorSlot = detectSlotFromItem(anchor);
+  const looks = [];
+
+  function addOptional(baseItems, excludeIds) {
+    const out = [...baseItems];
+
+    const maybeOuter =
+      anchorSlot !== "outer"
+        ? pickBestFromSlot(grouped.outer, anchor, { excludeIds, preferNeutral: true })
+        : null;
+
+    const maybeBag =
+      anchorSlot !== "bag"
+        ? pickBestFromSlot(grouped.bag, anchor, { excludeIds, preferNeutral: true })
+        : null;
+
+    const maybeAccessory =
+      anchorSlot !== "accessory"
+        ? pickBestFromSlot(grouped.accessory, anchor, { excludeIds, preferNeutral: true })
+        : null;
+
+    if (maybeOuter) {
+      out.push(maybeOuter);
+      excludeIds.add(getItemIdSafe(maybeOuter));
+    }
+    if (maybeBag) {
+      out.push(maybeBag);
+      excludeIds.add(getItemIdSafe(maybeBag));
+    }
+    if (maybeAccessory) {
+      out.push(maybeAccessory);
+      excludeIds.add(getItemIdSafe(maybeAccessory));
+    }
+
+    return out;
+  }
+
+  for (let i = 0; i < count; i++) {
+    const excludeIds = new Set([getItemIdSafe(anchor)]);
+    let items = [anchor];
+
+    if (anchorSlot === "top") {
+      const bottom = pickBestFromSlot(grouped.bottom, anchor, { excludeIds, preferNeutral: true });
+      if (bottom) {
+        items.push(bottom);
+        excludeIds.add(getItemIdSafe(bottom));
+      }
+
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      if (footwear) {
+        items.push(footwear);
+        excludeIds.add(getItemIdSafe(footwear));
+      }
+
+      items = addOptional(items, excludeIds);
+    }
+
+    else if (anchorSlot === "bottom") {
+      const top = pickBestFromSlot(grouped.top, anchor, { excludeIds, preferNeutral: true });
+      if (top) {
+        items.push(top);
+        excludeIds.add(getItemIdSafe(top));
+      }
+
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      if (footwear) {
+        items.push(footwear);
+        excludeIds.add(getItemIdSafe(footwear));
+      }
+
+      items = addOptional(items, excludeIds);
+    }
+
+    else if (anchorSlot === "onepiece") {
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      if (footwear) {
+        items.push(footwear);
+        excludeIds.add(getItemIdSafe(footwear));
+      }
+
+      items = addOptional(items, excludeIds);
+    }
+
+    else if (anchorSlot === "footwear") {
+      const useOnePiece = grouped.onepiece.length > 0 && Math.random() < 0.35;
+
+      if (useOnePiece) {
+        const onepiece = pickBestFromSlot(grouped.onepiece, anchor, { excludeIds });
+        if (onepiece) {
+          items.push(onepiece);
+          excludeIds.add(getItemIdSafe(onepiece));
+        }
+      } else {
+        const top = pickBestFromSlot(grouped.top, anchor, { excludeIds, preferNeutral: true });
+        if (top) {
+          items.push(top);
+          excludeIds.add(getItemIdSafe(top));
+        }
+
+        const bottom = pickBestFromSlot(grouped.bottom, anchor, { excludeIds, preferNeutral: true });
+        if (bottom) {
+          items.push(bottom);
+          excludeIds.add(getItemIdSafe(bottom));
+        }
+      }
+
+      items = addOptional(items, excludeIds);
+    }
+
+    else if (anchorSlot === "outer") {
+      const top = pickBestFromSlot(grouped.top, anchor, { excludeIds, preferNeutral: true });
+      if (top) {
+        items.push(top);
+        excludeIds.add(getItemIdSafe(top));
+      }
+
+      const bottom = pickBestFromSlot(grouped.bottom, anchor, { excludeIds, preferNeutral: true });
+      if (bottom) {
+        items.push(bottom);
+        excludeIds.add(getItemIdSafe(bottom));
+      }
+
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      if (footwear) {
+        items.push(footwear);
+        excludeIds.add(getItemIdSafe(footwear));
+      }
+
+      const bag = pickBestFromSlot(grouped.bag, anchor, { excludeIds, preferNeutral: true });
+      if (bag) items.push(bag);
+    }
+
+    else if (anchorSlot === "bag" || anchorSlot === "accessory") {
+      const useOnePiece = grouped.onepiece.length > 0 && Math.random() < 0.35;
+
+      if (useOnePiece) {
+        const onepiece = pickBestFromSlot(grouped.onepiece, anchor, { excludeIds });
+        if (onepiece) {
+          items.push(onepiece);
+          excludeIds.add(getItemIdSafe(onepiece));
+        }
+      } else {
+        const top = pickBestFromSlot(grouped.top, anchor, { excludeIds, preferNeutral: true });
+        if (top) {
+          items.push(top);
+          excludeIds.add(getItemIdSafe(top));
+        }
+
+        const bottom = pickBestFromSlot(grouped.bottom, anchor, { excludeIds, preferNeutral: true });
+        if (bottom) {
+          items.push(bottom);
+          excludeIds.add(getItemIdSafe(bottom));
+        }
+      }
+
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      if (footwear) {
+        items.push(footwear);
+        excludeIds.add(getItemIdSafe(footwear));
+      }
+
+      if (anchorSlot === "bag") {
+        const accessory = pickBestFromSlot(grouped.accessory, anchor, { excludeIds, preferNeutral: true });
+        if (accessory) items.push(accessory);
+      } else {
+        const bag = pickBestFromSlot(grouped.bag, anchor, { excludeIds, preferNeutral: true });
+        if (bag) items.push(bag);
+      }
+    }
+
+    items = uniqueById(items);
+    items = forceCompleteLook(items, pool, { gender, occasion });
+
+    looks.push(items);
+  }
+
+  return looks;
+}
 function compactItemsForPrompt(items = [], limit = 60) {
   return items.slice(0, limit).map((it) => ({
     idx: String(it.idx || it.id || it.wardrobe_id || ""),
@@ -3574,25 +3807,14 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       }),
     ];
 
-    const pools = buildSlotPools(stylePool);
-
-    let candidates = generateCandidates(pools, 120, {
-      preferNeutralAcc: true,
-    });
-
-    candidates = candidates
-    .map((items) => {
-      const withAnchor = candidateIncludesAnchor(items, anchorHydrated)
-        ? items
-        : [anchorHydrated, ...items.filter((it) => !it.is_anchor)];
-
-      return forceCompleteLook(withAnchor, stylePool, {
-        gender: effectiveGender,
-        occasion,
-      });
+    let candidates = buildAnchorAwareCandidates(stylePool, anchorHydrated, {
+      gender: effectiveGender,
+      occasion,
+      count: 120,
     })
       .filter((items) => candidateIncludesAnchor(items, anchorHydrated))
       .filter((items) => !hasConflictingSilhouette(items))
+      .filter((items) => !hasAnchorSlotConflict(items, anchorHydrated))
       .filter((items) => {
         const weatherText = String(weather || "").toLowerCase();
         const hot =
@@ -3605,6 +3827,24 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
           const v = `${it?.name || ""} ${it?.category || ""}`.toLowerCase();
           return /sweater|hoodie|pullover|heavy jacket|coat|trench|cardigan|blazer/.test(v);
         });
+      })
+      .filter((items) => {
+        const slotCounts = {};
+        for (const it of items) {
+          const slot = detectSlotFromItem(it);
+          if (slot === "bag" || slot === "accessory") continue;
+          slotCounts[slot] = (slotCounts[slot] || 0) + 1;
+        }
+
+        if ((slotCounts.top || 0) > 1) return false;
+        if ((slotCounts.bottom || 0) > 1) return false;
+        if ((slotCounts.onepiece || 0) > 1) return false;
+
+        if ((slotCounts.onepiece || 0) >= 1 && ((slotCounts.top || 0) >= 1 || (slotCounts.bottom || 0) >= 1)) {
+          return false;
+        }
+
+        return true;
       });
 
     const taste = uid ? await getTasteWeights(db, uid) : null;
@@ -3652,12 +3892,18 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     function sameCoreCombo(a = [], b = []) {
       const sa = slotMap(a);
       const sb = slotMap(b);
-      const keys = ["top", "bottom", "footwear", "bag", "outer", "onepiece"];
-      let same = 0;
-      for (const key of keys) {
-        if (sa[key] && sb[key] && sa[key] === sb[key]) same++;
+
+      const coreKeys = ["top", "bottom", "footwear", "onepiece"];
+      let sameCore = 0;
+
+      for (const key of coreKeys) {
+        if (sa[key] && sb[key] && sa[key] === sb[key]) sameCore++;
       }
-      return same >= 3;
+
+      if (sa.onepiece && sb.onepiece && sa.onepiece === sb.onepiece) return true;
+      if (sameCore >= 2) return true;
+
+      return false;
     }
 
     function pickDiverseLooks(scoredLooks = [], limit = 20) {
@@ -3694,6 +3940,148 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     const diverseScored = pickDiverseLooks(scored, 20);
     const topCandidates = diverseScored.map((x) => x.items);
 
+    function getNonAnchorItems(items = []) {
+      return (items || []).filter((it) => !it?.is_anchor && it?.source !== "uploaded_item");
+    }
+
+    function detectAnchorSlot(anchorItem) {
+      return detectSlotFromItem(anchorItem);
+    }
+
+    function hasAnchorSlotConflict(items = [], anchorItem) {
+      const anchorSlot = detectAnchorSlot(anchorItem);
+      const otherSlots = getNonAnchorItems(items).map((it) => detectSlotFromItem(it));
+
+      if (anchorSlot === "top") {
+        return otherSlots.includes("top");
+      }
+
+      if (anchorSlot === "bottom") {
+        return otherSlots.includes("bottom");
+      }
+
+      if (anchorSlot === "footwear") {
+        return otherSlots.includes("footwear");
+      }
+
+      if (anchorSlot === "bag") {
+        return otherSlots.includes("bag");
+      }
+
+      if (anchorSlot === "outer") {
+        return otherSlots.includes("outer");
+      }
+
+      if (anchorSlot === "onepiece") {
+        return otherSlots.some(
+          (slot) => slot === "top" || slot === "bottom" || slot === "onepiece"
+        );
+      }
+
+      return false;
+    }
+
+    function nonAnchorOverlapCount(a = [], b = []) {
+      const aIds = new Set(getNonAnchorItems(a).map(getItemId).filter(Boolean));
+      const bIds = new Set(getNonAnchorItems(b).map(getItemId).filter(Boolean));
+
+      let count = 0;
+      for (const id of aIds) {
+        if (bIds.has(id)) count++;
+      }
+      return count;
+    }
+
+    function pieceSignatureFromItems(items = []) {
+      return getNonAnchorItems(items)
+        .map((it) => `${detectSlotFromItem(it)}:${getItemId(it)}`)
+        .sort()
+        .join("|");
+    }
+
+    function pickDiverseLooksStrict(scoredLooks = [], limit = 20) {
+      const picked = [];
+      const usedSignatures = new Set();
+
+      for (const candidate of scoredLooks) {
+        const items = candidate.items || [];
+        const signature = pieceSignatureFromItems(items);
+
+        if (!signature || usedSignatures.has(signature)) continue;
+
+        const tooSimilar = picked.some((prev) => {
+          const overlap = nonAnchorOverlapCount(items, prev.items || []);
+          return overlap >= 2;
+        });
+
+        if (tooSimilar) continue;
+
+        picked.push(candidate);
+        usedSignatures.add(signature);
+
+        if (picked.length >= limit) break;
+      }
+
+      if (picked.length < limit) {
+        for (const candidate of scoredLooks) {
+          const items = candidate.items || [];
+          const signature = pieceSignatureFromItems(items);
+          if (!signature || usedSignatures.has(signature)) continue;
+
+          picked.push(candidate);
+          usedSignatures.add(signature);
+
+          if (picked.length >= limit) break;
+        }
+      }
+
+      return picked;
+    }
+
+    function diversifyFinalLooks(looks = []) {
+      const out = [];
+      const usedSignatures = new Set();
+
+      for (const look of looks) {
+        const pieces = look?.pieces || [];
+        const signature = pieces
+          .filter((p) => p.source !== "uploaded_item")
+          .map((p) => `${String(p.role || "")}:${String(p.idx || p.name || "")}`)
+          .sort()
+          .join("|");
+
+        if (!signature || usedSignatures.has(signature)) continue;
+
+        const tooSimilar = out.some((prev) => {
+          const prevIds = new Set(
+            (prev.pieces || [])
+              .filter((p) => p.source !== "uploaded_item")
+              .map((p) => String(p.idx || p.name || ""))
+          );
+
+          const currIds = (pieces || [])
+            .filter((p) => p.source !== "uploaded_item")
+            .map((p) => String(p.idx || p.name || ""));
+
+          let overlap = 0;
+          for (const id of currIds) {
+            if (prevIds.has(id)) overlap++;
+          }
+
+          return overlap >= 2;
+        });
+
+        if (tooSimilar) continue;
+
+        out.push(look);
+        usedSignatures.add(signature);
+
+        if (out.length >= 3) break;
+      }
+
+      return out;
+    }
+    
     function lookSignature(items = []) {
       return items
         .map((it) => `${detectSlotFromItem(it)}:${String(it.id || it.idx || "")}`)
