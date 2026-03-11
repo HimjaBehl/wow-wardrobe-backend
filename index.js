@@ -858,18 +858,41 @@ function scoreLook(items = [], ctx = {}, taste = null) {
   const weatherStr = ctx.weather || "";
   const tempC = parseTempC(weatherStr);
   const isChilly = tempC !== null && tempC <= 18;
-
+  const isWarm = tempC !== null && tempC >= 24;
+  const isHot = tempC !== null && tempC >= 30;
+  
   const hasOuterwear = /blazer|jacket|coat|cardigan|shrug/.test(nameblob);
   const hasShortBottom = /skirt|short|skort/.test(nameblob);
   const hasLightTop = /tank|sleeveless|tube|strapless|crop/.test(nameblob);
 
   // 1) Weather penalties (if chilly)
   if (isChilly) {
-    if (hasShortBottom) score -= 3.0; // too exposed
-    if (hasLightTop) score -= 2.0; // too exposed
-    if (!hasOuterwear) score -= 2.5; // missing layer
+    if (hasShortBottom) score -= 3.0;
+    if (hasLightTop) score -= 2.0;
+    if (!hasOuterwear) score -= 2.5;
   }
 
+  if (isWarm) {
+    if (/sweater|hoodie|cardigan|pullover|jumper|knitwear/.test(nameblob)) {
+      score -= 10;
+    }
+    if (/coat|jacket|blazer|trench|parka/.test(nameblob)) {
+      score -= 7;
+    }
+  }
+
+  if (isHot) {
+    if (/sweater|hoodie|cardigan|pullover|jumper|knitwear/.test(nameblob)) {
+      score -= 16;
+    }
+    if (/coat|jacket|blazer|trench|parka/.test(nameblob)) {
+      score -= 12;
+    }
+    if (/wool|fleece|heavy knit/.test(nameblob)) {
+      score -= 14;
+    }
+  }
+  
   // 2) Workwear penalties: sportswear / too casual
   const isWork = /(workwear|formal|interview|office)/.test(occasion);
   const isAthleisure = /gym|athleisure|track|training|running|sportswear/.test(
@@ -3379,6 +3402,26 @@ function mapLookItemsToStylePiecePieces(items = [], anchorHydrated = {}) {
   });
 }
 
+
+function hasConflictingSilhouette(items = []) {
+  let topCount = 0;
+  let bottomCount = 0;
+  let onepieceCount = 0;
+
+  for (const item of items) {
+    const slot = detectSlotFromItem(item);
+
+    if (slot === "top") topCount += 1;
+    if (slot === "bottom") bottomCount += 1;
+    if (slot === "onepiece") onepieceCount += 1;
+  }
+
+  if (onepieceCount > 0 && bottomCount > 0) return true;
+  if (bottomCount > 1) return true;
+
+  return false;
+}
+
 // ✅ New pivot route: style one uploaded piece into 3 complete looks
 app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
   try {
@@ -3538,17 +3581,18 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     });
 
     candidates = candidates
-      .map((items) => {
-        const withAnchor = candidateIncludesAnchor(items, anchorHydrated)
-          ? items
-          : [anchorHydrated, ...items.filter((it) => !it.is_anchor)];
+    .map((items) => {
+      const withAnchor = candidateIncludesAnchor(items, anchorHydrated)
+        ? items
+        : [anchorHydrated, ...items.filter((it) => !it.is_anchor)];
 
-        return forceCompleteLook(withAnchor, stylePool, {
-          gender: effectiveGender,
-          occasion,
-        });
-      })
-      .filter((items) => candidateIncludesAnchor(items, anchorHydrated));
+      return forceCompleteLook(withAnchor, stylePool, {
+        gender: effectiveGender,
+        occasion,
+      });
+    })
+    .filter((items) => candidateIncludesAnchor(items, anchorHydrated))
+    .filter((items) => !hasConflictingSilhouette(items));
 
     const taste = uid ? await getTasteWeights(db, uid) : null;
 
@@ -3571,6 +3615,14 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
 
     const topCandidates = scored.slice(0, 20).map((x) => x.items);
 
+    function lookSignature(items = []) {
+      return items
+        .map((it) => `${detectSlotFromItem(it)}:${String(it.id || it.idx || "")}`)
+        .sort()
+        .join("|");
+    }
+
+  
     console.log("STYLE-PIECE scored count:", scored.length);
     console.log("STYLE-PIECE topCandidates count:", topCandidates.length);
 
