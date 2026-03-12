@@ -770,6 +770,13 @@ function scoreLook(items = [], ctx = {}, taste = null) {
 
   const occasion = (ctx.occasion || "").toLowerCase();
 
+  const anchorItem = ctx.anchorItem || null;
+  const anchorRequired = !!ctx.anchorItem;
+
+  const detectSlotSafe = (it) =>
+    typeof detectSlotFromItem === "function" ? detectSlotFromItem(it) : "misc";
+
+  const anchorSlot = anchorItem ? detectSlotSafe(anchorItem) : null;
   // 1) completeness (hard-ish)
   const cats = items.map((i) => (i.category || "").toLowerCase()).join(" | ");
   const hasTop = /top|shirt|tee|t-?shirt|blouse|kurta/.test(cats);
@@ -779,6 +786,80 @@ function scoreLook(items = [], ctx = {}, taste = null) {
   const hasOnePiece = /dress|jumpsuit|saree/.test(cats);
 
   let score = 0;
+
+  // =========================
+  // Anchor-aware scoring
+  // =========================
+  if (anchorRequired && anchorItem) {
+    const anchorId = String(
+      anchorItem.id || anchorItem.wardrobe_id || anchorItem.idx || ""
+    );
+
+    const includesAnchor = items.some((it) => {
+      const id = String(it.id || it.wardrobe_id || it.idx || "");
+      return id === anchorId;
+    });
+
+    if (includesAnchor) score += 6;
+    else score -= 20;
+
+    const nonAnchorItems = items.filter((it) => {
+      const id = String(it.id || it.wardrobe_id || it.idx || "");
+      return id !== anchorId;
+    });
+
+    const nonAnchorSlots = nonAnchorItems.map((it) => detectSlotSafe(it));
+
+    if (anchorSlot === "top" && nonAnchorSlots.includes("top")) score -= 12;
+    if (anchorSlot === "bottom" && nonAnchorSlots.includes("bottom")) score -= 12;
+    if (anchorSlot === "footwear" && nonAnchorSlots.includes("footwear")) score -= 12;
+    if (anchorSlot === "outer" && nonAnchorSlots.includes("outer")) score -= 10;
+    if (anchorSlot === "bag" && nonAnchorSlots.includes("bag")) score -= 8;
+
+    if (anchorSlot === "onepiece") {
+      if (nonAnchorSlots.includes("onepiece")) score -= 15;
+      if (nonAnchorSlots.includes("top")) score -= 15;
+      if (nonAnchorSlots.includes("bottom")) score -= 15;
+      if (nonAnchorSlots.includes("footwear")) score += 2;
+      if (
+        nonAnchorSlots.includes("bag") ||
+        nonAnchorSlots.includes("accessory") ||
+        nonAnchorSlots.includes("outer")
+      ) {
+        score += 2;
+      }
+    }
+
+    if (anchorSlot === "top") {
+      if (nonAnchorSlots.includes("bottom")) score += 3;
+      if (nonAnchorSlots.includes("footwear")) score += 2;
+    }
+
+    if (anchorSlot === "bottom") {
+      if (nonAnchorSlots.includes("top")) score += 3;
+      if (nonAnchorSlots.includes("footwear")) score += 2;
+    }
+
+    if (anchorSlot === "footwear") {
+      if (nonAnchorSlots.includes("top")) score += 2;
+      if (nonAnchorSlots.includes("bottom") || nonAnchorSlots.includes("onepiece")) score += 3;
+    }
+
+    if (anchorSlot === "outer") {
+      if (nonAnchorSlots.includes("top") || nonAnchorSlots.includes("onepiece")) score += 2;
+      if (nonAnchorSlots.includes("footwear")) score += 1.5;
+    }
+
+    if (anchorSlot === "bag" || anchorSlot === "accessory") {
+      if (
+        nonAnchorSlots.includes("top") ||
+        nonAnchorSlots.includes("bottom") ||
+        nonAnchorSlots.includes("onepiece")
+      ) {
+        score += 2;
+      }
+    }
+  }
   if ((hasTop && hasBottom && hasFootwear) || (hasOnePiece && hasFootwear))
     score += 3;
   else score -= 4; // missing base
@@ -1167,19 +1248,45 @@ async function rerankWithLLM({
   const sys = {
     role: "system",
     content: `You are Tina. Choose the most cohesive outfit among candidates.
-Rules:
-- pick ONE candidate
-- respond ONLY JSON: { "outfits":[{ "title": string, "style_note": string, "items":[{"idx":string}, ...]}] }
-- title/style_note must reflect actual items (no hallucinations).
-- prefer: complete base + color harmony + occasion match.`,
+  Rules:
+  - pick ONE candidate
+  - respond ONLY JSON: { "outfits":[{ "title": string, "style_note": string, "items":[{"idx":string}, ...]}] }
+  - title/style_note must reflect actual items (no hallucinations).
+  - prefer: complete base + color harmony + occasion match.
+  - if an anchor item is present, treat it as the hero piece and choose the look that styles around it best.
+  - do not choose looks where the anchor clashes with same-slot body items.
+  - if the anchor is a onepiece, prefer footwear + outer/bag/accessory support, not separate top/bottom.
+  - if the anchor is a top, prefer bottom + footwear support.
+  - if the anchor is a bottom, prefer top + footwear support.
+  - if the anchor is footwear, build the outfit around the shoes.
+  - if the anchor is outerwear, ensure the base outfit underneath is coherent.
+  - if the anchor is bag/accessory, choose a base outfit that the anchor elevates.`,
   };
-
   const user = {
     role: "user",
     content: JSON.stringify({
       occasion: ctx.occasion || "",
       vibe: ctx.vibe || "",
       weather: ctx.weather || "",
+      anchor_item: ctx.anchorItem
+        ? {
+            idx: String(
+              ctx.anchorItem.id ||
+                ctx.anchorItem.wardrobe_id ||
+                ctx.anchorItem.idx ||
+                ""
+            ),
+            name: ctx.anchorItem.name || "",
+            category: ctx.anchorItem.category || "",
+            color: Array.isArray(ctx.anchorItem.color)
+              ? ctx.anchorItem.color[0] || ""
+              : ctx.anchorItem.color || "",
+            slot:
+              typeof detectSlotFromItem === "function"
+                ? detectSlotFromItem(ctx.anchorItem)
+                : "misc",
+          }
+        : null,
       candidates: compact,
     }),
   };
@@ -1892,6 +1999,186 @@ function compactItemsForPrompt(items = [], limit = 60) {
   }));
 }
 
+async function generateTinaCoreLooks({
+  wardrobe = [],
+  uid = "",
+  occasion = "",
+  vibe = "",
+  city = "Delhi",
+  gender = "",
+  likedCombos = [],
+  dislikedCombos = [],
+  lastServedCombo = null,
+  anchorItem = null,
+  requireAnchor = false,
+  count = 3,
+}) {
+
+  console.log("🧠 generateTinaCoreLooks called:", {
+    wardrobeCount: wardrobe.length,
+    uid: !!uid,
+    occasion,
+    vibe,
+    city,
+    gender,
+    hasAnchor: !!anchorItem,
+    requireAnchor,
+    count,
+  });
+  const weatherNow = await getWeather(city).catch(() => null);
+  const taste = uid ? await getTasteWeights(db, uid).catch(() => null) : null;
+
+  let workingWardrobe = [...wardrobe];
+
+  if (anchorItem && requireAnchor) {
+    const anchorId = String(
+      anchorItem.id || anchorItem.wardrobe_id || anchorItem.idx || ""
+    );
+
+    workingWardrobe = [
+      anchorItem,
+      ...workingWardrobe.filter(
+        (it) =>
+          String(it.id || it.wardrobe_id || it.idx || "") !== anchorId
+      ),
+    ];
+  }
+
+  const pools = buildSlotPools(workingWardrobe);
+  let rawCandidates = generateCandidates(pools, 120, {
+    preferNeutralAcc: true,
+  });
+
+  if (anchorItem && requireAnchor) {
+    rawCandidates = rawCandidates
+      .map((items) => {
+        const withAnchor = candidateIncludesAnchor(items, anchorItem)
+          ? items
+          : [anchorItem, ...items];
+        return uniqueById(
+          forceCompleteLook(withAnchor, workingWardrobe, {
+            gender,
+            occasion,
+          })
+        );
+      })
+      .filter((items) => candidateIncludesAnchor(items, anchorItem))
+      .filter((items) => !hasConflictingSilhouette(items))
+      .filter((items) => !hasAnchorSlotConflict(items, anchorItem))
+      .map((items) => {
+        const hasOnepiece = items.some(
+          (it) => detectSlotFromItem(it) === "onepiece"
+        );
+        if (!hasOnepiece) return items;
+        return items.filter((it) => {
+          const slot = detectSlotFromItem(it);
+          return slot !== "top" && slot !== "bottom";
+        });
+      });
+  } else {
+    rawCandidates = rawCandidates.map((items) =>
+      uniqueById(
+        forceCompleteLook(items, workingWardrobe, {
+          gender,
+          occasion,
+        })
+      )
+    );
+  }
+
+  const scored = rawCandidates
+    .map((items) => ({
+      items,
+      score: scoreLook(
+        items,
+        {
+          occasion,
+          vibe,
+          weather: weatherNow,
+          likedCombos,
+          dislikedCombos,
+          lastServedCombo,
+          gender,
+        },
+        taste
+      ),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const diverseScored = pickDiverseLooks(scored, 40);
+  const topCandidates = diverseScored.map((x) => x.items);
+
+  let llmPicked = null;
+  try {
+    llmPicked = await rerankWithLLM({
+      candidates: topCandidates,
+      wardrobePreview: workingWardrobe,
+      ctx: { occasion, vibe, weather: weatherNow, gender, anchorItem },
+    });
+  } catch (e) {
+    console.warn("⚠️ generateTinaCoreLooks rerank failed:", e.message);
+  }
+
+  let finalLooks = [];
+
+  if (llmPicked) {
+    try {
+      const parsed = JSON.parse(llmPicked);
+      const picked = Array.isArray(parsed?.outfits) ? parsed.outfits : [];
+
+      finalLooks = picked
+        .map((look) => {
+          const items = (look.items || [])
+            .map((ref) => {
+              const rid = String(ref.idx || "");
+              return workingWardrobe.find(
+                (it) =>
+                  String(it.id || it.wardrobe_id || it.idx || "") === rid
+              );
+            })
+            .filter(Boolean);
+
+          if (!items.length) return null;
+
+          const ensured =
+            anchorItem && requireAnchor && !candidateIncludesAnchor(items, anchorItem)
+              ? [anchorItem, ...items]
+              : items;
+
+          return uniqueById(ensured);
+        })
+        .filter(Boolean);
+    } catch (e) {
+      console.warn("⚠️ generateTinaCoreLooks parse failed:", e.message);
+    }
+  }
+
+  if (finalLooks.length < count) {
+    const fallback = diverseScored
+      .map((x) => uniqueById(x.items || []))
+      .filter((items) => items.length > 0);
+
+    for (const items of fallback) {
+      const sig = items
+        .map((it) => `${detectSlotFromItem(it)}:${String(it.id || it.idx || "")}`)
+        .sort()
+        .join("|");
+
+      const already = finalLooks.some((f) => {
+        const fsig = f
+          .map((it) => `${detectSlotFromItem(it)}:${String(it.id || it.idx || "")}`)
+          .sort()
+          .join("|");
+        return fsig === sig;
+      });
+
+      if (!already) finalLooks.push(items);
+      if (finalLooks.length >= count) break;
+    }
+  }
+
+  return finalLooks.slice(0, count);
+}
 app.get("/health", (req, res) => {
   res.status(200).json({
     ok: true,
@@ -3736,6 +4023,9 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     let styleSummary = "";
     let userFeedback = [];
     let fbSets = null;
+    let likedCombos = [];
+    let dislikedCombos = [];
+    let lastServedCombo = null;
 
     if (uid) {
       try {
@@ -3750,6 +4040,14 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         userFeedback = Array.isArray(userCtx.feedbackMemory)
           ? userCtx.feedbackMemory
           : [];
+        likedCombos = Array.isArray(userCtx.likedCombos)
+          ? userCtx.likedCombos
+          : [];
+        dislikedCombos = Array.isArray(userCtx.dislikedCombos)
+          ? userCtx.dislikedCombos
+          : [];
+        lastServedCombo = userCtx.last_served_combo || null;
+
         try {
           fbSets = await buildFeedbackMemory(db, uid);
         } catch (e) {
@@ -3845,352 +4143,53 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         return id !== anchorIdOf(anchorHydrated);
       }),
     ];
-
-    let candidates = buildAnchorAwareCandidates(stylePool, anchorHydrated, {
-      gender: effectiveGender,
+    const coreLooks = await generateTinaCoreLooks({
+      wardrobe: stylePool,
+      uid,
       occasion,
-      count: 120,
-    })
-      .filter((items) => candidateIncludesAnchor(items, anchorHydrated))
-      .filter((items) => !hasConflictingSilhouette(items))
-      .filter((items) => !hasAnchorSlotConflict(items, anchorHydrated))
-      .filter((items) => {
-        const weatherText = String(weather || "").toLowerCase();
-        const hot =
-          /\b(2[8-9]|3[0-9]|4[0-9])°c\b/.test(weatherText) ||
-          /hot|warm|haze|humid/.test(weatherText);
+      vibe,
+      city,
+      gender: effectiveGender,
+      likedCombos,
+      dislikedCombos,
+      lastServedCombo,
+      anchorItem: anchorHydrated,
+      requireAnchor: true,
+      count: 3,
+    });
 
-        if (!hot) return true;
+    const taste = uid ? await getTasteWeights(db, uid).catch(() => null) : null;
 
-        return !items.some((it) => {
-          const v = `${it?.name || ""} ${it?.category || ""}`.toLowerCase();
-          return /sweater|hoodie|pullover|heavy jacket|coat|trench|cardigan|blazer/.test(v);
-        });
-      })
-      .filter((items) => {
-        const slotCounts = {};
-        for (const it of items) {
-          const slot = detectSlotFromItem(it);
-          if (slot === "bag" || slot === "accessory") continue;
-          slotCounts[slot] = (slotCounts[slot] || 0) + 1;
-        }
-
-        if ((slotCounts.top || 0) > 1) return false;
-        if ((slotCounts.bottom || 0) > 1) return false;
-        if ((slotCounts.onepiece || 0) > 1) return false;
-
-        if ((slotCounts.onepiece || 0) >= 1 && ((slotCounts.top || 0) >= 1 || (slotCounts.bottom || 0) >= 1)) {
-          return false;
-        }
-
-        return true;
-      });
-
-    const taste = uid ? await getTasteWeights(db, uid) : null;
-
-    console.log("STYLE-PIECE candidate count:", candidates.length);
-    const scored = candidates
-      .map((items) => ({
+    const scored = coreLooks.map((items) => ({
+      items,
+      score: scoreLook(
         items,
-        score: scoreLook(
-          items,
-          {
-            gender: effectiveGender,
-            occasion,
-            vibe,
-            weather,
-          },
-          taste,
-        ),
-      }))
-      .sort((a, b) => b.score - a.score);
-
-    
-
-    function slotMap(items = []) {
-      const map = {};
-      for (const it of items) {
-        const slot = detectSlotFromItem(it);
-        map[slot] = getItemId(it);
-      }
-      return map;
-    }
-
-    function overlapCount(a = [], b = []) {
-      const aIds = new Set(a.map(getItemId).filter(Boolean));
-      const bIds = new Set(b.map(getItemId).filter(Boolean));
-      let count = 0;
-      for (const id of aIds) {
-        if (bIds.has(id)) count++;
-      }
-      return count;
-    }
-
-    function sameCoreCombo(a = [], b = []) {
-      const sa = slotMap(a);
-      const sb = slotMap(b);
-
-      const keys = ["top", "bottom", "footwear", "onepiece"];
-      let same = 0;
-
-      for (const key of keys) {
-        if (sa[key] && sb[key] && sa[key] === sb[key]) same++;
-      }
-
-      if (sa.onepiece && sb.onepiece && sa.onepiece === sb.onepiece) return true;
-      return same >= 2;
-    }
-
-    function pickDiverseLooks(scoredLooks = [], limit = 20) {
-      const picked = [];
-
-      for (const candidate of scoredLooks) {
-        const items = candidate.items || [];
-
-        const tooSimilar = picked.some((prev) => {
-          const prevItems = prev.items || [];
-          return (
-            sameCoreCombo(items, prevItems) ||
-            overlapCount(items, prevItems) >= 3
-          );
-        });
-
-        if (!tooSimilar) {
-          picked.push(candidate);
-        }
-
-        if (picked.length >= limit) break;
-      }
-
-      if (picked.length < limit) {
-        for (const candidate of scoredLooks) {
-          if (picked.includes(candidate)) continue;
-          picked.push(candidate);
-          if (picked.length >= limit) break;
-        }
-      }
-
-      return picked;
-    }
-    const diverseScored = pickDiverseLooksStrict(scored, 40);
-    const topCandidates = diverseScored.map((x) => x.items);
-
-    function getItemId(it) {
-      return String(it?.id || it?.wardrobe_id || it?.idx || "");
-    }
-
-    function getNonAnchorItems(items = []) {
-      return (items || []).filter((it) => !it?.is_anchor && it?.source !== "uploaded_item");
-    }
-
-    function detectAnchorSlot(anchorItem) {
-      return detectSlotFromItem(anchorItem);
-    }
-
-    function hasAnchorSlotConflict(items = [], anchorItem) {
-      const anchorSlot = detectAnchorSlot(anchorItem);
-      const otherSlots = getNonAnchorItems(items).map((it) => detectSlotFromItem(it));
-
-      if (anchorSlot === "top") {
-        return otherSlots.includes("top");
-      }
-
-      if (anchorSlot === "bottom") {
-        return otherSlots.includes("bottom");
-      }
-
-      if (anchorSlot === "footwear") {
-        return otherSlots.includes("footwear");
-      }
-
-      if (anchorSlot === "bag") {
-        return otherSlots.includes("bag");
-      }
-
-      if (anchorSlot === "outer") {
-        return otherSlots.includes("outer");
-      }
-
-      if (anchorSlot === "onepiece") {
-        return otherSlots.some(
-          (slot) => slot === "top" || slot === "bottom" || slot === "onepiece"
-        );
-      }
-
-      return false;
-    }
-
-    function nonAnchorOverlapCount(a = [], b = []) {
-      const aIds = new Set(getNonAnchorItems(a).map(getItemId).filter(Boolean));
-      const bIds = new Set(getNonAnchorItems(b).map(getItemId).filter(Boolean));
-
-      let count = 0;
-      for (const id of aIds) {
-        if (bIds.has(id)) count++;
-      }
-      return count;
-    }
-
-    function pieceSignatureFromItems(items = []) {
-      return getNonAnchorItems(items)
-        .map((it) => `${detectSlotFromItem(it)}:${getItemId(it)}`)
-        .sort()
-        .join("|");
-    }
-
-    function pickDiverseLooksStrict(scoredLooks = [], limit = 20) {
-      const picked = [];
-      const usedSignatures = new Set();
-
-      for (const candidate of scoredLooks) {
-        const items = candidate.items || [];
-        const signature = pieceSignatureFromItems(items);
-
-        if (!signature || usedSignatures.has(signature)) continue;
-
-        const tooSimilar = picked.some((prev) => {
-          const overlap = nonAnchorOverlapCount(items, prev.items || []);
-          return overlap >= 2;
-        });
-
-        if (tooSimilar) continue;
-
-        picked.push(candidate);
-        usedSignatures.add(signature);
-
-        if (picked.length >= limit) break;
-      }
-
-      if (picked.length < limit) {
-        for (const candidate of scoredLooks) {
-          const items = candidate.items || [];
-          const signature = pieceSignatureFromItems(items);
-          if (!signature || usedSignatures.has(signature)) continue;
-
-          picked.push(candidate);
-          usedSignatures.add(signature);
-
-          if (picked.length >= limit) break;
-        }
-      }
-
-      return picked;
-    }
-
-    function diversifyFinalLooks(looks = []) {
-      const out = [];
-      const usedSignatures = new Set();
-
-      for (const look of looks) {
-        const pieces = look?.pieces || [];
-        const signature = pieces
-          .filter((p) => p.source !== "uploaded_item")
-          .map((p) => `${String(p.role || "")}:${String(p.idx || p.name || "")}`)
-          .sort()
-          .join("|");
-
-        if (!signature || usedSignatures.has(signature)) continue;
-
-        const tooSimilar = out.some((prev) => {
-          const prevIds = new Set(
-            (prev.pieces || [])
-              .filter((p) => p.source !== "uploaded_item")
-              .map((p) => String(p.idx || p.name || ""))
-          );
-
-          const currIds = (pieces || [])
-            .filter((p) => p.source !== "uploaded_item")
-            .map((p) => String(p.idx || p.name || ""));
-
-          let overlap = 0;
-          for (const id of currIds) {
-            if (prevIds.has(id)) overlap++;
-          }
-
-          return overlap >= 2;
-        });
-
-        if (tooSimilar) continue;
-
-        out.push(look);
-        usedSignatures.add(signature);
-
-        if (out.length >= 3) break;
-      }
-
-      return out;
-    }
-    
-    function lookSignature(items = []) {
-      return items
-        .map((it) => `${detectSlotFromItem(it)}:${String(it.id || it.idx || "")}`)
-        .sort()
-        .join("|");
-    }
-
-  
-    console.log("STYLE-PIECE scored count:", scored.length);
-    console.log("STYLE-PIECE topCandidates count:", topCandidates.length);
-
-    let llmPicked = null;
-    try {
-      llmPicked = await rerankWithLLM({
-        candidates: topCandidates,
-        wardrobePreview: stylePool,
-        ctx: {
+        {
           occasion,
           vibe,
-          weather,
-          gender: effectiveGender,
+          weather: weatherNow,
+          likedCombos,
+          dislikedCombos,
+          lastServedCombo,
+          gender,
+          anchorItem,
         },
-      });
-    } catch (e) {
-      console.warn("⚠️ rerankWithLLM failed in /style-piece:", e.message);
-    }
+        taste
+      ),
+    }));   
 
-    let finalCandidateLooks = [];
 
-    if (llmPicked) {
-      try {
-        const parsedPick = JSON.parse(llmPicked);
-        const pickedOutfits = Array.isArray(parsedPick?.outfits)
-          ? parsedPick.outfits
-          : [];
-
-        finalCandidateLooks = pickedOutfits.map((look, idx) => {
-          const pickedItems = (look.items || [])
-            .map((ref) => {
-              const rid = String(ref.idx || "");
-              return stylePool.find(
-                (it) => String(it.id || it.wardrobe_id || it.idx || "") === rid,
-              );
-            })
-            .filter(Boolean);
-
-          const ensured = candidateIncludesAnchor(pickedItems, anchorHydrated)
-            ? pickedItems
-            : [anchorHydrated, ...pickedItems];
-
-          return {
-            id: look.id || `look_${idx + 1}`,
-            title: look.title || `Look ${idx + 1}`,
-            direction: look.direction || "alternate",
-            occasion_fit:
-              look.occasion_fit || occasion || "Styled for your context",
-            why_it_works:
-              look.style_note ||
-              look.why_it_works ||
-              "Styled around your anchor piece.",
-            pieces: mapLookItemsToStylePiecePieces(ensured, anchorHydrated),
-            styling_tips: Array.isArray(look.styling_tips)
-              ? look.styling_tips
-              : [],
-          };
-        });
-      } catch (e) {
-        console.warn("⚠️ Failed to parse rerankWithLLM result:", e.message);
-      }
-    }
+    const topCandidates = coreLooks;
+    
+    let finalCandidateLooks = coreLooks.map((items, idx) => ({
+      id: `look_${idx + 1}`,
+      title: `Look ${idx + 1}`,
+      direction: idx === 0 ? "primary" : idx === 1 ? "alternate" : "experimental",
+      occasion_fit: occasion || "Styled for your context",
+      why_it_works: "Styled around your selected piece using Tina’s core styling engine.",
+      pieces: mapLookItemsToStylePiecePieces(items, anchorHydrated),
+      styling_tips: [],
+    }));
 
     function pieceSignatureFromPieces(pieces = []) {
       return pieces
@@ -4198,6 +4197,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         .sort()
         .join("|");
     }
+
     // ✅ Backfill to 3 looks if LLM returned fewer
     if (finalCandidateLooks.length < 3) {
       const usedSignatures = new Set(
@@ -4409,7 +4409,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         includeStaples,
         wardrobePoolCount: wardrobeItems.length,
         staplesPoolCount: stapleItems.length,
-        routeVersion: "style-piece-tina-engine-v2",
+        routeVersion: "tina_core_engine_v1",
       },
     });
   } catch (err) {
@@ -5006,106 +5006,48 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
     // =============================
     if (process.env.USE_RERANKER === "1") {
       try {
-        const pools = buildSlotPools(wardrobeSample);
-
-        // 1) generate candidates
-        const rawCandidates = generateCandidates(pools, 60, {
-          preferNeutralAcc: true,
+        const coreLooks = await generateTinaCoreLooks({
+          wardrobe: wardrobeSample,
+          uid,
+          occasion,
+          vibe,
+          city,
+          gender: prefs.gender,
+          likedCombos,
+          dislikedCombos,
+          lastServedCombo,
+          anchorItem: null,
+          requireAnchor: false,
+          count: 3,
         });
 
-        // 2) score + sort
-        const weatherNow = await getWeather(city);
-
-        const taste = await getTasteWeights(db, uid).catch(() => null);
-
-        const scored = rawCandidates
-          .map((items) => ({
-            items,
-            score: scoreLook(
-              items,
-              {
-                occasion,
-                vibe,
-                weather: weatherNow,
-                likedCombos,
-                dislikedCombos,
-                lastServedCombo,
-                gender: prefs.gender,
-              },
-              taste,
-            ),
-          }))
-          .sort((a, b) => b.score - a.score);
-
-        const top = scored.slice(0, 12).map((x) => x.items);
-
-        // 3) hard avoid disliked fingerprints
-        const filteredTop = top.filter((items) => {
-          const fp = makeComboFingerprint(items);
-          return !(dislikedCombos || []).includes(fp);
-        });
-
-        const finalPool = filteredTop.length ? filteredTop : top;
-
-        // 4) ask LLM to pick best and write title/style_note (but ONLY using idx)
-        const llmJson = await rerankWithLLM({
-          candidates: finalPool,
-          wardrobePreview: wardrobeSample,
-          ctx: { occasion, vibe, weather: await getWeather(city) },
-        });
-
-        let parsed = null;
-        try {
-          parsed = llmJson ? JSON.parse(llmJson) : null;
-        } catch {
-          parsed = null;
-        }
-
-        // fallback if model returns nonsense
-        if (!parsed?.outfits?.[0]?.items?.length) {
-          const best = finalPool[0] || [];
-          parsed = {
-            outfits: [
-              {
-                title: "Polished Look",
-                style_note:
-                  "Pulled-together look with balanced pieces and clean palette.",
-                items: best.map((it) => ({
-                  idx: String(it.id || it.wardrobe_id || it.idx),
-                })),
-              },
-            ],
-          };
-        }
-
-        // hydrate idx references back into full objects (like your frontend expects)
-        const idx2item = Object.fromEntries(
-          (wardrobeSample || []).map((it) => [String(it.idx), it]),
-        );
-        const hydratedOutfits = (parsed.outfits || []).map((o) => ({
-          title: o.title || "Outfit",
-          style_note: o.style_note || "",
-          items: (o.items || [])
-            .map((x) => idx2item[String(x.idx)])
-            .filter(Boolean),
+        const hydratedOutfits = coreLooks.map((items, idx) => ({
+          title:
+            idx === 0
+              ? "Polished Look"
+              : idx === 1
+                ? "Alternate Look"
+                : "Experimental Look",
+          style_note:
+            idx === 0
+              ? "A cohesive outfit styled by Tina’s core engine."
+              : idx === 1
+                ? "A second balanced option using your wardrobe."
+                : "A slightly more playful take while staying wearable.",
+          items,
           validation: {
-            styleRules: validateLevel2({
-              items: (o.items || [])
-                .map((x) => idx2item[String(x.idx)])
-                .filter(Boolean),
-            }),
+            styleRules: validateLevel2({ items }),
           },
         }));
 
-        // mirror looks/outfits like your API already does
         return res.json({
           outfits: hydratedOutfits,
           looks: hydratedOutfits,
-          note: "reranker_v1",
+          note: "tina_core_engine_v1",
         });
       } catch (e) {
         console.error(
-          "❌ Reranker path failed, falling back to agent:",
+          "❌ Tina core engine path failed, falling back to agent:",
           e.message,
         );
         // fall through to your existing agent logic below
