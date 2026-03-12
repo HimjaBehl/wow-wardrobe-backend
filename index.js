@@ -1405,26 +1405,51 @@ function safeArray(v) {
 }
 
 function detectSlotFromItem(item = {}) {
-  const text =
-    `${item.category || ""} ${item.name || ""} ${safeArray(item.tags).join(" ")}`.toLowerCase();
+  const text = [
+    item?.category || "",
+    item?.subcategory || "",
+    item?.name || "",
+    ...safeArray(item.tags),
+  ]
+    .join(" ")
+    .toLowerCase();
 
-  if (/dress|jumpsuit|saree|kurta set|co-ord/.test(text)) return "onepiece";
-  if (/top|shirt|tee|t-shirt|blouse|kurta|sweater|tank|camisole/.test(text))
-    return "top";
   if (
-    /bottom|jeans|pants|trouser|skirt|shorts|palazzo|leggings|salwar/.test(text)
-  )
+    /dress|gown|jumpsuit|romper|playsuit|dungaree|overalls|overall|saree|kurta set|co-ord|coord/.test(
+      text
+    )
+  ) {
+    return "onepiece";
+  }
+
+  if (
+    /top|shirt|tee|t-shirt|blouse|kurta|sweater|tank|camisole|crop top/.test(
+      text
+    )
+  ) {
+    return "top";
+  }
+
+  if (
+    /bottom|jeans|pants|trouser|trousers|skirt|shorts|palazzo|leggings|salwar|jogger/.test(
+      text
+    )
+  ) {
     return "bottom";
+  }
+
   if (/jacket|coat|blazer|cardigan|shrug|outerwear/.test(text)) return "outer";
   if (/shoe|sneaker|heel|sandal|boot|loafer|footwear|jutti/.test(text))
     return "footwear";
-  if (/bag|handbag|tote|purse|sling/.test(text)) return "bag";
+  if (/bag|handbag|tote|purse|sling|bucket bag|clutch/.test(text)) return "bag";
+
   if (
-    /watch|belt|scarf|dupatta|stole|jewelry|jewellery|sunglass|cap|hat|accessory/.test(
-      text,
+    /watch|belt|scarf|dupatta|stole|jewelry|jewellery|sunglass|sunglasses|cap|hat|accessory/.test(
+      text
     )
-  )
+  ) {
     return "accessory";
+  }
 
   return "misc";
 }
@@ -1623,10 +1648,7 @@ function uniqueById(items = []) {
 }
 
 function pickBestFromSlot(items = [], anchor = {}, opts = {}) {
-  const {
-    preferNeutral = false,
-    excludeIds = new Set(),
-  } = opts;
+  const { preferNeutral = false, excludeIds = new Set() } = opts;
 
   const filtered = (items || []).filter((it) => {
     const id = getItemIdSafe(it);
@@ -1648,11 +1670,14 @@ function pickBestFromSlot(items = [], anchor = {}, opts = {}) {
 
       if (/classic|basic|staple|minimal|essential/.test(text)) score += 1;
 
+      score += Math.random() * 1.25;
+
       return { it, score };
     })
     .sort((a, b) => b.score - a.score);
 
-  return scored[0]?.it || null;
+  const topBand = scored.slice(0, Math.min(3, scored.length));
+  return topBand[Math.floor(Math.random() * topBand.length)]?.it || null;
 }
 
 function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
@@ -1836,6 +1861,15 @@ function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
     items = uniqueById(items);
     items = forceCompleteLook(items, pool, { gender, occasion });
 
+    const hasOnepiece = items.some((it) => detectSlotFromItem(it) === "onepiece");
+    if (hasOnepiece) {
+      items = items.filter((it) => {
+        const slot = detectSlotFromItem(it);
+        return slot !== "top" && slot !== "bottom";
+      });
+    }
+
+    items = uniqueById(items);
     looks.push(items);
   }
 
@@ -3621,16 +3655,18 @@ function mapLookItemsToStylePiecePieces(items = [], anchorHydrated = {}) {
       it.source === "uploaded_item" ||
       String(it.id || it.wardrobe_id || it.idx || "") ===
         String(anchorHydrated.id || "");
-    const slot = getSlot(it);
+
+    const slot = detectSlotFromItem(it);
+
     return {
-      role: isAnchor ? "anchor" : slot === "dress" ? "onepiece" : slot,
+      role: isAnchor ? "anchor" : slot,
       source: isAnchor ? "uploaded_item" : it.source || "wardrobe",
       idx: String(it.id || it.wardrobe_id || it.idx || ""),
       name: it.name || "Unnamed",
       category: it.category || "",
       color: Array.isArray(it.color) ? it.color[0] || "" : it.color || "",
       in_closet: it.in_closet !== false,
-      color_options: [],
+      color_options: colorToOptions(it.color || ""),
     };
   });
 }
@@ -3649,12 +3685,15 @@ function hasConflictingSilhouette(items = []) {
     if (slot === "onepiece") onepieceCount += 1;
   }
 
-  if (onepieceCount > 0 && bottomCount > 0) return true;
+  if (topCount > 1) return true;
   if (bottomCount > 1) return true;
+  if (onepieceCount > 1) return true;
+
+  if (onepieceCount > 0 && topCount > 0) return true;
+  if (onepieceCount > 0 && bottomCount > 0) return true;
 
   return false;
 }
-
 // ✅ New pivot route: style one uploaded piece into 3 complete looks
 app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
   try {
@@ -3866,9 +3905,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       }))
       .sort((a, b) => b.score - a.score);
 
-    function getItemId(it) {
-      return String(it?.id || it?.wardrobe_id || it?.idx || "");
-    }
+    
 
     function slotMap(items = []) {
       const map = {};
@@ -3893,17 +3930,15 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       const sa = slotMap(a);
       const sb = slotMap(b);
 
-      const coreKeys = ["top", "bottom", "footwear", "onepiece"];
-      let sameCore = 0;
+      const keys = ["top", "bottom", "footwear", "onepiece"];
+      let same = 0;
 
-      for (const key of coreKeys) {
-        if (sa[key] && sb[key] && sa[key] === sb[key]) sameCore++;
+      for (const key of keys) {
+        if (sa[key] && sb[key] && sa[key] === sb[key]) same++;
       }
 
       if (sa.onepiece && sb.onepiece && sa.onepiece === sb.onepiece) return true;
-      if (sameCore >= 2) return true;
-
-      return false;
+      return same >= 2;
     }
 
     function pickDiverseLooks(scoredLooks = [], limit = 20) {
@@ -3937,8 +3972,12 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
 
       return picked;
     }
-    const diverseScored = pickDiverseLooks(scored, 20);
+    const diverseScored = pickDiverseLooksStrict(scored, 40);
     const topCandidates = diverseScored.map((x) => x.items);
+
+    function getItemId(it) {
+      return String(it?.id || it?.wardrobe_id || it?.idx || "");
+    }
 
     function getNonAnchorItems(items = []) {
       return (items || []).filter((it) => !it?.is_anchor && it?.source !== "uploaded_item");
@@ -4167,7 +4206,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         ),
       );
 
-      const fallbackLooks = pickDiverseLooks(scored, 12)
+        const fallbackLooks = pickDiverseLooksStrict(scored, 24)
         .map((entry, idx) => {
           const pieces = mapLookItemsToStylePiecePieces(
             entry.items,
@@ -4207,8 +4246,39 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       }));
     }
 
+    finalCandidateLooks = diversifyFinalLooks(finalCandidateLooks);
+
     // ✅ Hard cap
     finalCandidateLooks = finalCandidateLooks.slice(0, 3);
+
+    if (finalCandidateLooks.length < 3) {
+      const existing = new Set(
+        finalCandidateLooks.map((look) =>
+          pieceSignatureFromPieces(look.pieces || []),
+        ),
+      );
+
+      const refill = scored
+        .map((entry, idx) => {
+          const pieces = mapLookItemsToStylePiecePieces(entry.items, anchorHydrated);
+          const signature = pieceSignatureFromPieces(pieces);
+          return {
+            id: `look_refill_${idx + 1}`,
+            title: `Look ${finalCandidateLooks.length + idx + 1}`,
+            direction: "alternate",
+            why_it_works: "A wearable styling option built around your selected piece.",
+            pieces,
+            styling_tips: [],
+            signature,
+          };
+        })
+        .filter((x) => x.pieces.length > 0)
+        .filter((x) => !existing.has(x.signature))
+        .slice(0, 3 - finalCandidateLooks.length)
+        .map(({ signature, ...rest }) => rest);
+
+      finalCandidateLooks = [...finalCandidateLooks, ...refill];
+    }
 
     let outfits = finalCandidateLooks;
 
@@ -4299,6 +4369,19 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     outfits = outfits.filter((outfit) => (outfit.pieces || []).length > 0);
 
     console.log("STYLE-PIECE final outfits count:", outfits.length);
+    console.log(
+      "STYLE-PIECE final outfits detail:",
+      outfits.map((o, i) => ({
+        index: i,
+        pieces: (o.pieces || []).map((p) => ({
+          name: p.name,
+          category: p.category,
+          role: p.role,
+          source: p.source,
+          idx: p.idx,
+        })),
+      })),
+    );
 
     console.log("🎯 /style-piece result:", {
       includeWardrobe,
