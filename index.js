@@ -1999,6 +1999,174 @@ function compactItemsForPrompt(items = [], limit = 60) {
   }));
 }
 
+function getItemId(it) {
+  return String(it?.id || it?.wardrobe_id || it?.idx || "");
+}
+
+function slotMap(items = []) {
+  const map = {};
+  for (const it of items) {
+    const slot = detectSlotFromItem(it);
+    map[slot] = getItemId(it);
+  }
+  return map;
+}
+
+function overlapCount(a = [], b = []) {
+  const aIds = new Set(a.map(getItemId).filter(Boolean));
+  const bIds = new Set(b.map(getItemId).filter(Boolean));
+  let count = 0;
+  for (const id of aIds) {
+    if (bIds.has(id)) count++;
+  }
+  return count;
+}
+
+function sameCoreCombo(a = [], b = []) {
+  const sa = slotMap(a);
+  const sb = slotMap(b);
+
+  const keys = ["top", "bottom", "footwear", "onepiece"];
+  let same = 0;
+
+  for (const key of keys) {
+    if (sa[key] && sb[key] && sa[key] === sb[key]) same++;
+  }
+
+  if (sa.onepiece && sb.onepiece && sa.onepiece === sb.onepiece) return true;
+  return same >= 2;
+}
+
+function pickDiverseLooks(scoredLooks = [], limit = 20) {
+  const picked = [];
+
+  for (const candidate of scoredLooks) {
+    const items = candidate.items || [];
+
+    const tooSimilar = picked.some((prev) => {
+      const prevItems = prev.items || [];
+      return (
+        sameCoreCombo(items, prevItems) ||
+        overlapCount(items, prevItems) >= 3
+      );
+    });
+
+    if (!tooSimilar) picked.push(candidate);
+    if (picked.length >= limit) break;
+  }
+
+  if (picked.length < limit) {
+    for (const candidate of scoredLooks) {
+      if (picked.includes(candidate)) continue;
+      picked.push(candidate);
+      if (picked.length >= limit) break;
+    }
+  }
+
+  return picked;
+}
+
+function nonAnchorOverlapCount(a = [], b = []) {
+  const aIds = new Set(getNonAnchorItems(a).map(getItemId).filter(Boolean));
+  const bIds = new Set(getNonAnchorItems(b).map(getItemId).filter(Boolean));
+
+  let count = 0;
+  for (const id of aIds) {
+    if (bIds.has(id)) count++;
+  }
+  return count;
+}
+
+function pieceSignatureFromItems(items = []) {
+  return getNonAnchorItems(items)
+    .map((it) => `${detectSlotFromItem(it)}:${getItemId(it)}`)
+    .sort()
+    .join("|");
+}
+
+function pickDiverseLooksStrict(scoredLooks = [], limit = 20) {
+  const picked = [];
+  const usedSignatures = new Set();
+
+  for (const candidate of scoredLooks) {
+    const items = candidate.items || [];
+    const signature = pieceSignatureFromItems(items);
+
+    if (!signature || usedSignatures.has(signature)) continue;
+
+    const tooSimilar = picked.some((prev) => {
+      const overlap = nonAnchorOverlapCount(items, prev.items || []);
+      return overlap >= 2;
+    });
+
+    if (tooSimilar) continue;
+
+    picked.push(candidate);
+    usedSignatures.add(signature);
+
+    if (picked.length >= limit) break;
+  }
+
+  if (picked.length < limit) {
+    for (const candidate of scoredLooks) {
+      const items = candidate.items || [];
+      const signature = pieceSignatureFromItems(items);
+      if (!signature || usedSignatures.has(signature)) continue;
+
+      picked.push(candidate);
+      usedSignatures.add(signature);
+
+      if (picked.length >= limit) break;
+    }
+  }
+
+  return picked;
+}
+
+function diversifyFinalLooks(looks = []) {
+  const out = [];
+  const usedSignatures = new Set();
+
+  for (const look of looks) {
+    const pieces = look?.pieces || [];
+    const signature = pieces
+      .filter((p) => p.source !== "uploaded_item")
+      .map((p) => `${String(p.role || "")}:${String(p.idx || p.name || "")}`)
+      .sort()
+      .join("|");
+
+    if (!signature || usedSignatures.has(signature)) continue;
+
+    const tooSimilar = out.some((prev) => {
+      const prevIds = new Set(
+        (prev.pieces || [])
+          .filter((p) => p.source !== "uploaded_item")
+          .map((p) => String(p.idx || p.name || ""))
+      );
+
+      const currIds = (pieces || [])
+        .filter((p) => p.source !== "uploaded_item")
+        .map((p) => String(p.idx || p.name || ""));
+
+      let overlap = 0;
+      for (const id of currIds) {
+        if (prevIds.has(id)) overlap++;
+      }
+
+      return overlap >= 2;
+    });
+
+    if (tooSimilar) continue;
+
+    out.push(look);
+    usedSignatures.add(signature);
+
+    if (out.length >= 3) break;
+  }
+
+  return out;
+}
+
 async function generateTinaCoreLooks({
   wardrobe = [],
   uid = "",
@@ -2099,6 +2267,7 @@ async function generateTinaCoreLooks({
           dislikedCombos,
           lastServedCombo,
           gender,
+          anchorItem,
         },
         taste
       ),
@@ -3981,6 +4150,37 @@ function hasConflictingSilhouette(items = []) {
 
   return false;
 }
+
+function getNonAnchorItems(items = []) {
+  return (items || []).filter(
+    (it) => !it?.is_anchor && it?.source !== "uploaded_item"
+  );
+}
+
+function detectAnchorSlot(anchorItem) {
+  return detectSlotFromItem(anchorItem);
+}
+
+function hasAnchorSlotConflict(items = [], anchorItem) {
+  const anchorSlot = detectAnchorSlot(anchorItem);
+  const otherSlots = getNonAnchorItems(items).map((it) =>
+    detectSlotFromItem(it)
+  );
+
+  if (anchorSlot === "top") return otherSlots.includes("top");
+  if (anchorSlot === "bottom") return otherSlots.includes("bottom");
+  if (anchorSlot === "footwear") return otherSlots.includes("footwear");
+  if (anchorSlot === "bag") return otherSlots.includes("bag");
+  if (anchorSlot === "outer") return otherSlots.includes("outer");
+
+  if (anchorSlot === "onepiece") {
+    return otherSlots.some(
+      (slot) => slot === "top" || slot === "bottom" || slot === "onepiece"
+    );
+  }
+
+  return false;
+}
 // ✅ New pivot route: style one uploaded piece into 3 complete looks
 app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
   try {
@@ -4167,17 +4367,16 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         {
           occasion,
           vibe,
-          weather: weatherNow,
+          weather,
           likedCombos,
           dislikedCombos,
           lastServedCombo,
-          gender,
-          anchorItem,
+          gender: effectiveGender,
+          anchorItem: anchorHydrated,
         },
         taste
       ),
-    }));   
-
+    }));
 
     const topCandidates = coreLooks;
     
@@ -6265,7 +6464,7 @@ app.get("/debug-combo-stats", async (req, res) => {
 });
 app.get("/version", (req, res) => {
   res.json({
-    build: "style-piece-source-fix-v3",
+    build: "tina-core-anchor-fix-v4",
     entry: "index.js",
     time: new Date().toISOString(),
   });
