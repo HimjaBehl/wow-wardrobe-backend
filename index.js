@@ -682,12 +682,12 @@ function generateCandidates(pools, n = 40, opts = {}) {
 
   for (let i = 0; i < n; i++) {
     // choose base path: one-piece or separates (weighted)
-    const useOnePiece = pools.dress.length > 0 && Math.random() < 0.35;
+    const useOnePiece = pools.onepiece.length > 0 && Math.random() < 0.35;
 
     let items = [];
 
     if (useOnePiece) {
-      const dress = pickFrom(pools.dress, false);
+      const dress = pickFrom(pools.onepiece, false);
       const shoes =
         pickFrom(pools.footwear, true) || pickFrom(pools.footwear, false);
       if (dress) items.push(dress);
@@ -912,10 +912,14 @@ function scoreLook(items = [], ctx = {}, taste = null) {
   }
 
   // 4) neutral accessory preference: if base has color pop, keep bag neutral
-  const base = items.filter((i) =>
-    ["top", "bottom", "dress"].includes(getSlot(i)),
-  );
-  const accs = items.filter((i) => ["bag", "accessory"].includes(getSlot(i)));
+  const base = items.filter((i) => {
+    const slot = detectSlotSafe(i);
+    return ["top", "bottom", "onepiece"].includes(slot);
+  });
+  const accs = items.filter((i) => {
+    const slot = detectSlotSafe(i);
+    return ["bag", "accessory"].includes(slot);
+  });
   const baseHasPop = base.some((i) => !isNeutralColor(i.color));
   const accAllNeutral = accs.length
     ? accs.every((i) => isNeutralColor(i.color))
@@ -1248,19 +1252,23 @@ async function rerankWithLLM({
   const sys = {
     role: "system",
     content: `You are Tina. Choose the most cohesive outfit among candidates.
-  Rules:
-  - pick ONE candidate
-  - respond ONLY JSON: { "outfits":[{ "title": string, "style_note": string, "items":[{"idx":string}, ...]}] }
-  - title/style_note must reflect actual items (no hallucinations).
-  - prefer: complete base + color harmony + occasion match.
-  - if an anchor item is present, treat it as the hero piece and choose the look that styles around it best.
-  - do not choose looks where the anchor clashes with same-slot body items.
-  - if the anchor is a onepiece, prefer footwear + outer/bag/accessory support, not separate top/bottom.
-  - if the anchor is a top, prefer bottom + footwear support.
-  - if the anchor is a bottom, prefer top + footwear support.
-  - if the anchor is footwear, build the outfit around the shoes.
-  - if the anchor is outerwear, ensure the base outfit underneath is coherent.
-  - if the anchor is bag/accessory, choose a base outfit that the anchor elevates.`,
+    Rules:
+    - pick ONE candidate
+    - respond ONLY JSON: { "outfits":[{ "title": string, "style_note": string, "items":[{"idx":string}, ...]}] }
+    - title/style_note must reflect actual items (no hallucinations).
+    - prefer: complete base + color harmony + occasion match.
+    - choose the highest-quality look from the full available pool.
+    - the pool may include wardrobe items, staple items, and an uploaded anchor item.
+    - do not favor a piece just because of its source; favor overall outfit quality.
+    - penalize candidates with obviously poor occasion fit, placeholder-looking items, or unnecessary extras.
+    - if an anchor item is present, treat it as the hero piece and choose the look that styles around it best.
+    - do not choose looks where the anchor clashes with same-slot body items.
+    - if the anchor is a onepiece, prefer footwear + outer/bag/accessory support, not separate top/bottom.
+    - if the anchor is a top, prefer bottom + footwear support.
+    - if the anchor is a bottom, prefer top + footwear support.
+    - if the anchor is footwear, build the outfit around the shoes.
+    - if the anchor is outerwear, ensure the base outfit underneath is coherent.
+    - if the anchor is bag/accessory, choose a base outfit that the anchor elevates.`,
   };
   const user = {
     role: "user",
@@ -1329,7 +1337,7 @@ async function buildUrlToIdMap(uid) {
 // ---- Swap helpers (map wardrobe items to a slot we can swap) ----
 function slotOf(text = "") {
   const t = (text || "").toLowerCase();
-  if (/dress|jumpsuit|saree/.test(t)) return "dress";
+  if (/dress|jumpsuit|saree/.test(t)) return "onepiece";
   if (/top|tee|t-?shirt|shirt|blouse|kurta/.test(t)) return "top";
   if (/bottom|jeans|pant|trouser|chino|skirt|short|palazzo|salwar/.test(t))
     return "bottom";
@@ -1586,6 +1594,24 @@ function buildStapleCollectionName(gender = "female", version = "v2") {
   return v === "v2" ? "staples_female_v2" : "staples_female";
 }
 
+function filterStaplesForOccasion(items = [], occasion = "") {
+  const occ = String(occasion || "").toLowerCase();
+  if (!occ) return items;
+
+  return items.filter((it) => {
+    const text = `${it.name || ""} ${it.category || ""} ${(it.tags || []).join(" ")}`.toLowerCase();
+
+    if (/(workwear|formal|interview|office|business)/.test(occ)) {
+      return !/sportswear|gym|skirt|sandal|flipflop|beach/.test(text);
+    }
+
+    if (/date/.test(occ)) {
+      return !/gym|training/.test(text);
+    }
+
+    return true;
+  });
+}
 async function fetchStaplesForStyling({
   gender = "female",
   version = "v2",
@@ -1690,7 +1716,7 @@ function itemMatchesAnchorContext(item = {}, anchor = {}) {
   return score >= 1.5;
 }
 
-function groupCandidatesBySlot(items = [], anchor = {}) {
+  function groupCandidatesBySlot(items = [], anchor = {}, occasion = "") {
   const grouped = {
     top: [],
     bottom: [],
@@ -1710,12 +1736,16 @@ function groupCandidatesBySlot(items = [], anchor = {}) {
 
   Object.keys(grouped).forEach((slot) => {
     grouped[slot] = grouped[slot].sort((a, b) => {
-      const aScore = itemMatchesAnchorContext(a, anchor) ? 1 : 0;
-      const bScore = itemMatchesAnchorContext(b, anchor) ? 1 : 0;
-      if (bScore !== aScore) return bScore - aScore;
-      if ((b.in_closet ? 1 : 0) !== (a.in_closet ? 1 : 0))
-        return (b.in_closet ? 1 : 0) - (a.in_closet ? 1 : 0);
-      return 0;
+      let aScore = itemMatchesAnchorContext(a, anchor) ? 2 : 0;
+      let bScore = itemMatchesAnchorContext(b, anchor) ? 2 : 0;
+
+      if (a.in_closet) aScore += 1;
+      if (b.in_closet) bScore += 1;
+
+      if (isClearlyFormalFriendly(a, occasion)) aScore += 0.5;
+      if (isClearlyFormalFriendly(b, occasion)) bScore += 0.5;
+
+      return bScore - aScore;
     });
   });
 
@@ -1753,9 +1783,12 @@ function uniqueById(items = []) {
     return true;
   });
 }
-
 function pickBestFromSlot(items = [], anchor = {}, opts = {}) {
-  const { preferNeutral = false, excludeIds = new Set() } = opts;
+  const {
+    preferNeutral = false,
+    excludeIds = new Set(),
+    occasion = "",
+  } = opts;
 
   const filtered = (items || []).filter((it) => {
     const id = getItemIdSafe(it);
@@ -1765,23 +1798,48 @@ function pickBestFromSlot(items = [], anchor = {}, opts = {}) {
   if (!filtered.length) return null;
 
   const scored = filtered
-    .map((it) => {
-      let score = 0;
+  .map((it) => {
+    let score = 0;
 
-      if (itemMatchesAnchorContext(it, anchor)) score += 4;
-      if (it.in_closet) score += 2;
-      if (preferNeutral && isNeutralColor(it.color)) score += 1.5;
+    if (itemMatchesAnchorContext(it, anchor)) score += 4;
+    if (it.in_closet) score += 2;
+    if (preferNeutral && isNeutralColor(it.color)) score += 1.5;
 
-      const text =
-        `${it.name || ""} ${it.category || ""} ${(it.tags || []).join(" ")}`.toLowerCase();
+    const text =
+      `${it.name || ""} ${it.category || ""} ${(it.tags || []).join(" ")}`.toLowerCase();
 
-      if (/classic|basic|staple|minimal|essential/.test(text)) score += 1;
+    const imageUrl = String(it.image_url || "").toLowerCase();
+    const occ = String(occasion || "").toLowerCase();
 
-      score += Math.random() * 1.25;
+    if (/classic|basic|staple|minimal|essential/.test(text)) score += 1;
 
-      return { it, score };
-    })
-    .sort((a, b) => b.score - a.score);
+    // soft penalty for weak / placeholder-ish assets
+    if (/default|placeholder/.test(text) || /default|placeholder/.test(imageUrl)) {
+      score -= 2;
+    }
+
+    // soft penalty for bad occasion fit
+    if (/(workwear|formal|interview|office|business)/.test(occ)) {
+      if (/sportswear|gym|athletic|running|training/.test(text)) score -= 5;
+      if (/skirt/.test(text)) score -= 3;
+      if (/sandal|flipflop|slide/.test(text)) score -= 4;
+      if (/bucket bag/.test(text)) score -= 2;
+    }
+
+    if (/date|dinner|night out|cocktail/.test(occ)) {
+      if (/sportswear|gym|athletic|training/.test(text)) score -= 4;
+      if (/bucket bag/.test(text)) score -= 1.5;
+    }
+
+    if (/summer|beach|resort|vacation/.test(occ)) {
+      if (/coat|jacket|blazer|cardigan|hoodie|sweater/.test(text)) score -= 3;
+    }
+
+    score += Math.random() * 1.25;
+
+    return { it, score };
+  })
+  .sort((a, b) => b.score - a.score);
 
   const topBand = scored.slice(0, Math.min(3, scored.length));
   return topBand[Math.floor(Math.random() * topBand.length)]?.it || null;
@@ -1794,26 +1852,51 @@ function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
     count = 24,
   } = opts;
 
-  const grouped = groupCandidatesBySlot(pool, anchor);
+  const grouped = groupCandidatesBySlot(pool, anchor, occasion);
   const anchorSlot = detectSlotFromItem(anchor);
   const looks = [];
 
   function addOptional(baseItems, excludeIds) {
     const out = [...baseItems];
+    const occ = String(occasion || "").toLowerCase();
+
+    const shouldAddOuter =
+      !/summer|beach|resort|vacation/.test(occ) &&
+      (/(workwear|formal|interview|office|business)/.test(occ) || Math.random() < 0.2);
+
+    const shouldAddBag =
+      /(date|dinner|night out|cocktail|workwear|formal|interview|office|business)/.test(occ) ||
+      Math.random() < 0.35;
+
+    const shouldAddAccessory =
+      /(date|dinner|cocktail|festive|wedding)/.test(occ) ||
+      Math.random() < 0.2;
 
     const maybeOuter =
-      anchorSlot !== "outer"
-        ? pickBestFromSlot(grouped.outer, anchor, { excludeIds, preferNeutral: true })
+      shouldAddOuter && anchorSlot !== "outer"
+        ? pickBestFromSlot(grouped.outer, anchor, {
+            excludeIds,
+            preferNeutral: true,
+            occasion,
+          })
         : null;
 
     const maybeBag =
-      anchorSlot !== "bag"
-        ? pickBestFromSlot(grouped.bag, anchor, { excludeIds, preferNeutral: true })
+      shouldAddBag && anchorSlot !== "bag"
+        ? pickBestFromSlot(grouped.bag, anchor, {
+            excludeIds,
+            preferNeutral: true,
+            occasion,
+          })
         : null;
 
     const maybeAccessory =
-      anchorSlot !== "accessory"
-        ? pickBestFromSlot(grouped.accessory, anchor, { excludeIds, preferNeutral: true })
+      shouldAddAccessory && anchorSlot !== "accessory"
+        ? pickBestFromSlot(grouped.accessory, anchor, {
+            excludeIds,
+            preferNeutral: true,
+            occasion,
+          })
         : null;
 
     if (maybeOuter) {
@@ -1831,19 +1914,18 @@ function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
 
     return out;
   }
-
   for (let i = 0; i < count; i++) {
     const excludeIds = new Set([getItemIdSafe(anchor)]);
     let items = [anchor];
 
     if (anchorSlot === "top") {
-      const bottom = pickBestFromSlot(grouped.bottom, anchor, { excludeIds, preferNeutral: true });
+      const bottom = pickBestFromSlot(grouped.bottom, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (bottom) {
         items.push(bottom);
         excludeIds.add(getItemIdSafe(bottom));
       }
 
-      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (footwear) {
         items.push(footwear);
         excludeIds.add(getItemIdSafe(footwear));
@@ -1853,13 +1935,13 @@ function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
     }
 
     else if (anchorSlot === "bottom") {
-      const top = pickBestFromSlot(grouped.top, anchor, { excludeIds, preferNeutral: true });
+      const top = pickBestFromSlot(grouped.top, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (top) {
         items.push(top);
         excludeIds.add(getItemIdSafe(top));
       }
 
-      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (footwear) {
         items.push(footwear);
         excludeIds.add(getItemIdSafe(footwear));
@@ -1869,7 +1951,7 @@ function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
     }
 
     else if (anchorSlot === "onepiece") {
-      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (footwear) {
         items.push(footwear);
         excludeIds.add(getItemIdSafe(footwear));
@@ -1882,19 +1964,19 @@ function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
       const useOnePiece = grouped.onepiece.length > 0 && Math.random() < 0.35;
 
       if (useOnePiece) {
-        const onepiece = pickBestFromSlot(grouped.onepiece, anchor, { excludeIds });
+        const onepiece = pickBestFromSlot(grouped.onepiece, anchor, {   excludeIds,   occasion, });
         if (onepiece) {
           items.push(onepiece);
           excludeIds.add(getItemIdSafe(onepiece));
         }
       } else {
-        const top = pickBestFromSlot(grouped.top, anchor, { excludeIds, preferNeutral: true });
+        const top = pickBestFromSlot(grouped.top, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
         if (top) {
           items.push(top);
           excludeIds.add(getItemIdSafe(top));
         }
 
-        const bottom = pickBestFromSlot(grouped.bottom, anchor, { excludeIds, preferNeutral: true });
+        const bottom = pickBestFromSlot(grouped.bottom, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
         if (bottom) {
           items.push(bottom);
           excludeIds.add(getItemIdSafe(bottom));
@@ -1905,25 +1987,25 @@ function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
     }
 
     else if (anchorSlot === "outer") {
-      const top = pickBestFromSlot(grouped.top, anchor, { excludeIds, preferNeutral: true });
+      const top = pickBestFromSlot(grouped.top, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (top) {
         items.push(top);
         excludeIds.add(getItemIdSafe(top));
       }
 
-      const bottom = pickBestFromSlot(grouped.bottom, anchor, { excludeIds, preferNeutral: true });
+      const bottom = pickBestFromSlot(grouped.bottom, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (bottom) {
         items.push(bottom);
         excludeIds.add(getItemIdSafe(bottom));
       }
 
-      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (footwear) {
         items.push(footwear);
         excludeIds.add(getItemIdSafe(footwear));
       }
 
-      const bag = pickBestFromSlot(grouped.bag, anchor, { excludeIds, preferNeutral: true });
+      const bag = pickBestFromSlot(grouped.bag, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (bag) items.push(bag);
     }
 
@@ -1931,36 +2013,36 @@ function buildAnchorAwareCandidates(pool = [], anchor = {}, opts = {}) {
       const useOnePiece = grouped.onepiece.length > 0 && Math.random() < 0.35;
 
       if (useOnePiece) {
-        const onepiece = pickBestFromSlot(grouped.onepiece, anchor, { excludeIds });
+        const onepiece = pickBestFromSlot(grouped.onepiece, anchor, {   excludeIds,   occasion, });
         if (onepiece) {
           items.push(onepiece);
           excludeIds.add(getItemIdSafe(onepiece));
         }
       } else {
-        const top = pickBestFromSlot(grouped.top, anchor, { excludeIds, preferNeutral: true });
+        const top = pickBestFromSlot(grouped.top, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
         if (top) {
           items.push(top);
           excludeIds.add(getItemIdSafe(top));
         }
 
-        const bottom = pickBestFromSlot(grouped.bottom, anchor, { excludeIds, preferNeutral: true });
+        const bottom = pickBestFromSlot(grouped.bottom, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
         if (bottom) {
           items.push(bottom);
           excludeIds.add(getItemIdSafe(bottom));
         }
       }
 
-      const footwear = pickBestFromSlot(grouped.footwear, anchor, { excludeIds, preferNeutral: true });
+      const footwear = pickBestFromSlot(grouped.footwear, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
       if (footwear) {
         items.push(footwear);
         excludeIds.add(getItemIdSafe(footwear));
       }
 
       if (anchorSlot === "bag") {
-        const accessory = pickBestFromSlot(grouped.accessory, anchor, { excludeIds, preferNeutral: true });
+        const accessory = pickBestFromSlot(grouped.accessory, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
         if (accessory) items.push(accessory);
       } else {
-        const bag = pickBestFromSlot(grouped.bag, anchor, { excludeIds, preferNeutral: true });
+        const bag = pickBestFromSlot(grouped.bag, anchor, {   excludeIds,   preferNeutral: true,   occasion, });
         if (bag) items.push(bag);
       }
     }
@@ -2212,24 +2294,14 @@ async function generateTinaCoreLooks({
     ];
   }
 
-  const pools = buildSlotPools(workingWardrobe);
-  let rawCandidates = generateCandidates(pools, 120, {
-    preferNeutralAcc: true,
-  });
+  let rawCandidates = [];
 
   if (anchorItem && requireAnchor) {
-    rawCandidates = rawCandidates
-      .map((items) => {
-        const withAnchor = candidateIncludesAnchor(items, anchorItem)
-          ? items
-          : [anchorItem, ...items];
-        return uniqueById(
-          forceCompleteLook(withAnchor, workingWardrobe, {
-            gender,
-            occasion,
-          })
-        );
-      })
+    rawCandidates = buildAnchorAwareCandidates(workingWardrobe, anchorItem, {
+      gender,
+      occasion,
+      count: 120,
+    })
       .filter((items) => candidateIncludesAnchor(items, anchorItem))
       .filter((items) => !hasConflictingSilhouette(items))
       .filter((items) => !hasAnchorSlotConflict(items, anchorItem))
@@ -2242,9 +2314,20 @@ async function generateTinaCoreLooks({
           const slot = detectSlotFromItem(it);
           return slot !== "top" && slot !== "bottom";
         });
-      });
+      })
+      .map((items) =>
+        uniqueById(
+          forceCompleteLook(items, workingWardrobe, {
+            gender,
+            occasion,
+          })
+        )
+      );
   } else {
-    rawCandidates = rawCandidates.map((items) =>
+    const pools = buildSlotPools(workingWardrobe);
+    rawCandidates = generateCandidates(pools, 120, {
+      preferNeutralAcc: true,
+    }).map((items) =>
       uniqueById(
         forceCompleteLook(items, workingWardrobe, {
           gender,
@@ -4181,6 +4264,20 @@ function hasAnchorSlotConflict(items = [], anchorItem) {
 
   return false;
 }
+
+function isClearlyFormalFriendly(item = {}, occasion = "") {
+  const text = `${item.name || ""} ${item.category || ""} ${(item.tags || []).join(" ")}`.toLowerCase();
+  const occ = String(occasion || "").toLowerCase();
+
+  if (!/(workwear|formal|interview|office|business)/.test(occ)) return true;
+
+  if (/sportswear|gym|athletic|running|training/.test(text)) return false;
+  if (/skirt/.test(text)) return false;
+  if (/sandal|flipflop|slide/.test(text)) return false;
+  if (/beach|resort|party/.test(text)) return false;
+
+  return true;
+}
 // ✅ New pivot route: style one uploaded piece into 3 complete looks
 app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
   try {
@@ -4292,6 +4389,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         gender: effectiveGender,
         version: staples_version,
       });
+      stapleItems = filterStaplesForOccasion(stapleItems, occasion);
     }
 
     console.log("🎯 /style-piece pools:", {
@@ -4299,7 +4397,11 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       staplesCount: stapleItems.length,
     });
 
-    const combinedPool = [...wardrobeItems, ...stapleItems];
+    const rawCombinedPool = [...wardrobeItems, ...stapleItems];
+
+    const combinedPool = rawCombinedPool.filter((it) =>
+      isClearlyFormalFriendly(it, occasion)
+    );
 
     if (!combinedPool.length) {
       console.warn(
@@ -4378,17 +4480,57 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       ),
     }));
 
-    const topCandidates = coreLooks;
     
-    let finalCandidateLooks = coreLooks.map((items, idx) => ({
-      id: `look_${idx + 1}`,
-      title: `Look ${idx + 1}`,
-      direction: idx === 0 ? "primary" : idx === 1 ? "alternate" : "experimental",
-      occasion_fit: occasion || "Styled for your context",
-      why_it_works: "Styled around your selected piece using Tina’s core styling engine.",
-      pieces: mapLookItemsToStylePiecePieces(items, anchorHydrated),
-      styling_tips: [],
-    }));
+    
+    let finalCandidateLooks = coreLooks.map((items, idx) => {
+      const slots = items.map((it) => detectSlotFromItem(it));
+      const names = items.map((it) => (it.name || "").toLowerCase()).join(" ");
+      const anchorSlot = detectSlotFromItem(anchorHydrated);
+
+      let smartTitle = `Look ${idx + 1}`;
+      let smartWhy = "Styled around your selected piece with a balanced supporting outfit.";
+
+      if (anchorSlot === "top") {
+        smartTitle =
+          occasion.toLowerCase().includes("work")
+            ? "Anchor-Led Workwear Look"
+            : "Anchor-Led Styled Look";
+        smartWhy =
+          "Your selected top is treated as the hero piece, supported with a complementary base and finishing pieces.";
+      } else if (anchorSlot === "bottom") {
+        smartTitle = "Bottom-Led Styled Look";
+        smartWhy =
+          "The outfit is built by balancing your selected bottom with a clean upper and supportive footwear.";
+      } else if (anchorSlot === "footwear") {
+        smartTitle = "Shoe-Led Look";
+        smartWhy =
+          "The outfit is built around your selected footwear so the rest of the look feels cohesive rather than random.";
+      } else if (anchorSlot === "onepiece") {
+        smartTitle = "One-Piece Styled Look";
+        smartWhy =
+          "Your selected one-piece stays central, with only support items added around it.";
+      } else if (anchorSlot === "outer") {
+        smartTitle = "Layer-Led Look";
+        smartWhy =
+          "Your selected outer layer leads the outfit, while the inner base is kept simple and coherent.";
+      }
+
+      if (/blazer|shirt|trouser|loafer|formal/.test(names) || occasion.toLowerCase().includes("formal")) {
+        smartTitle = "Polished Formal Look";
+        smartWhy =
+          "The pieces are chosen to keep the outfit cleaner, sharper, and more aligned with a formal setting.";
+      }
+
+      return {
+        id: `look_${idx + 1}`,
+        title: smartTitle,
+        direction: idx === 0 ? "primary" : idx === 1 ? "alternate" : "experimental",
+        occasion_fit: occasion || "Styled for your context",
+        why_it_works: smartWhy,
+        pieces: mapLookItemsToStylePiecePieces(items, anchorHydrated),
+        styling_tips: [],
+      };
+    });
 
     function pieceSignatureFromPieces(pieces = []) {
       return pieces
@@ -4397,7 +4539,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
         .join("|");
     }
 
-    // ✅ Backfill to 3 looks if LLM returned fewer
+   // ✅ Backfill to 3 looks if LLM returned fewer
     if (finalCandidateLooks.length < 3) {
       const usedSignatures = new Set(
         finalCandidateLooks.map((look) =>
