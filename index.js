@@ -4413,13 +4413,20 @@ async function buildTinaRequestContext({
 async function buildTinaWardrobePreview({
   uid = "",
   occasion = "",
+  vibe = "",
   includeWardrobe = true,
   includeStaples = false,
   staplesVersion = "v2",
   effectiveGender = "female",
   anchorItem = null,
 }) {
+  
   let wardrobeItems = [];
+  const tunnel = resolveStyleTunnel({
+    occasion,
+    vibe,
+    gender: effectiveGender,
+  });
   if (uid && includeWardrobe) {
     wardrobeItems = await fetchWardrobeForStyling(uid);
   }
@@ -4436,7 +4443,9 @@ async function buildTinaWardrobePreview({
   const combined = [
     ...(includeWardrobe ? wardrobeItems : []),
     ...(includeStaples ? stapleItems : []),
-  ].filter((it) => isClearlyFormalFriendly(it, occasion));
+  ]
+    .filter((it) => itemPassesTunnel(it, tunnel))
+    .sort((a, b) => scoreItemForTunnel(b, tunnel) - scoreItemForTunnel(a, tunnel));
 
   const anchorId = anchorItem
     ? String(anchorItem.id || anchorItem.wardrobe_id || anchorItem.idx || "")
@@ -4531,6 +4540,7 @@ async function runTinaStylist({
     await buildTinaWardrobePreview({
       uid,
       occasion,
+      vibe,
       includeWardrobe,
       includeStaples,
       staplesVersion,
@@ -4558,10 +4568,12 @@ GLOBAL RULES:
 1) Use ONLY wardrobe_preview items.
 2) Never invent items.
 3) Titles and style_notes must match actual selected items.
-4) Respect occasion, vibe, weather, dislikes, memory, and combo history.
+4) Respect occasion, vibe, weather, dislikes, memory, combo history, and style_tunnel.
 5) Avoid previously disliked combinations.
 6) Prefer liked combo patterns when suitable.
 7) Prefer coherent, wearable looks.
+8) Treat style_tunnel as hard guidance for occasion fit.
+9) Do not pick items that clearly violate the tunnel intent.
 
 BASE STRUCTURE:
 - Separates: Top + Bottom + Footwear + optional Bag/Outerwear/Accessory
@@ -4617,6 +4629,11 @@ Return only JSON.`,
     dislikedCombos,
     last_served_combo: lastServedCombo,
     wardrobe_preview: wardrobePreview,
+    style_tunnel: resolveStyleTunnel({
+      occasion,
+      vibe,
+      gender: effectiveGender,
+    }),
     instructions: [
       "Return only JSON with top-level key 'outfits'.",
       "Reference items strictly by idx.",
@@ -4828,8 +4845,13 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       debug: {
         includeWardrobe,
         includeStaples,
+        styleTunnel: resolveStyleTunnel({
+          occasion,
+          vibe,
+          gender: gender || "",
+        }),
         ...(result.debug || {}),
-        routeVersion: "style_piece_shared_brain_v1",
+        routeVersion: "style_piece_shared_brain_v2",
       },
     });
   } catch (err) {
@@ -4841,7 +4863,165 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
     });
   }
 });
-  
+
+function resolveStyleTunnel({ occasion = "", vibe = "", gender = "" }) {
+  const occ = String(occasion || "").toLowerCase();
+  const vb = String(vibe || "").toLowerCase();
+  const g = String(gender || "").toLowerCase();
+
+  const base = {
+    mode: "general",
+    allowSlots: ["top", "bottom", "onepiece", "outer", "footwear", "bag", "accessory"],
+    rejectTerms: [],
+    preferTerms: [],
+    avoidTerms: [],
+    preferNeutralFootwear: false,
+    preferStructured: false,
+  };
+
+  if (/(workwear|formal|office|interview|business)/.test(occ)) {
+    return {
+      ...base,
+      mode: "formalish",
+      rejectTerms: [
+        "gym",
+        "sportswear",
+        "athletic",
+        "running",
+        "training",
+        "track",
+        "jogger",
+        "flipflop",
+        "beach",
+        "resort",
+      ],
+      avoidTerms: [
+        "bucket bag",
+        "trainer",
+        "sneaker",
+        "shorts",
+        "mini skirt",
+      ],
+      preferTerms: [
+        "trouser",
+        "pants",
+        "slacks",
+        "shirt",
+        "blouse",
+        "blazer",
+        "structured jacket",
+        "loafer",
+        "pump",
+        "heel",
+        "dress",
+      ],
+      preferNeutralFootwear: true,
+      preferStructured: true,
+    };
+  }
+
+  if (/(date|dinner|cocktail|night out)/.test(occ)) {
+    return {
+      ...base,
+      mode: "elevated",
+      rejectTerms: ["gym", "training", "track"],
+      avoidTerms: ["bucket bag"],
+      preferTerms: ["boot", "heel", "dress", "sleek", "structured"],
+      preferStructured: true,
+    };
+  }
+
+  if (/(travel|airport)/.test(occ)) {
+    return {
+      ...base,
+      mode: "comfort_smart",
+      rejectTerms: [],
+      avoidTerms: ["heel", "bodycon"],
+      preferTerms: ["sneaker", "boot", "relaxed", "layer"],
+      preferNeutralFootwear: true,
+    };
+  }
+
+  if (/(gym|workout|fitness)/.test(occ)) {
+    return {
+      ...base,
+      mode: "athletic",
+      rejectTerms: ["heel", "loafer", "blazer", "dress", "saree"],
+      avoidTerms: [],
+      preferTerms: ["gym", "athletic", "training", "running", "track"],
+      preferNeutralFootwear: false,
+      preferStructured: false,
+    };
+  }
+
+  if (/(festive|wedding|ethnic)/.test(occ)) {
+    return {
+      ...base,
+      mode: "festive",
+      rejectTerms: ["gym", "athletic", "training"],
+      avoidTerms: ["running shoe", "trainer"],
+      preferTerms:
+        g === "male"
+          ? ["kurta", "bandhgala", "sherwani", "loafer", "jutti", "waistcoat"]
+          : ["dress", "saree", "lehenga", "anarkali", "heel", "jutti", "clutch"],
+      preferStructured: true,
+    };
+  }
+
+  if (/(casual|brunch|day out|shopping|errand)/.test(occ) || /(relaxed|smart casual)/.test(vb)) {
+    return {
+      ...base,
+      mode: "casual",
+      rejectTerms: ["gym", "training"],
+      avoidTerms: [],
+      preferTerms: ["jeans", "top", "shirt", "sneaker", "bag"],
+    };
+  }
+
+  return base;
+}
+
+function itemPassesTunnel(item = {}, tunnel = {}) {
+  const text =
+    `${item.name || ""} ${item.category || ""} ${(item.tags || []).join(" ")}`
+      .toLowerCase();
+
+  const slot = detectSlotFromItem(item);
+  if (Array.isArray(tunnel.allowSlots) && !tunnel.allowSlots.includes(slot)) {
+    return false;
+  }
+
+  if ((tunnel.rejectTerms || []).some((term) => text.includes(term))) {
+    return false;
+  }
+
+  return true;
+}
+
+function scoreItemForTunnel(item = {}, tunnel = {}) {
+  const text =
+    `${item.name || ""} ${item.category || ""} ${(item.tags || []).join(" ")}`
+      .toLowerCase();
+
+  let score = 0;
+
+  if ((tunnel.preferTerms || []).some((term) => text.includes(term))) score += 3;
+  if ((tunnel.avoidTerms || []).some((term) => text.includes(term))) score -= 2;
+
+  if (item.in_closet) score += 1;
+  if (isNeutralColor(item.color)) score += 0.5;
+
+  if (tunnel.preferStructured && /structured|blazer|coat|shirt|trouser|slacks|loafer|pump/.test(text)) {
+    score += 1.5;
+  }
+
+  if (tunnel.preferNeutralFootwear) {
+    const slot = detectSlotFromItem(item);
+    if (slot === "footwear" && isNeutralColor(item.color)) score += 1.5;
+  }
+
+  return score;
+}
 app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
   try {
     const {
