@@ -1,0 +1,72 @@
+{
+  "T-Shirt": {
+    "category": "Top",
+    "variants": [
+      { "color": "White", "image_url": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Black", "image_url": "https://images.unsplash.com/photo-1586790170083-2f9ceadc732d?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Navy", "image_url": "https://images.unsplash.com/photo-1503341504253-dff4815485f1?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Gray", "image_url": "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=400&h=400&fit=crop&crop=center" }
+    ]
+  },
+  "Jeans": {
+    "category": "Bottom",
+    "variants": [
+      { "color": "Blue", "image_url": "https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Black", "image_url": "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Dark Blue", "image_url": "https://images.unsplash.com/photo-1506629905607-d19f2785db84?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Light Blue", "image_url": "https://images.unsplash.com/photo-1604176354204-9268737828e4?w=400&h=400&fit=crop&crop=center" }
+    ]
+  },
+  "Dress Shirt": {
+    "category": "Top",
+    "variants": [
+      { "color": "White", "image_url": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Light Blue", "image_url": "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Navy", "image_url": "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Pink", "image_url": "https://images.unsplash.com/photo-1588359348347-9bc6cbbb689e?w=400&h=400&fit=crop&crop=center" }
+    ]
+  },
+  "Sneakers": {
+    "category": "Footwear",
+    "variants": [
+      { "color": "White", "image_url": "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Black", "image_url": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Gray", "image_url": "https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Red", "image_url": "https://images.unsplash.com/photo-1460353581641-37baddab0fa2?w=400&h=400&fit=crop&crop=center" }
+    ]
+  },
+  "Blazer": {
+    "category": "Outerwear",
+    "variants": [
+      { "color": "Navy", "image_url": "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Black", "image_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Gray", "image_url": "https://images.unsplash.com/photo-1594938374989-ea300b8567ea?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Beige", "image_url": "https://images.unsplash.com/photo-1594938373846-7cb3221267d4?w=400&h=400&fit=crop&crop=center" }
+    ]
+  },
+  "Little Black Dress": {
+    "category": "Dress",
+    "variants": [
+      { "color": "Black", "image_url": "https://images.unsplash.com/photo-1566479179817-c0ed3e72e5b8?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Navy", "image_url": "https://images.unsplash.com/photo-1551412371-d7e7b08f47ee?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Burgundy", "image_url": "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=400&h=400&fit=crop&crop=center" }
+    ]
+  },
+  "Cardigan": {
+    "category": "Top",
+    "variants": [
+      { "color": "Beige", "image_url": "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Gray", "image_url": "https://images.unsplash.com/photo-1544923246-77307dd67aa6?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Navy", "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Cream", "image_url": "https://images.unsplash.com/photo-1576871337622-98d48d1cf531?w=400&h=400&fit=crop&crop=center" }
+    ]
+  },
+  "Leather Boots": {
+    "category": "Footwear",
+    "variants": [
+      { "color": "Brown", "image_url": "https://images.unsplash.com/photo-1544966503-7cc536d5aa6f?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Black", "image_url": "https://images.unsplash.com/photo-1582588678413-dbf45f4823e9?w=400&h=400&fit=crop&crop=center" },
+      { "color": "Tan", "image_url": "https://images.unsplash.com/photo-1520256862855-398228c41048?w=400&h=400&fit=crop&crop=center" }
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "basics": [
+    {
+      "principle": "Silhouette Balance",
+      "rule": "Balance fitted and loose clothing to create harmony in your outfit.",
+      "example": "Pair wide-leg pants with a fitted top."
+    },
+    {
+      "principle": "Color Harmony",
+      "rule": "Use complementary, analogous, or neutral color palettes for cohesion. Avoid clashing tones unless intentional.",
+      "example": "Combine a pastel blue blouse with beige trousers, or black trousers with a white shirt."
+    },
+    {
+      "principle": "Layering",
+      "rule": "Layer lighter fabrics under heavier pieces to add dimension without bulk.",
+      "example": "Wear a white t-shirt under a leather jacket with jeans."
+    },
+    {
+      "principle": "Proportion",
+      "rule": "Balance proportions by mixing short and long, or structured and flowy.",
+      "example": "Style a cropped blazer with high-waisted trousers."
+    },
+    {
+      "principle": "Seasonal Dressing",
+      "rule": "Adapt fabrics and coverage based on temperature and season.",
+      "example": "At 30°C+, choose cotton, linen, or chiffon. Below 18°C, layer with sweaters, coats, or jackets."
+    },
+    {
+      "principle": "Occasion Appropriateness",
+      "rule": "Select outfits that match the event or social setting.",
+      "example": "Dinner → smart-casual with polished shoes; Wedding → formal wear; Brunch → relaxed but stylish."
+    },
+    {
+      "principle": "Completeness",
+      "rule": "A complete outfit requires a top and bottom (or a dress/jumpsuit), plus footwear, and optionally 1–2 accessories.",
+      "example": "White tee + jeans + sneakers + a watch."
+    },
+    {
+      "principle": "Footwear Match",
+      "rule": "Shoes should align with the vibe and occasion, completing the outfit.",
+      "example": "Sneakers with casual denim, heels with evening wear, loafers with office attire."
+    },
+    {
+      "principle": "Accessory Balance",
+      "rule": "Accessories should elevate without overwhelming the outfit.",
+      "example": "Pair a statement bag with simple basics, or minimal jewelry with a bold dress."
+    },
+    {
+      "principle": "Texture & Contrast",
+      "rule": "Mix textures or contrast formal/casual pieces for depth and visual interest.",
+      "example": "Silk blouse with denim, or sneakers with a structured dress."
+    },
+    {
+      "principle": "Color Accent",
+      "rule": "Limit bold accent colors to one or two items per outfit.",
+      "example": "Red bag with a monochrome outfit, or bright shoes with neutral basics."
+    }
+  ]
+}

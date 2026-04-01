@@ -1,0 +1,35 @@
+{
+  "name": "nodejs",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@langchain/core": "^0.3.75",
+    "@langchain/openai": "^0.5.16",
+    "@supabase/supabase-js": "^2.56.1",
+    "@types/node": "^22.13.11",
+    "axios": "^1.11.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "firebase": "^12.3.0",
+    "firebase-admin": "^13.4.0",
+    "langchain": "^0.3.31",
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
+    "openai": "^5.16.0",
+    "react-calendar": "^6.0.0",
+    "serpapi": "^2.2.1",
+    "sharp": "^0.34.3",
+    "tmp-promise": "^3.0.3",
+    "uuid": "^11.1.0"
+  }
+}
