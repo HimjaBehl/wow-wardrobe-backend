@@ -106,10 +106,11 @@
   app.use(
     cors({
       origin: [
-        "https://wow-wardrobe-ui-himjabehl.replit.app",
-        "http://localhost:5173",
-        "http://localhost:3000",
-      ],
+      "https://wow-wardrobe-ui-himjabehl.replit.app",
+      "https://wow-wardrobe-frontend.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:3000",
+    ],
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       credentials: true,
     }),
@@ -129,6 +130,7 @@
   const allowedOrigins = [
     "https://himja.app.n8n.cloud",
     "https://wow-wardrobe-ui-himjabehl.replit.app",
+    "https://wow-wardrobe-frontend.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
   ];
