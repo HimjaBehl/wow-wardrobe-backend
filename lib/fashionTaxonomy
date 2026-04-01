@@ -1,0 +1,3738 @@
+{
+  "Accessories": {
+    "Accessories/Bag Straps": {},
+    "Accessories/Belts": {
+      "Buckle shape": [
+        "Logo buckle",
+        "Square buckle",
+        "Rectangle buckle",
+        "Rounded buckle"
+      ],
+      "Color": [
+        "golden belt",
+        "blue belt",
+        "pink belt",
+        "brown belt",
+        "black belt",
+        "beige belt",
+        "green belt",
+        "white belt",
+        "red belt"
+      ],
+      "Material": [
+        "Leather/suede",
+        "Textile",
+        "Other",
+        "Metal"
+      ],
+      "Width": [
+        "classic belt",
+        "corset belt",
+        "narrow belt",
+        "wide belt"
+      ]
+    },
+    "Accessories/Eyewear": {
+      "glasses": {
+        "Accessory": [
+          "Accessories/Eyewear",
+          "Accessories/Scarves",
+          "Accessories/Suspenders",
+          "Accessories/Bag Straps",
+          "Accessories/Hats and Caps",
+          "Accessories/Ties",
+          "Accessories/Belts",
+          "Accessories/Gloves"
+        ],
+        "Frame": [
+          "Frameless",
+          "Half-framed",
+          "Fully framed"
+        ],
+        "Material": [
+          "Plastic & Acetate",
+          "Metal",
+          "Combined"
+        ],
+        "Shape": [
+          "Cat-eye",
+          "Oval",
+          "Geometric",
+          "Aviator",
+          "Wayfarer",
+          "Vizor/sport",
+          "square",
+          "Rectangle",
+          "round"
+        ]
+      },
+      "sunglasses": {
+        "Accessory": [
+          "Accessories/Eyewear",
+          "Accessories/Scarves",
+          "Accessories/Suspenders",
+          "Accessories/Bag Straps",
+          "Accessories/Hats and Caps",
+          "Accessories/Ties",
+          "Accessories/Belts",
+          "Accessories/Gloves"
+        ],
+        "Frame": [
+          "Frameless",
+          "Half-framed",
+          "Fully framed"
+        ],
+        "Material": [
+          "Plastic & Acetate",
+          "Metal",
+          "Combined"
+        ],
+        "Shape": [
+          "Cat-eye",
+          "Oval",
+          "Geometric",
+          "Aviator",
+          "Wayfarer",
+          "Vizor/sport",
+          "square",
+          "Rectangle",
+          "round"
+        ]
+      }
+    },
+    "Accessories/Gloves": {
+      "Subcategory": [
+        "knitted gloves",
+        "lace gloves",
+        "leather gloves",
+        "moto and sport gloves"
+      ]
+    },
+    "Accessories/Hats and Caps": {
+      "Subcategory": [
+        "beret",
+        "straw hat",
+        "beanies and winter hats",
+        "bucket hat",
+        "bowler hat",
+        "turban hat",
+        "fascinator",
+        "classic hats and floppy hats",
+        "baseball caps",
+        "flat caps"
+      ]
+    },
+    "Accessories/Scarves": {
+      "Color": [
+        "grey",
+        "dark blue and navy",
+        "yellow",
+        "red",
+        "pink",
+        "multicolor",
+        "light blue",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ]
+    },
+    "Accessories/Suspenders": {},
+    "Accessories/Ties": {
+      "Color": [
+        "grey",
+        "dark blue and navy",
+        "yellow",
+        "red",
+        "pink",
+        "multicolor",
+        "light blue",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Subcategory": [
+        "bowties",
+        "classic ties"
+      ]
+    }
+  },
+  "Bags": {
+    "Bags/Backpacks": {
+      "Color": [
+        "grey",
+        "dark blue and navy",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "green",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Material": [
+        "plastic & vinyl",
+        "silk & satin",
+        "textile",
+        "straw",
+        "suede",
+        "fur",
+        "leather"
+      ],
+      "Subcategory": [
+        "school backpacks",
+        "outdoor backpacks",
+        "camera backpacks",
+        "backpack purse",
+        "city backpacks"
+      ]
+    },
+    "Bags/Bum Bags": {
+      "Color": [
+        "grey",
+        "dark blue and navy",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "green",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Material": [
+        "plastic & vinyl",
+        "silk & satin",
+        "textile",
+        "straw",
+        "suede",
+        "fur",
+        "leather"
+      ]
+    },
+    "Bags/Luggage": {
+      "Color": [
+        "grey",
+        "dark blue and navy",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "green",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Material": [
+        "plastic & vinyl",
+        "silk & satin",
+        "textile",
+        "straw",
+        "suede",
+        "fur",
+        "leather"
+      ],
+      "Subcategory": [
+        "duffle bags",
+        "suitcases",
+        "cosmetic cases",
+        "travel bags"
+      ]
+    },
+    "Bags/Men's Bags": {
+      "Color": [
+        "grey",
+        "dark blue and navy",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "green",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "men"
+      ],
+      "Material": [
+        "plastic & vinyl",
+        "silk & satin",
+        "textile",
+        "straw",
+        "suede",
+        "fur",
+        "leather"
+      ],
+      "Subcategory": [
+        "crossbody bags",
+        "small messenger bags",
+        "satchel",
+        "briefcases"
+      ]
+    },
+    "Bags/Purses and Wallets": {
+      "beauty cases": {
+        "Color": [
+          "grey",
+          "dark blue and navy",
+          "yellow",
+          "red",
+          "light blue",
+          "pink",
+          "green",
+          "turquoise",
+          "beige",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "multicolor",
+          "silver",
+          "purple and violet"
+        ],
+        "Material": [
+          "plastic & vinyl",
+          "silk & satin",
+          "textile",
+          "straw",
+          "suede",
+          "fur",
+          "leather"
+        ],
+        "Gender": [
+          "women"
+        ]
+      },
+      "wallets": {
+        "Color": [
+          "grey",
+          "dark blue and navy",
+          "yellow",
+          "red",
+          "light blue",
+          "pink",
+          "green",
+          "turquoise",
+          "beige",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "multicolor",
+          "silver",
+          "purple and violet"
+        ],
+        "Material": [
+          "plastic & vinyl",
+          "silk & satin",
+          "textile",
+          "straw",
+          "suede",
+          "fur",
+          "leather"
+        ],
+        "Gender": [
+          "men"
+        ]
+      },
+      "women coin purses": {
+        "Color": [
+          "grey",
+          "dark blue and navy",
+          "yellow",
+          "red",
+          "light blue",
+          "pink",
+          "green",
+          "turquoise",
+          "beige",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "multicolor",
+          "silver",
+          "purple and violet"
+        ],
+        "Material": [
+          "plastic & vinyl",
+          "silk & satin",
+          "textile",
+          "straw",
+          "suede",
+          "fur",
+          "leather"
+        ],
+        "Gender": [
+          "women"
+        ]
+      }
+    },
+    "Bags/Women's Bags": {
+      "Color": [
+        "grey",
+        "dark blue and navy",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "green",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Gender": [
+        "women"
+      ],
+      "Material": [
+        "plastic & vinyl",
+        "silk & satin",
+        "textile",
+        "straw",
+        "suede",
+        "fur",
+        "leather"
+      ],
+      "Subcategory": [
+        "hobo bags",
+        "top handle bags",
+        "baguette bags",
+        "long strap bags",
+        "totes and shopper bags",
+        "bucket bags",
+        "clutches and wristlets"
+      ]
+    }
+  },
+  "Clothing": {
+    "Clothing/Baby Clothes": {
+      "Baby Dungarees": {
+        "Age": [
+          "children"
+        ],
+        "Color": [
+          "dark blue and navy",
+          "grey",
+          "yellow",
+          "red",
+          "light blue",
+          "multicolor",
+          "pink",
+          "turquoise",
+          "beige",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "green",
+          "silver",
+          "purple and violet"
+        ],
+        "Design": [
+          "plain",
+          "picture",
+          "shiny",
+          "lace",
+          "melange",
+          "text",
+          "patterned",
+          "logo"
+        ],
+        "Pattern": [
+          "animalistic",
+          "chevron",
+          "checked",
+          "stripe",
+          "floral",
+          "polka dot",
+          "geometric & abstract",
+          "other",
+          "camouflage"
+        ],
+        "Material": [
+          "silk",
+          "cotton",
+          "lace",
+          "knitwear",
+          "denim",
+          "linen",
+          "velvet",
+          "mesh/transparent",
+          "corduroy",
+          "suede",
+          "tweed",
+          "leather"
+        ]
+      },
+      "Baby pants": {
+        "Age": [
+          "children"
+        ],
+        "Color": [
+          "dark blue and navy",
+          "grey",
+          "yellow",
+          "red",
+          "light blue",
+          "multicolor",
+          "pink",
+          "turquoise",
+          "beige",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "green",
+          "silver",
+          "purple and violet"
+        ],
+        "Design": [
+          "plain",
+          "picture",
+          "shiny",
+          "lace",
+          "melange",
+          "text",
+          "patterned",
+          "logo"
+        ],
+        "Pattern": [
+          "animalistic",
+          "chevron",
+          "checked",
+          "stripe",
+          "floral",
+          "polka dot",
+          "geometric & abstract",
+          "other",
+          "camouflage"
+        ],
+        "Material": [
+          "silk",
+          "cotton",
+          "lace",
+          "knitwear",
+          "denim",
+          "linen",
+          "velvet",
+          "mesh/transparent",
+          "corduroy",
+          "suede",
+          "tweed",
+          "leather"
+        ]
+      },
+      "Bodysuits": {
+        "Age": [
+          "children"
+        ],
+        "Color": [
+          "grey",
+          "dark blue and navy",
+          "yellow",
+          "red",
+          "pink",
+          "multicolor",
+          "light blue",
+          "beige",
+          "turquoise",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "green",
+          "silver",
+          "purple and violet"
+        ],
+        "Design": [
+          "plain",
+          "picture",
+          "shiny",
+          "lace",
+          "melange",
+          "text",
+          "patterned",
+          "logo"
+        ],
+        "Pattern": [
+          "animalistic",
+          "chevron",
+          "checked",
+          "stripe",
+          "floral",
+          "polka dot",
+          "geometric & abstract",
+          "other",
+          "camouflage"
+        ],
+        "Material": [
+          "silk",
+          "cotton",
+          "lace",
+          "knitwear",
+          "denim",
+          "linen",
+          "velvet",
+          "mesh/transparent",
+          "corduroy",
+          "suede",
+          "tweed",
+          "leather"
+        ]
+      },
+      "Romper suits and overalls": {
+        "Age": [
+          "children"
+        ],
+        "Color": [
+          "dark blue and navy",
+          "grey",
+          "yellow",
+          "red",
+          "light blue",
+          "multicolor",
+          "pink",
+          "turquoise",
+          "beige",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "green",
+          "silver",
+          "purple and violet"
+        ],
+        "Design": [
+          "plain",
+          "picture",
+          "shiny",
+          "lace",
+          "melange",
+          "text",
+          "patterned",
+          "logo"
+        ],
+        "Pattern": [
+          "animalistic",
+          "chevron",
+          "checked",
+          "stripe",
+          "floral",
+          "polka dot",
+          "geometric & abstract",
+          "other",
+          "camouflage"
+        ],
+        "Material": [
+          "silk",
+          "cotton",
+          "lace",
+          "knitwear",
+          "denim",
+          "linen",
+          "velvet",
+          "mesh/transparent",
+          "corduroy",
+          "suede",
+          "tweed",
+          "leather"
+        ]
+      }
+    },
+    "Clothing/Bathrobes": {
+      "Color": [
+        "grey",
+        "dark blue and navy",
+        "yellow",
+        "red",
+        "pink",
+        "multicolor",
+        "light blue",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ]
+    },
+    "Clothing/Dresses": {
+      "Layers": [
+        "2nd layer",
+        "1st layer"
+      ],
+      "Age": [
+        "adult",
+        "children"
+      ],
+      "Belt": [
+        "belt",
+        "no belt"
+      ],
+      "Closure": [
+        "partial closure",
+        "no closure",
+        "full closure"
+      ],
+      "Fastening": [
+        "no fastening",
+        "fastening"
+      ],
+      "Fastening type": [
+        "wrap & knot",
+        "toggles",
+        "buckle",
+        "zipper",
+        "buttons",
+        "drawstrings"
+      ],
+      "Button closure": [
+        "double breasted",
+        "single breasted"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "yellow",
+        "light blue",
+        "pink",
+        "turquoise",
+        "beige",
+        "orange",
+        "black",
+        "brown",
+        "multicolor",
+        "silver",
+        "grey",
+        "red",
+        "golden",
+        "white",
+        "green",
+        "purple and violet"
+      ],
+      "Cut": [
+        "strapless",
+        "spaghetti straps",
+        "shorted",
+        "shoulder straps"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Fit": [
+        "Loose",
+        "Fitted",
+        "Regular"
+      ],
+      "Gender": [
+        "women"
+      ],
+      "Length": [
+        "midi",
+        "not visible",
+        "mini",
+        "maxi"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Neckline": [
+        "back",
+        "turtleneck",
+        "one shoulder",
+        "crew",
+        "heart",
+        "boatneck",
+        "v-neck",
+        "bow",
+        "square",
+        "wrap",
+        "round",
+        "collar",
+        "keyhole",
+        "halter",
+        "low cut",
+        "hooded",
+        "cowl",
+        "off shoulder"
+      ],
+      "Pockets": [
+        "Pockets",
+        "No pockets"
+      ],
+      "Location": [
+        "Bottom pockets",
+        "Upper pockets",
+        "Whole body pockets"
+      ],
+      "Type": [
+        "Kangoroo",
+        "Front",
+        "Chest",
+        "Back",
+        "Cargo",
+        "Sleeve pocket"
+      ],
+      "Skirt": [
+        "a-line skirts",
+        "tutu skirts",
+        "mermaid skirts",
+        "tiered skirts",
+        "pencil and straight skirts",
+        "wrap skirts",
+        "pleated skirts",
+        "balloon skirts"
+      ],
+      "Sleeves": [
+        "one sleeve",
+        "short sleeves",
+        "sleeveless",
+        "3/4 sleeves",
+        "long sleeves"
+      ],
+      "Style": [
+        "wedding",
+        "cocktail dress",
+        "sport",
+        "casual",
+        "evening dress"
+      ],
+      "Subcategory": [
+        "knitted dresses",
+        "bodycon dress",
+        "blazer dresses",
+        "casual dresses",
+        "blouse dresses",
+        "wrap dresses",
+        "sheath dresses",
+        "fit & flare dresses",
+        "slip dress"
+      ],
+      "Occasion": [
+        "party",
+        "prom",
+        "red carpet",
+        "birthday",
+        "business"
+      ]
+    },
+    "Clothing/Jackets and Coats": {
+      "Layers": [
+        "2nd layer",
+        "1st layer"
+      ],
+      "Age": [
+        "adult",
+        "children"
+      ],
+      "Belt": [
+        "belt",
+        "no belt"
+      ],
+      "Closure": [
+        "partial closure",
+        "no closure",
+        "full closure"
+      ],
+      "Fastening": [
+        "no fastening",
+        "fastening"
+      ],
+      "Fastening type": [
+        "wrap & knot",
+        "toggles",
+        "buckle",
+        "zipper",
+        "buttons",
+        "drawstrings"
+      ],
+      "Button closure": [
+        "double breasted",
+        "single breasted"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "yellow",
+        "pink",
+        "light blue",
+        "beige",
+        "turquoise",
+        "orange",
+        "black",
+        "brown",
+        "multicolor",
+        "silver",
+        "grey",
+        "red",
+        "golden",
+        "white",
+        "green",
+        "purple and violet"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Fit": [
+        "Loose",
+        "Fitted",
+        "Regular"
+      ],
+      "Gender": [
+        "women",
+        "men",
+        "unisex"
+      ],
+      "Hood": [
+        "hood",
+        "no hood",
+        "not visible"
+      ],
+      "Length": [
+        "not visible",
+        "long",
+        "middle",
+        "short"
+      ],
+      "Material": [
+        "wool",
+        "softshell",
+        "synthetic",
+        "textile",
+        "leather & suede",
+        "tweed",
+        "fur",
+        "denim"
+      ],
+      "Pockets": [
+        "Pockets",
+        "No pockets"
+      ],
+      "Location": [
+        "Bottom pockets",
+        "Upper pockets",
+        "Whole body pockets"
+      ],
+      "Type": [
+        "Kangoroo",
+        "Front",
+        "Chest",
+        "Back",
+        "Cargo",
+        "Sleeve pocket"
+      ],
+      "Style": [
+        "sport",
+        "elegant",
+        "casual"
+      ],
+      "Subcategory": [
+        "baseball jacket",
+        "suit jackets and tuxedos",
+        "trench coats",
+        "windstoppers & softshells",
+        "bomber jacket",
+        "winter coats",
+        "duffle coat",
+        "puffer jackets",
+        "knitted ponchos",
+        "parka coat",
+        "biker jacket",
+        "raincoats and ponchos",
+        "casual jackets",
+        "racer jacket",
+        "peacoat",
+        "wool coats",
+        "pilot jacket",
+        "harrington jacket",
+        "winter jackets",
+        "kimono coat"
+      ],
+      "Occasion": [
+        "business"
+      ]
+    },
+    "Clothing/Nightwear": {
+      "nightdresses and negligees": {
+        "Color": [
+          "dark blue and navy",
+          "grey",
+          "yellow",
+          "red",
+          "light blue",
+          "multicolor",
+          "pink",
+          "turquoise",
+          "beige",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "green",
+          "silver",
+          "purple and violet"
+        ],
+        "Cut": [
+          "strapless",
+          "shorted",
+          "shoulder straps",
+          "spaghetti straps"
+        ],
+        "Design": [
+          "plain",
+          "picture",
+          "shiny",
+          "lace",
+          "melange",
+          "text",
+          "patterned",
+          "logo"
+        ],
+        "Pattern": [
+          "animalistic",
+          "chevron",
+          "checked",
+          "stripe",
+          "floral",
+          "polka dot",
+          "geometric & abstract",
+          "other",
+          "camouflage"
+        ],
+        "Length": [
+          "midi",
+          "mini",
+          "maxi",
+          "not visible"
+        ],
+        "Material": [
+          "silk",
+          "cotton",
+          "lace",
+          "knitwear",
+          "denim",
+          "linen",
+          "velvet",
+          "mesh/transparent",
+          "corduroy",
+          "suede",
+          "tweed",
+          "leather"
+        ],
+        "Sleeves": [
+          "one sleeve",
+          "short sleeves",
+          "sleeveless",
+          "3/4 sleeves",
+          "long sleeves"
+        ]
+      },
+      "pyjamas": {
+        "Color": [
+          "dark blue and navy",
+          "grey",
+          "yellow",
+          "red",
+          "light blue",
+          "multicolor",
+          "pink",
+          "turquoise",
+          "beige",
+          "golden",
+          "orange",
+          "black",
+          "white",
+          "brown",
+          "green",
+          "silver",
+          "purple and violet"
+        ],
+        "Design": [
+          "plain",
+          "picture",
+          "shiny",
+          "lace",
+          "melange",
+          "text",
+          "patterned",
+          "logo"
+        ],
+        "Pattern": [
+          "animalistic",
+          "chevron",
+          "checked",
+          "stripe",
+          "floral",
+          "polka dot",
+          "geometric & abstract",
+          "other",
+          "camouflage"
+        ],
+        "Length": [
+          "7/8",
+          "3/4",
+          "Not visible pants",
+          "long",
+          "short"
+        ],
+        "Material": [
+          "silk",
+          "cotton",
+          "lace",
+          "knitwear",
+          "denim",
+          "linen",
+          "velvet",
+          "mesh/transparent",
+          "corduroy",
+          "suede",
+          "tweed",
+          "leather"
+        ],
+        "Sleeves": [
+          "one sleeve",
+          "short sleeves",
+          "sleeveless",
+          "3/4 sleeves",
+          "long sleeves"
+        ]
+      }
+    },
+    "Clothing/Overalls and Dungarees": {
+      "Layers": [
+        "2nd layer",
+        "1st layer"
+      ],
+      "Closure": [
+        "partial closure",
+        "no closure",
+        "full closure"
+      ],
+      "Fastening": [
+        "no fastening",
+        "fastening"
+      ],
+      "Fastening type": [
+        "wrap & knot",
+        "toggles",
+        "buckle",
+        "zipper",
+        "buttons",
+        "drawstrings"
+      ],
+      "Button closure": [
+        "double breasted",
+        "single breasted"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "yellow",
+        "light blue",
+        "pink",
+        "turquoise",
+        "beige",
+        "orange",
+        "black",
+        "brown",
+        "multicolor",
+        "silver",
+        "grey",
+        "red",
+        "golden",
+        "white",
+        "green",
+        "purple and violet"
+      ],
+      "Cut": [
+        "strapless",
+        "spaghetti straps",
+        "shorted",
+        "shoulder straps"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Length": [
+        "7/8",
+        "3/4",
+        "Not visible pants",
+        "long",
+        "short"
+      ],
+      "Fit": [
+        "straight",
+        "Fitted",
+        "Regular",
+        "flared",
+        "slim",
+        "skinny",
+        "Loose",
+        "wide leg",
+        "harem"
+      ],
+      "Age": [
+        "adult",
+        "children"
+      ],
+      "Belt": [
+        "belt",
+        "no belt"
+      ],
+      "Gender": [
+        "women",
+        "men",
+        "unisex"
+      ],
+      "Hood": [
+        "hood",
+        "no hood",
+        "not visible"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Neckline": [
+        "back",
+        "turtleneck",
+        "v-neck",
+        "collar",
+        "crew",
+        "keyhole",
+        "halter",
+        "heart",
+        "low cut",
+        "wrap",
+        "one shoulder",
+        "boatneck",
+        "hooded",
+        "bow",
+        "cowl",
+        "square",
+        "off shoulder",
+        "round"
+      ],
+      "Pockets": [
+        "Pockets",
+        "No pockets"
+      ],
+      "Location": [
+        "Bottom pockets",
+        "Upper pockets",
+        "Whole body pockets"
+      ],
+      "Type": [
+        "Kangoroo",
+        "Front",
+        "Chest",
+        "Back",
+        "Cargo",
+        "Sleeve pocket"
+      ],
+      "Sleeves": [
+        "one sleeve",
+        "short sleeves",
+        "sleeveless",
+        "3/4 sleeves",
+        "long sleeves"
+      ],
+      "Subcategory": [
+        "elegant overalls",
+        "winter overalls",
+        "casual overalls",
+        "work overalls"
+      ]
+    },
+    "Clothing/Pants": {
+      "Age": [
+        "adult",
+        "children"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "light blue",
+        "multicolor",
+        "pink",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Gender": [
+        "women",
+        "men",
+        "unisex"
+      ],
+      "Length": [
+        "7/8",
+        "3/4",
+        "Not visible pants",
+        "long",
+        "short"
+      ],
+      "Fit": [
+        "straight",
+        "flared",
+        "slim",
+        "skinny",
+        "wide leg",
+        "harem"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Pockets": [
+        "Pockets",
+        "No pockets"
+      ],
+      "Location": [
+        "Bottom pockets",
+        "Upper pockets",
+        "Whole body pockets"
+      ],
+      "Type": [
+        "Kangoroo",
+        "Front",
+        "Chest",
+        "Back",
+        "Cargo",
+        "Sleeve pocket"
+      ],
+      "Rise": [
+        "high rise",
+        "mid rise",
+        "low rise",
+        "can't tell"
+      ],
+      "Style": [
+        "casual",
+        "elegant",
+        "sport"
+      ],
+      "Subcategory": [
+        "jeans",
+        "swim shorts",
+        "leggings",
+        "denim shorts",
+        "leather trousers",
+        "sweat pants",
+        "suit trousers",
+        "culottes",
+        "casual trousers",
+        "hotpants",
+        "leather shorts",
+        "sportswear leggings",
+        "leather leggings",
+        "sportswear shorts",
+        "beach pants",
+        "casual shorts",
+        "formal trousers",
+        "casual leggings",
+        "cargo"
+      ],
+      "Occasion": [
+        "business"
+      ]
+    },
+    "Clothing/Skirts": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "light blue",
+        "multicolor",
+        "pink",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Gender": [
+        "women"
+      ],
+      "Length": [
+        "maxi",
+        "mini",
+        "midi"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Pockets": [
+        "Pockets",
+        "No pockets"
+      ],
+      "Location": [
+        "Bottom pockets",
+        "Upper pockets",
+        "Whole body pockets"
+      ],
+      "Type": [
+        "Kangoroo",
+        "Front",
+        "Chest",
+        "Back",
+        "Cargo",
+        "Sleeve pocket"
+      ],
+      "Rise": [
+        "high rise",
+        "mid rise",
+        "low rise",
+        "can't tell"
+      ],
+      "Style": [
+        "casual",
+        "elegant",
+        "sport"
+      ],
+      "Subcategory": [
+        "beach skirts",
+        "a-line skirts",
+        "tutu skirts",
+        "casual skirts",
+        "denim skirts",
+        "mermaid skirts",
+        "leather skirts",
+        "tiered skirts",
+        "sportswear skirts",
+        "pencil and straight skirts",
+        "formal skirts",
+        "wrap skirts",
+        "pleated skirts",
+        "balloon skirts"
+      ],
+      "Occasion": [
+        "business"
+      ]
+    },
+    "Clothing/Upper": {
+      "Layers": [
+        "2nd layer",
+        "1st layer"
+      ],
+      "Age": [
+        "adult",
+        "children"
+      ],
+      "Belt": [
+        "belt",
+        "no belt"
+      ],
+      "Closure": [
+        "partial closure",
+        "no closure",
+        "full closure"
+      ],
+      "Fastening": [
+        "no fastening",
+        "fastening"
+      ],
+      "Fastening type": [
+        "wrap & knot",
+        "toggles",
+        "buckle",
+        "zipper",
+        "buttons",
+        "drawstrings"
+      ],
+      "Button closure": [
+        "double breasted",
+        "single breasted"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "yellow",
+        "pink",
+        "light blue",
+        "beige",
+        "turquoise",
+        "orange",
+        "black",
+        "brown",
+        "multicolor",
+        "silver",
+        "grey",
+        "red",
+        "golden",
+        "white",
+        "green",
+        "purple and violet"
+      ],
+      "Cut": [
+        "strapless",
+        "spaghetti straps",
+        "shorted",
+        "shoulder straps"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Fit": [
+        "Loose",
+        "Fitted",
+        "Regular"
+      ],
+      "Gender": [
+        "women",
+        "men",
+        "unisex"
+      ],
+      "Hood": [
+        "hood",
+        "no hood",
+        "not visible"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Neckline": [
+        "back",
+        "turtleneck",
+        "one shoulder",
+        "crew",
+        "heart",
+        "boatneck",
+        "v-neck",
+        "bow",
+        "square",
+        "wrap",
+        "round",
+        "collar",
+        "keyhole",
+        "halter",
+        "low cut",
+        "hooded",
+        "cowl",
+        "off shoulder"
+      ],
+      "Pockets": [
+        "Pockets",
+        "No pockets"
+      ],
+      "Location": [
+        "Bottom pockets",
+        "Upper pockets",
+        "Whole body pockets"
+      ],
+      "Type": [
+        "Kangoroo",
+        "Front",
+        "Chest",
+        "Back",
+        "Cargo",
+        "Sleeve pocket"
+      ],
+      "Sleeves": [
+        "one sleeve",
+        "short sleeves",
+        "sleeveless",
+        "3/4 sleeves",
+        "long sleeves"
+      ],
+      "Style": [
+        "casual",
+        "elegant",
+        "sport",
+        "smart casual"
+      ],
+      "Subcategory": [
+        "denim shirt",
+        "transparent tops",
+        "knitted vests",
+        "tops",
+        "t-shirts",
+        "cardigans",
+        "tank tops",
+        "bardot tops",
+        "tunics",
+        "polo-shirts",
+        "shell tops",
+        "wrap tops",
+        "sweatshirts",
+        "knitted tops",
+        "vests",
+        "crop tops",
+        "sweaters",
+        "cropped blouse",
+        "shirts",
+        "hoodies",
+        "blouses"
+      ],
+      "Occasion": [
+        "business"
+      ]
+    }
+  },
+  "Footwear": {
+    "Footwear/Ballerinas": {
+      "Toe": [
+        "closed toe shoes",
+        "peep-toe shoes"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Chelsea and Ankle boots": {
+      "Toe": [
+        "closed toe shoes",
+        "peep-toe shoes"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ],
+      "Subcategory": [
+        "elegant boots",
+        "casual boots"
+      ]
+    },
+    "Footwear/Crocs": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Desert Boots": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Espadrilles": {
+      "Toe": [
+        "closed toe shoes",
+        "peep-toe shoes"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Flip-Flops": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Formal Shoes": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Free Time Shoes": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Hiking": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Ladies High Boots": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Mary Jane Shoes": {
+      "Toe": [
+        "closed toe shoes",
+        "peep-toe shoes"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Mules": {
+      "Toe": [
+        "closed toe shoes",
+        "peep-toe shoes"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Pumps": {
+      "Toe": [
+        "closed toe shoes",
+        "peep-toe shoes"
+      ],
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Rubber Boots": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Sandals": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ],
+      "Subcategory": [
+        "formal sandals",
+        "casual sandals"
+      ]
+    },
+    "Footwear/Ski Boots": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Slippers": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Sneakers": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Snow Boots": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    },
+    "Footwear/Trainers": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "pink",
+        "light blue",
+        "green",
+        "beige",
+        "turquoise",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "multicolor",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "unisex",
+        "men",
+        "women"
+      ],
+      "Heel height": [
+        "low",
+        "high",
+        "no heels",
+        "not visible",
+        "middle"
+      ],
+      "Heel shape": [
+        "Normal sole",
+        "stiletto",
+        "chunky",
+        "wedge",
+        "platform",
+        "flatform"
+      ],
+      "Height": [
+        "open feet shoes",
+        "middle boots",
+        "low boots",
+        "high boots",
+        "low shoes"
+      ],
+      "Material": [
+        "rubber and plastic shoes",
+        "suede/nubuck shoes",
+        "leather/faux leather shoes",
+        "textile shoes",
+        "gore-tex shoes",
+        "fur/faux fur shoes"
+      ],
+      "Style": [
+        "casual",
+        "special",
+        "elegant",
+        "sport"
+      ]
+    }
+  },
+  "Jewellery": {
+    "Jewellery/Bracelets": {
+      "Color": [
+        "rose gold",
+        "black",
+        "yellow gold",
+        "multicolor",
+        "silver"
+      ],
+      "Gemstones": [
+        "without gemstones",
+        "with gemstones"
+      ],
+      "Material": [
+        "beaded",
+        "wooden",
+        "metal",
+        "Pearl",
+        "leather"
+      ]
+    },
+    "Jewellery/Brooches, Badges and Pins": {
+      "Color": [
+        "rose gold",
+        "black",
+        "yellow gold",
+        "multicolor",
+        "silver"
+      ],
+      "Gemstones": [
+        "without gemstones",
+        "with gemstones"
+      ],
+      "Material": [
+        "beaded",
+        "wooden",
+        "metal",
+        "Pearl",
+        "leather"
+      ]
+    },
+    "Jewellery/Cufflinks": {
+      "Color": [
+        "rose gold",
+        "black",
+        "yellow gold",
+        "multicolor",
+        "silver"
+      ],
+      "Gemstones": [
+        "without gemstones",
+        "with gemstones"
+      ],
+      "Material": [
+        "beaded",
+        "wooden",
+        "metal",
+        "Pearl",
+        "leather"
+      ]
+    },
+    "Jewellery/Earrings and Earcuffs": {
+      "Color": [
+        "rose gold",
+        "black",
+        "yellow gold",
+        "multicolor",
+        "silver"
+      ],
+      "Gemstones": [
+        "without gemstones",
+        "with gemstones"
+      ],
+      "Material": [
+        "beaded",
+        "wooden",
+        "metal",
+        "Pearl",
+        "leather"
+      ]
+    },
+    "Jewellery/Keyrings": {
+      "Color": [
+        "rose gold",
+        "black",
+        "yellow gold",
+        "multicolor",
+        "silver"
+      ],
+      "Gemstones": [
+        "without gemstones",
+        "with gemstones"
+      ],
+      "Material": [
+        "beaded",
+        "wooden",
+        "metal",
+        "Pearl",
+        "leather"
+      ]
+    },
+    "Jewellery/Necklaces, Pendants and Chains": {
+      "Color": [
+        "rose gold",
+        "black",
+        "yellow gold",
+        "multicolor",
+        "silver"
+      ],
+      "Gemstones": [
+        "without gemstones",
+        "with gemstones"
+      ],
+      "Material": [
+        "beaded",
+        "wooden",
+        "metal",
+        "Pearl",
+        "leather"
+      ]
+    },
+    "Jewellery/Pins and Clips": {
+      "Color": [
+        "rose gold",
+        "black",
+        "yellow gold",
+        "multicolor",
+        "silver"
+      ],
+      "Gemstones": [
+        "without gemstones",
+        "with gemstones"
+      ],
+      "Material": [
+        "beaded",
+        "wooden",
+        "metal",
+        "Pearl",
+        "leather"
+      ]
+    },
+    "Jewellery/Rings": {
+      "Color": [
+        "rose gold",
+        "black",
+        "yellow gold",
+        "multicolor",
+        "silver"
+      ],
+      "Gemstones": [
+        "without gemstones",
+        "with gemstones"
+      ],
+      "Material": [
+        "beaded",
+        "wooden",
+        "metal",
+        "Pearl",
+        "leather"
+      ]
+    }
+  },
+  "Underwear": {
+    "Underwear/Bodies": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "multicolor",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Subcategory": [
+        "bodies",
+        "monokinis"
+      ]
+    },
+    "Underwear/Bras": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "multicolor",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Coverage": [
+        "full coverage",
+        "3/4 coverage",
+        "demi coverage"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Shape": [
+        "balconette",
+        "bandeau",
+        "t-shirt",
+        "plunge",
+        "full cup"
+      ],
+      "Style": [
+        "sport",
+        "swimwear",
+        "sexy",
+        "standard"
+      ],
+      "Subcategory": [
+        "sports swim top",
+        "swim top"
+      ]
+    },
+    "Underwear/Panties and Underpants": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "multicolor",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Gender": [
+        "children",
+        "men",
+        "women"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Pattern": [
+        "plain",
+        "animalistic",
+        "chevron",
+        "picture",
+        "shiny",
+        "lace",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "melange",
+        "text",
+        "geometric & abstract",
+        "patterned",
+        "other",
+        "camouflage",
+        "logo"
+      ],
+      "Style": [
+        "sport",
+        "swimwear",
+        "sexy",
+        "standard"
+      ],
+      "Subcategory": [
+        "swim bottoms",
+        "thongs",
+        "boxer briefs",
+        "boxers",
+        "sports swim bottoms",
+        "panties",
+        "briefs"
+      ]
+    },
+    "Underwear/Sets": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "multicolor",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Design": [
+        "plain",
+        "picture",
+        "shiny",
+        "lace",
+        "melange",
+        "text",
+        "patterned",
+        "logo"
+      ],
+      "Pattern": [
+        "animalistic",
+        "chevron",
+        "checked",
+        "stripe",
+        "floral",
+        "polka dot",
+        "geometric & abstract",
+        "other",
+        "camouflage"
+      ],
+      "Material": [
+        "silk",
+        "cotton",
+        "lace",
+        "knitwear",
+        "denim",
+        "linen",
+        "velvet",
+        "mesh/transparent",
+        "corduroy",
+        "suede",
+        "tweed",
+        "leather"
+      ],
+      "Style": [
+        "sport",
+        "swimwear",
+        "sexy",
+        "standard"
+      ],
+      "Subcategory": [
+        "sports swimsuit"
+      ]
+    },
+    "Underwear/Socks": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "multicolor",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Subcategory": [
+        "knee socks",
+        "classic socks",
+        "low cut socks"
+      ]
+    },
+    "Underwear/Tights": {
+      "Color": [
+        "dark blue and navy",
+        "grey",
+        "yellow",
+        "red",
+        "light blue",
+        "pink",
+        "multicolor",
+        "turquoise",
+        "beige",
+        "golden",
+        "orange",
+        "black",
+        "white",
+        "brown",
+        "green",
+        "silver",
+        "purple and violet"
+      ],
+      "Subcategory": [
+        "stockings",
+        "tights"
+      ]
+    }
+  },
+  "Watch": {
+    "Case color": [
+      "other colors",
+      "golden watch",
+      "black watch",
+      "silver/steel watch"
+    ],
+    "Dial color": [
+      "other colors",
+      "golden dial",
+      "white dial",
+      "silver/steel dial",
+      "blue dial",
+      "black dial"
+    ],
+    "Dial type": [
+      "Non-numeric dial",
+      "Arabic numerals dial",
+      "Roman numerals dial",
+      "mixed dial"
+    ],
+    "Gemstones": [
+      "watch with gemstones/rhinestones",
+      "watch without gemstones/rhinestones"
+    ],
+    "Gender": [
+      "unisex/neutral watch",
+      "men's watch",
+      "women's watch"
+    ],
+    "Strap color": [
+      "other colors",
+      "silver/steel strap",
+      "black strap",
+      "brown strap",
+      "golden strap"
+    ],
+    "Strap material": [
+      "nylon",
+      "wooden",
+      "metal",
+      "rubber/silicon",
+      "leather"
+    ],
+    "Style": [
+      "sport",
+      "elegant",
+      "casual"
+    ],
+    "Type": [
+      "smart watch",
+      "digital watch",
+      "analogue watch"
+    ],
+    "Subcategory": [
+      "formal skirts",
+      "sports swim top",
+      "casual sandals",
+      "elegant boots",
+      "casual dresses",
+      "sports swim bottoms",
+      "sports swimsuit",
+      "formal dresses",
+      "casual boots",
+      "casual skirts",
+      "formal sandals",
+      "formal trousers",
+      "sportswear skirts"
+    ]
+  }
+}
