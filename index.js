@@ -1585,13 +1585,7 @@
   }
   
   function buildStapleCollectionName(gender = "female", version = "v2") {
-    const g = String(gender || "female").toLowerCase();
-    const v = String(version || "v2").toLowerCase();
-  
-    if (g === "male") {
-      return v === "v2" ? "staples_male_v2" : "staples_male";
-    }
-    return v === "v2" ? "staples_female_v2" : "staples_female";
+    return "staples_male_v2";
   }
   
   function filterStaplesForOccasion(items = [], occasion = "") {
@@ -2813,8 +2807,6 @@
   // ✅ Fetch wardrobe by user ID (normalized + hydrated)
   app.get("/wardrobe", async (req, res) => {
     const includeStaples = String(req.query.include_staples || "0") === "1";
-    const staplesGender = String(req.query.gender || "male").toLowerCase();
-    const staplesVersion = String(req.query.version || "v2").toLowerCase();
     try {
       let { uid } = req.query;
       uid = (uid || "").trim();
@@ -2875,14 +2867,7 @@
   
       // ✅ Optionally merge staples into wardrobe response (frontend can render both)
       if (includeStaples) {
-        const col =
-          staplesGender === "female"
-            ? staplesVersion === "v2"
-              ? "staples_female_v2"
-              : "staples_female"
-            : staplesVersion === "v2"
-              ? "staples_male_v2"
-              : "staples_male";
+        const col = "staples_male_v2";
   
         const stapleSnap = await db.collection(col).get();
   
@@ -2904,8 +2889,8 @@
               data.taxonomyPath || mapTaxonomy(normalizeCategory(category, name)),
             silhouette: data.silhouette || guessSilhouette(`${name} ${category}`),
             palette: data.palette || pickPalette(color),
-            gender: data.gender || staplesGender,
-            version: data.version || staplesVersion,
+            gender: data.gender || "male",
+            version: data.version || "v2",
           });
   
           return {
@@ -3061,20 +3046,10 @@
     }
   });
   
-  // ✅ Get Staples - from Firestore (v2 collections)
+  // ✅ Get Staples - always reads from staples_male_v2 (only populated collection)
   app.get("/staples", async (req, res) => {
     try {
-      const gender = String(req.query.gender || "male").toLowerCase();
-      const version = String(req.query.version || "v2").toLowerCase();
-  
-      const col =
-        gender === "female"
-          ? version === "v2"
-            ? "staples_female_v2"
-            : "staples_female"
-          : version === "v2"
-            ? "staples_male_v2"
-            : "staples_male";
+      const col = "staples_male_v2";
   
       const snap = await db.collection(col).get();
   
@@ -3097,10 +3072,10 @@
           silhouette: data.silhouette || guessSilhouette(`${name} ${category}`),
           palette: data.palette || pickPalette(color),
   
-          gender: data.gender || gender,
-          version: data.version || version,
+          gender: data.gender || "male",
+          version: data.version || "v2",
         });
-  
+
         return {
           ...hydrated,
           id: doc.id,
@@ -3109,7 +3084,7 @@
           source: "staple",
         };
       });
-  
+
       return res.json({
         success: true,
         staples,
@@ -3226,14 +3201,7 @@
         const g = String(gender || "male").toLowerCase();
         const v = String(version || "v2").toLowerCase();
   
-        const col =
-          g === "female"
-            ? v === "v2"
-              ? "staples_female_v2"
-              : "staples_female"
-            : v === "v2"
-              ? "staples_male_v2"
-              : "staples_male";
+        const col = "staples_male_v2";
   
         const stapleDocId = safeDocId(
           `${capitalizedName}_${capitalizedColor}_${normalizedCategory}`,
@@ -3396,14 +3364,7 @@
         const g = String(gender || "male").toLowerCase();
         const v = String(version || "v2").toLowerCase();
   
-        const col =
-          g === "female"
-            ? v === "v2"
-              ? "staples_female_v2"
-              : "staples_female"
-            : v === "v2"
-              ? "staples_male_v2"
-              : "staples_male";
+        const col = "staples_male_v2";
   
         const stapleDocId = safeDocId(
           `${capitalizedName}_${capitalizedColor}_${normalizedCategory}`,
@@ -4592,6 +4553,15 @@ ${
     : `- No anchor item for this request.`
 }
 
+COMPLETENESS REQUIREMENT (non-negotiable):
+- Every outfit MUST include at least 1 footwear item (shoe/sneaker/sandal/heel/boot/jutti).
+- Separates outfit: Top + Bottom + Footwear = minimum 3 items.
+- One-piece outfit (dress/jumpsuit/saree): Footwear = minimum 2 items.
+- An outfit with zero footwear items is INVALID — do not return it.
+- Never repeat the same idx twice in one outfit.
+- Max 5 items per outfit.
+- Only use gender-appropriate items. Gender for this request: ${effectiveGender}.
+
 FASHION KNOWLEDGE BASE:
 ${rulesText || "• (No additional rules available)"}
 
@@ -4712,6 +4682,13 @@ Return only JSON.`,
       };
     })
     .filter((look) => Array.isArray(look.items) && look.items.length > 0);
+
+  // Drop outfits that have 2+ items but no footwear — they're incomplete looks
+  const _fwRe = /footwear|shoe|sandal|heel|sneaker|jutti|boot/i;
+  outfits = outfits.filter(look => {
+    if (look.items.length < 2) return true; // single anchor kept as emergency fallback
+    return look.items.some(it => _fwRe.test(`${it.category || ""} ${it.name || ""} ${(it.tags || []).join(" ")}`));
+  });
 
   if (!outfits.length && anchorItem) {
     outfits = [
