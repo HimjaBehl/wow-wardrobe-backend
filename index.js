@@ -4802,7 +4802,7 @@ Each outfit object:
 {
   "title": "2–4 word editorial title (e.g. 'Cool-Girl Office', 'Weekend Linen Look')",
   "style_note": "1-sentence stylist summary of the complete look (name the aesthetic identity)",
-  "why_it_works": "Explain WHY in stylist voice — reference the user's style identity, proportion logic, palette reasoning, and occasion/weather fit. Must feel personal, not generic.",
+  "why_it_works": "INTENT-LED explanation in stylist voice. Lead with WHAT MOMENT this is dressed FOR. Then explain how each piece serves that moment. Must answer: (1) What is this look saying? (2) Why does it match the chosen vibe? (3) How does the uploaded item support the story? (4) Why is it occasion/weather appropriate? BAD: 'This uses the shirt as the hero.' GOOD: 'This reads polished brunch without feeling overdressed — the white shirt keeps it crisp, while relaxed denim and clean footwear make it easy for Delhi heat.'",
   "weather_note": "Why this outfit suits the current weather conditions",
   "silhouette_note": "How the proportions balance (e.g. oversized top grounds wide-leg trousers)",
   "color_note": "Why the palette is harmonious (e.g. tonal neutrals with one earthy accent)",
@@ -4876,35 +4876,57 @@ Separates: Top + Bottom + Footwear (+ optional Outer/Bag/Accessory) = min 3 item
 One-piece: Dress/Jumpsuit/Saree + Footwear (+ optional Outer/Bag) = min 2 items
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-HERO PIECE — STYLE AROUND IT, NOT ALONGSIDE IT
+STYLING INTENT HIERARCHY — READ THIS FIRST
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You are NOT worshipping the uploaded item. You are using it to build the right look for the user's chosen moment.
+
+The uploaded piece is a STARTING CONSTRAINT — not the star of the show.
+The USER'S INTENT is the hero. The final outfit must speak to:
+  → why they are styling this piece
+  → where they are going
+  → the vibe they selected
+  → the version of themselves they want to express
+  → the occasion/mood/context
+
+PRIORITY ORDER (rank these in this sequence when making every decision):
+  1. USER INTENT — occasion, vibe, mood they selected
+  2. WEATHER PRACTICALITY — thermals beat aesthetics
+  3. USER TASTE PROFILE — their established style identity
+  4. ANCHOR PIECE COMPATIBILITY — include it, style around it
+  5. WARDROBE/STAPLES AVAILABILITY — use what is offered
+
+EACH OUTFIT MUST ANSWER THESE FOUR QUESTIONS:
+  (1) What is this look saying? (one-line story)
+  (2) Why does it match the user's chosen vibe?
+  (3) How does the uploaded item SUPPORT the outfit — without overpowering it?
+  (4) Why is this weather and occasion appropriate?
+
+INTENT EXAMPLES:
+• White shirt + "date night + feminine soft": The shirt supports softness and polish — style it as a tucked blouse with a flowy midi and heels. The story is date-night intention, not shirt showcasing.
+• Denim jacket + "airport + sporty + comfort": The jacket anchors travel ease — pair it with straight trousers and clean sneakers. The story is effortless transit readiness, not jacket styling.
+• Sneakers + "office + elevated casual": The sneakers modernise the formality — build a tailored trouser + blazer base. The story is smart-casual authority, not sneaker showcasing.
+
+REJECT any outfit where:
+• Pieces technically work together but the look does not express the selected vibe
+• The outfit is wearable but not actually STYLED for the occasion
+• The anchor piece dominates visually but the outfit lacks a clear story
+
 ${
   anchorItem && anchorAnalysis
-    ? `The uploaded item is the HERO of every single outfit. Your job is to make it shine — not to dress the person generically and include it as an afterthought.
+    ? `CONSTRAINT ITEM (must be included in every outfit):
+"${anchorItem.name || "Uploaded item"}" (idx: ${String(anchorItem.idx || anchorItem.id || "")})
+Type: ${anchorAnalysis.type} | Slot: ${detectSlotFromItem(anchorItem)}
 
-Hero piece: "${anchorItem.name || "Uploaded item"}" (idx: ${String(anchorItem.idx || anchorItem.id || "")})
-Hero type detected: ${anchorAnalysis.type}
-Slot: ${detectSlotFromItem(anchorItem)}
+STRUCTURAL RULES FOR THIS SLOT (constraint, not styling brief):
+- If item is top: add a bottom that balances its volume + footwear. Let the occasion drive the feel.
+- If item is bottom: add a top with opposite silhouette energy. Let the vibe drive the top choice.
+- If item is onepiece: add footwear + optional bag/outer. Let the occasion decide the outer layer.
+- If item is footwear: build the full outfit to match the shoe's energy AND the chosen occasion.
+- If item is outer: layer over a coherent base designed for the occasion first, then anchor-compatible.
+- If item is bag/accessory: build a strong outfit for the occasion; the piece accents, not dictates.
 
-STYLING BRIEF FOR THIS HERO TYPE:
-${anchorAnalysis.brief}
-
-STRUCTURAL RULES FOR THIS SLOT:
-- If hero is top: add a bottom that balances its volume, then footwear. Hero drives the silhouette.
-- If hero is bottom: add a top with opposite silhouette energy. Hero defines the proportion.
-- If hero is onepiece: add only footwear + optional bag/outer (no separate top or bottom).
-- If hero is footwear: build the full top/bottom or dress outfit to match the shoe's energy.
-- If hero is outer: layer over a coherent base — the outfit underneath must feel intentional.
-- If hero is bag/accessory: build a strong complete outfit the hero elevates.
-
-ONE FOCAL POINT RULE:
-Every outfit has exactly ONE primary focal point — that is the hero piece.
-Everything else exists to support, balance, or elevate it.
-A beautiful second piece that COMPETES with the hero is worse than a simple piece that elevates it.
-If the hero is printed: all other clothing must be solid neutrals.
-If the hero is oversized: the opposing half must be slim or fitted.
-If the hero is embellished: no other item may have embellishment, print, or loud color.`
-    : `No hero piece — generate polished standalone outfits. Each outfit should still have one clear focal point — one item that makes the look interesting. Everything else supports it.`
+${anchorAnalysis.brief}`
+    : `No anchor constraint — generate polished outfits led entirely by occasion and vibe. Each outfit should have one clear focal point that makes the look interesting. Everything else supports it.`
 }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -4928,8 +4950,8 @@ Return only JSON.`,
 
   const userPayload = {
     task: anchorItem
-      ? `Generate ${candidateCount} distinct anchor-based outfit candidates`
-      : `Generate ${candidateCount} distinct polished outfit candidates`,
+      ? `Generate ${candidateCount} distinct outfits FOR "${occasion || "the chosen occasion"}" + "${vibe || "the chosen vibe"}". The uploaded item is a constraint — include it to support the look, not to lead it.`
+      : `Generate ${candidateCount} distinct polished outfit candidates for "${occasion || "general"}" + "${vibe || "flexible"}" vibe.`,
     uid,
     occasion,
     vibe,
@@ -4969,8 +4991,12 @@ Return only JSON.`,
       "Reference items strictly by idx.",
       `Return up to ${candidateCount} outfits. Make each one visually distinct.`,
       "Vary silhouettes, footwear types, and layering strategies across outfits.",
+      `INTENT FIRST: Every outfit must clearly express "${vibe || "the chosen vibe"}" for "${occasion || "the chosen occasion"}". Style the MOMENT, not the uploaded item.`,
+      anchorItem
+        ? `The uploaded item (idx: ${String(anchorItem.idx || anchorItem.id || "")}) is a constraint — include it in every outfit. It supports the story, it does not tell the story.`
+        : "No anchor constraint — lead entirely with occasion and vibe.",
       tasteProfile?.weightedProfile
-        ? `Generate outfits that feel native to the user's style identity: "${tasteProfile.styleIdentity}". Start from their DNA, not from generic fashion.`
+        ? `Generate outfits native to the user's style identity: "${tasteProfile.styleIdentity}". Start from their taste DNA, shaped by the chosen occasion.`
         : "Generate broadly — user's taste is still developing.",
     ],
   };
@@ -4994,11 +5020,15 @@ Return only JSON.`,
   };
 
   // Log the full generation context before calling GPT
+  console.log(`[IntentHierarchy] GPT call: intent="${vibe || "any"}/${occasion || "any"}" > weather="${weather || "?"}" > taste="${tasteProfile?.styleIdentity || "developing"}" > anchor="${anchorItem?.name || "none"}" | ${candidateCount} candidates`);
+  if (anchorItem) {
+    console.log(`[AnchorSupport]   "${anchorItem.name}" (${detectSlotFromItem(anchorItem)}) is a CONSTRAINT, not the hero — outfit story leads`);
+  }
   if (tasteProfile?.styleIdentity) {
     const wp = tasteProfile.weightedProfile || {};
-    const topAesthetic = Object.entries(wp.aesthetics || {}).sort((a, b) => b[1] - a[1])[0];
+    const topAesthetic  = Object.entries(wp.aesthetics  || {}).sort((a, b) => b[1] - a[1])[0];
     const topSilhouette = Object.entries(wp.silhouettes || {}).sort((a, b) => b[1] - a[1])[0];
-    console.log(`[TasteIdentity]  Calling GPT as "${tasteProfile.styleIdentity}" (conf:${tasteProfile.styleIdentityConfidence ?? 0}) | ${candidateCount} candidates requested`);
+    console.log(`[TasteIdentity]  Identity: "${tasteProfile.styleIdentity}" (conf:${tasteProfile.styleIdentityConfidence ?? 0})`);
     if (topAesthetic)  console.log(`[GenerationBias] Primary aesthetic bias: ${topAesthetic[0]} (${topAesthetic[1]})`);
     if (topSilhouette) console.log(`[GenerationBias] Primary silhouette bias: ${topSilhouette[0]} (${topSilhouette[1]})`);
     const dislikeStr = Object.keys(wp.dislikes || {}).slice(0, 3).join(", ");
