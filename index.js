@@ -5139,6 +5139,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       city = "Delhi",
       gender = "",
       staples_version = "v2",
+      prompt = "",
     } = req.body || {};
 
     const includeWardrobe =
@@ -5199,6 +5200,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       occasion,
       vibe,
       city,
+      prompt,
       anchorItem: anchorHydrated,
       includeWardrobe,
       includeStaples,
