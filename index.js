@@ -4320,12 +4320,17 @@ async function buildTinaRequestContext({
         fbSets = null;
       }
 
-      // Build rich taste profile from liked/disliked item signals
+      // Build rich taste profile from liked/disliked item signals + full combo vectors
       try {
-        const likedItems   = (userCtx.likedCombos  || []).flatMap((c) => c.items  || []);
+        const likedItems    = (userCtx.likedCombos    || []).flatMap((c) => c.items || []);
         const dislikedItems = (userCtx.dislikedCombos || []).flatMap((c) => c.items || []);
-        tasteProfile = buildUserTasteProfile(likedItems, dislikedItems, userCtx.feedbackMemory || [], prefs);
-        dlog("👤 Taste profile:", JSON.stringify(tasteProfile));
+        tasteProfile = buildUserTasteProfile(
+          likedItems, dislikedItems,
+          userCtx.feedbackMemory  || [], prefs,
+          userCtx.likedCombos     || [],   // full combos for taste-weight building
+          userCtx.dislikedCombos  || []    // full combos for taste-weight building
+        );
+        dlog(`👤 Taste: ${tasteProfile.styleIdentity} (conf:${tasteProfile.styleIdentityConfidence}) | signals:${tasteProfile.tasteWeights?.totalSignals || 0}`);
       } catch (e) {
         console.warn("⚠️ buildUserTasteProfile failed:", e?.message || e);
       }
@@ -4556,15 +4561,24 @@ async function runTinaStylist({
 
   // Build taste context string for the prompt
   const tasteContext = tasteProfile
-    ? `USER TASTE PROFILE:
-- Summary: ${tasteProfile.summaryLine}
-- Preferred colors: ${tasteProfile.preferredColors.join(", ") || "not yet established"}
-- Preferred categories: ${tasteProfile.preferredCategories.join(", ") || "varied"}
-- Silhouette tendency: ${tasteProfile.silhouetteTendency}
-- Layering: ${tasteProfile.layeringPreference}
-- Aesthetic hints: ${tasteProfile.aestheticHints.join(", ") || "none yet"}
-- Avoid colors: ${tasteProfile.dislikedColors.join(", ") || "none"}
-- Avoid categories: ${tasteProfile.dislikedCategories.join(", ") || "none"}`
+    ? [
+        `USER TASTE PROFILE:`,
+        `- Style identity: ${tasteProfile.styleIdentity}${tasteProfile.styleIdentityConfidence > 0.3 ? ` (${Math.round(tasteProfile.styleIdentityConfidence * 100)}% confidence)` : ""}`,
+        `- Summary: ${tasteProfile.summaryLine}`,
+        `- Preferred colors: ${tasteProfile.preferredColors.join(", ") || "not yet established"}`,
+        `- Preferred categories: ${tasteProfile.preferredCategories.join(", ") || "varied"}`,
+        `- Silhouette tendency: ${tasteProfile.silhouetteTendency}`,
+        `- Layering: ${tasteProfile.layeringPreference}`,
+        `- Aesthetic hints: ${tasteProfile.aestheticHints.join(", ") || "none yet"}`,
+        `- Avoid colors: ${tasteProfile.dislikedColors.join(", ") || "none"}`,
+        `- Avoid categories: ${tasteProfile.dislikedCategories.join(", ") || "none"}`,
+        tasteProfile.tasteWeights?.confidence > 0.4
+          ? `- Taste signals: ${tasteProfile.tasteWeights.totalSignals} combos rated (${Math.round(tasteProfile.tasteWeights.confidence * 100)}% confidence)`
+          : `- Taste signals: still building (${tasteProfile.tasteWeights?.totalSignals || 0} combos rated)`,
+        tasteProfile.styleIdentityConfidence > 0.3
+          ? `→ Lean into the "${tasteProfile.styleIdentity}" identity. Don't fight it — elevate it within the occasion.`
+          : `→ Taste still developing — suggest broadly and help the user discover their style.`,
+      ].join("\n")
     : "";
 
   const systemMsg = {
@@ -4837,6 +4851,7 @@ Return only JSON.`,
     vibe:           vibe || "",
     anchorItem:     anchorItem || null,
     anchorAnalysis: anchorAnalysis || null,
+    tasteProfile:   tasteProfile  || null,
     gender:     effectiveGender,
   };
 
