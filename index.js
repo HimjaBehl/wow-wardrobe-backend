@@ -20,6 +20,7 @@
   import { calculateOutfitScore } from "./lib/outfitScoring.js";
   import { buildUserTasteProfile } from "./lib/tasteProfile.js";
   import { filterAndRankOutfits, validateOutfitStructure, fullOutfitScore } from "./lib/outfitFilter.js";
+  import { classifyAnchorItem } from "./lib/anchorIntelligence.js";
 
   import crypto from "crypto";
   
@@ -4547,6 +4548,12 @@ async function runTinaStylist({
   // Ask GPT for more candidates than the user will see — the filter engine picks the best
   const candidateCount = lookCount * 2 + 2;
 
+  // Pre-classify anchor type — used in system prompt and scoring pipeline
+  const anchorAnalysis = anchorItem ? classifyAnchorItem(anchorItem) : null;
+  if (anchorAnalysis) {
+    dlog(`🎯 Anchor: "${anchorItem.name}" → type:${anchorAnalysis.type}`);
+  }
+
   // Build taste context string for the prompt
   const tasteContext = tasteProfile
     ? `USER TASTE PROFILE:
@@ -4652,18 +4659,36 @@ OUTFIT STRUCTURE
 Separates: Top + Bottom + Footwear (+ optional Outer/Bag/Accessory) = min 3 items
 One-piece: Dress/Jumpsuit/Saree + Footwear (+ optional Outer/Bag) = min 2 items
 
-ANCHOR RULES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HERO PIECE — STYLE AROUND IT, NOT ALONGSIDE IT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${
-  anchorItem
-    ? `The anchor item is REQUIRED in every outfit (idx: ${String(anchorItem.idx || anchorItem.id || "")}).
-- Anchor is a ${detectSlotFromItem(anchorItem)} — build the rest of the outfit to complement it.
-- If anchor is top: add a bottom that balances its volume, then add footwear.
-- If anchor is bottom: add a top with the opposite silhouette energy, then footwear.
-- If anchor is onepiece: add only footwear + optional bag/outer (no top/bottom).
-- If anchor is footwear: build a full top/bottom or dress outfit around the shoe's vibe.
-- If anchor is outer: layer it over a coherent base — do not leave the outfit incomplete beneath.
-- If anchor is bag/accessory: choose a strong complete outfit it elevates.`
-    : `No anchor item — generate polished standalone outfits.`
+  anchorItem && anchorAnalysis
+    ? `The uploaded item is the HERO of every single outfit. Your job is to make it shine — not to dress the person generically and include it as an afterthought.
+
+Hero piece: "${anchorItem.name || "Uploaded item"}" (idx: ${String(anchorItem.idx || anchorItem.id || "")})
+Hero type detected: ${anchorAnalysis.type}
+Slot: ${detectSlotFromItem(anchorItem)}
+
+STYLING BRIEF FOR THIS HERO TYPE:
+${anchorAnalysis.brief}
+
+STRUCTURAL RULES FOR THIS SLOT:
+- If hero is top: add a bottom that balances its volume, then footwear. Hero drives the silhouette.
+- If hero is bottom: add a top with opposite silhouette energy. Hero defines the proportion.
+- If hero is onepiece: add only footwear + optional bag/outer (no separate top or bottom).
+- If hero is footwear: build the full top/bottom or dress outfit to match the shoe's energy.
+- If hero is outer: layer over a coherent base — the outfit underneath must feel intentional.
+- If hero is bag/accessory: build a strong complete outfit the hero elevates.
+
+ONE FOCAL POINT RULE:
+Every outfit has exactly ONE primary focal point — that is the hero piece.
+Everything else exists to support, balance, or elevate it.
+A beautiful second piece that COMPETES with the hero is worse than a simple piece that elevates it.
+If the hero is printed: all other clothing must be solid neutrals.
+If the hero is oversized: the opposing half must be slim or fitted.
+If the hero is embellished: no other item may have embellishment, print, or loud color.`
+    : `No hero piece — generate polished standalone outfits. Each outfit should still have one clear focal point — one item that makes the look interesting. Everything else supports it.`
 }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -4807,10 +4832,11 @@ Return only JSON.`,
 
   // Build scoring context for the filter engine
   const scoringCtx = {
-    weather:    weather || "",
-    occasion:   occasion || "",
-    vibe:       vibe || "",
-    anchorItem: anchorItem || null,
+    weather:        weather || "",
+    occasion:       occasion || "",
+    vibe:           vibe || "",
+    anchorItem:     anchorItem || null,
+    anchorAnalysis: anchorAnalysis || null,
     gender:     effectiveGender,
   };
 
