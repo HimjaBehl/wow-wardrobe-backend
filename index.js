@@ -19,6 +19,7 @@
   import { updateTrends } from "./lib/updateTrends.js";
   import { calculateOutfitScore } from "./lib/outfitScoring.js";
   import { buildUserTasteProfile } from "./lib/tasteProfile.js";
+  import { filterAndRankOutfits, validateOutfitStructure, fullOutfitScore } from "./lib/outfitFilter.js";
 
   import crypto from "crypto";
   
@@ -4543,6 +4544,9 @@ async function runTinaStylist({
       anchorItem,
     });
 
+  // Ask GPT for more candidates than the user will see — the filter engine picks the best
+  const candidateCount = lookCount * 2 + 2;
+
   // Build taste context string for the prompt
   const tasteContext = tasteProfile
     ? `USER TASTE PROFILE:
@@ -4568,7 +4572,8 @@ You design outfits using ONLY the items provided in wardrobe_preview (strictly b
 STRICT OUTPUT FORMAT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Respond ONLY with valid JSON. No prose. No markdown.
-Top-level key must be "outfits". Return up to ${lookCount} outfits.
+Top-level key must be "outfits". Return up to ${candidateCount} outfits.
+Make each outfit VISUALLY DISTINCT: different silhouette, different footwear type, different styling energy.
 
 Each outfit object:
 {
@@ -4673,8 +4678,8 @@ Return only JSON.`,
 
   const userPayload = {
     task: anchorItem
-      ? `Generate ${lookCount} anchor-based outfits`
-      : `Generate ${lookCount} polished outfits`,
+      ? `Generate ${candidateCount} distinct anchor-based outfit candidates`
+      : `Generate ${candidateCount} distinct polished outfit candidates`,
     uid,
     occasion,
     vibe,
@@ -4710,7 +4715,8 @@ Return only JSON.`,
     instructions: [
       "Return only JSON with top-level key 'outfits'.",
       "Reference items strictly by idx.",
-      `Return up to ${lookCount} outfits.`,
+      `Return up to ${candidateCount} outfits. Make each one visually distinct.`,
+      "Vary silhouettes, footwear types, and layering strategies across outfits.",
     ],
   };
 
@@ -4735,9 +4741,9 @@ Return only JSON.`,
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [systemMsg, userMsg],
-    temperature: 0.2,
+    temperature: 0.35, // slight increase for more varied candidates
     response_format: { type: "json_object" },
-    max_tokens: 1600,
+    max_tokens: 2800,  // enough for 8 outfits with rich notes
   });
 
   const raw = resp.choices?.[0]?.message?.content || "{}";
@@ -4779,39 +4785,57 @@ Return only JSON.`,
 
       return {
         id: `look_${i + 1}`,
-        title: look.title || `Look ${i + 1}`,
-        style_note: look.style_note || "",
+        title:           look.title          || `Look ${i + 1}`,
+        style_note:      look.style_note      || "",
+        why_it_works:    look.why_it_works    || look.style_note || "",
+        weather_note:    look.weather_note    || "",
+        silhouette_note: look.silhouette_note || "",
+        color_note:      look.color_note      || "",
         items,
       };
     })
     .filter((look) => Array.isArray(look.items) && look.items.length > 0);
 
-  // Drop outfits that have 2+ items but no footwear — they're incomplete looks
-  const _fwRe = /footwear|shoe|sandal|heel|sneaker|jutti|boot/i;
-  outfits = outfits.filter(look => {
-    if (look.items.length < 2) return true; // single anchor kept as emergency fallback
-    return look.items.some(it => _fwRe.test(`${it.category || ""} ${it.name || ""} ${(it.tags || []).join(" ")}`));
-  });
+  // Build scoring context for the filter engine
+  const scoringCtx = {
+    weather:    weather || "",
+    occasion:   occasion || "",
+    vibe:       vibe || "",
+    anchorItem: anchorItem || null,
+    gender:     effectiveGender,
+  };
 
-  if (!outfits.length && anchorItem) {
-    outfits = [
-      {
+  // Run filter + ranking engine — scores all candidates, enforces hard rules,
+  // diversifies silhouettes/footwear, returns best `lookCount` outfits
+  let finalOutfits = filterAndRankOutfits(outfits, scoringCtx, { count: lookCount });
+
+  // Emergency fallback: if the filter engine rejected everything, use anchor-only or first candidate
+  if (!finalOutfits.length) {
+    if (anchorItem) {
+      finalOutfits = [{
         id: "look_1",
-        title: "Anchor Look 1",
+        title: "Anchor Look",
         style_note: "Styled around your selected piece.",
+        why_it_works: "Styled around your selected piece.",
+        weather_note: "", silhouette_note: "", color_note: "",
+        score: 0, aesthetic: "mixed",
         items: [anchorItem],
-      },
-    ];
+      }];
+    } else if (outfits.length) {
+      finalOutfits = outfits.slice(0, lookCount);
+    }
   }
 
   return {
-    outfits: outfits.slice(0, lookCount),
+    outfits: finalOutfits,
     debug: {
       wardrobePoolCount: wardrobeItems.length,
-      staplesPoolCount: stapleItems.length,
-      previewCount: wardrobePreview.length,
+      staplesPoolCount:  stapleItems.length,
+      previewCount:      wardrobePreview.length,
       effectiveGender,
-      usedAnchor: !!anchorItem,
+      usedAnchor:        !!anchorItem,
+      candidatesGenerated: outfits.length,
+      candidatesAfterFilter: finalOutfits.length,
     },
   };
 }
