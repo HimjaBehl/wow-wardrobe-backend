@@ -17,7 +17,9 @@
   import sharp from "sharp";
   import OpenAI from "openai";
   import { updateTrends } from "./lib/updateTrends.js";
-  
+  import { calculateOutfitScore } from "./lib/outfitScoring.js";
+  import { buildUserTasteProfile } from "./lib/tasteProfile.js";
+
   import crypto from "crypto";
   
   // ── Redaction + Safe Debug Logger ──
@@ -1227,7 +1229,23 @@
       : 0;
   
     score += avgTaste * 2.2; // tune 1.5–3.0
-  
+
+    // ── Outfit Intelligence Engine boost ──────────────────────────────────
+    // calculateOutfitScore() runs modular sub-scorers and returns a weighted
+    // composite. We scale it by 3 so it meaningfully influences final ranking
+    // without overriding the hard penalty logic above.
+    try {
+      const intelligence = calculateOutfitScore(items, {
+        weather: ctx.weather || "",
+        occasion,
+        vibe: ctx.vibe || "",
+      });
+      score += intelligence.total * 3;
+      dlog("🧠 scoreLook breakdown:", JSON.stringify(intelligence.breakdown));
+    } catch (e) {
+      // non-fatal — scoring still works without it
+    }
+
     return score;
   }
   
@@ -4265,6 +4283,7 @@ async function buildTinaRequestContext({
   let userFeedback = [];
   let fbSets = null;
   let rulesText = "";
+  let tasteProfile = null;
 
   if (uid) {
     try {
@@ -4297,6 +4316,16 @@ async function buildTinaRequestContext({
       } catch (e) {
         console.warn("⚠️ buildFeedbackMemory failed:", e?.message || e);
         fbSets = null;
+      }
+
+      // Build rich taste profile from liked/disliked item signals
+      try {
+        const likedItems   = (userCtx.likedCombos  || []).flatMap((c) => c.items  || []);
+        const dislikedItems = (userCtx.dislikedCombos || []).flatMap((c) => c.items || []);
+        tasteProfile = buildUserTasteProfile(likedItems, dislikedItems, userCtx.feedbackMemory || [], prefs);
+        dlog("👤 Taste profile:", JSON.stringify(tasteProfile));
+      } catch (e) {
+        console.warn("⚠️ buildUserTasteProfile failed:", e?.message || e);
       }
 
       const vals = Object.values(learning);
@@ -4368,6 +4397,7 @@ async function buildTinaRequestContext({
     rulesText,
     effectiveGender,
     weather,
+    tasteProfile,
   };
 }
 
@@ -4444,8 +4474,11 @@ function sanitizeTinaOutfitsPayload(parsed) {
         ? o.title.trim()
         : "Untitled Look";
 
-    const style_note =
-      typeof o?.style_note === "string" ? o.style_note.trim() : "";
+    const style_note   = typeof o?.style_note    === "string" ? o.style_note.trim()    : "";
+    const why_it_works = typeof o?.why_it_works   === "string" ? o.why_it_works.trim()  : style_note;
+    const weather_note = typeof o?.weather_note   === "string" ? o.weather_note.trim()  : "";
+    const silhouette_note = typeof o?.silhouette_note === "string" ? o.silhouette_note.trim() : "";
+    const color_note   = typeof o?.color_note     === "string" ? o.color_note.trim()    : "";
 
     const items = Array.isArray(o?.items) ? o.items : [];
     const cleanItems = items
@@ -4454,7 +4487,7 @@ function sanitizeTinaOutfitsPayload(parsed) {
       )
       .filter(Boolean);
 
-    return { title, style_note, items: cleanItems };
+    return { title, style_note, why_it_works, weather_note, silhouette_note, color_note, items: cleanItems };
   });
 
   return { outfits };
@@ -4495,6 +4528,7 @@ async function runTinaStylist({
     rulesText,
     effectiveGender,
     weather,
+    tasteProfile,
   } = ctx;
 
   const { wardrobeItems, stapleItems, wardrobePreview } =
@@ -4509,58 +4543,127 @@ async function runTinaStylist({
       anchorItem,
     });
 
+  // Build taste context string for the prompt
+  const tasteContext = tasteProfile
+    ? `USER TASTE PROFILE:
+- Summary: ${tasteProfile.summaryLine}
+- Preferred colors: ${tasteProfile.preferredColors.join(", ") || "not yet established"}
+- Preferred categories: ${tasteProfile.preferredCategories.join(", ") || "varied"}
+- Silhouette tendency: ${tasteProfile.silhouetteTendency}
+- Layering: ${tasteProfile.layeringPreference}
+- Aesthetic hints: ${tasteProfile.aestheticHints.join(", ") || "none yet"}
+- Avoid colors: ${tasteProfile.dislikedColors.join(", ") || "none"}
+- Avoid categories: ${tasteProfile.dislikedCategories.join(", ") || "none"}`
+    : "";
+
   const systemMsg = {
     role: "system",
-    content: `You are Tina, a ${tinaLevel}.
-You design outfits using only the items provided in wardrobe_preview (strictly by idx).
+    content: `You are Tina — a world-class luxury personal stylist with editorial-level fashion instincts.
+You think like a stylist for Vogue, Net-a-Porter, or a high-end boutique: intentional, cohesive, realistic, wearable.
+You dress real people for real occasions — not mood boards. Every outfit must feel human-curated, not randomly assembled.
 
-STRICT OUTPUT FORMAT:
-- Respond with only valid JSON
-- Top-level key must be "outfits"
-- Return up to ${lookCount} outfits
-- Each outfit:
-  {
-    "title": string,
-    "style_note": string,
-    "items": [{ "idx": string }, ...]
-  }
+You design outfits using ONLY the items provided in wardrobe_preview (strictly by idx).
 
-GLOBAL RULES:
-1) Use ONLY wardrobe_preview items.
-2) Never invent items.
-3) Titles and style_notes must match actual selected items.
-4) Respect occasion, vibe, weather, dislikes, memory, combo history, and style_tunnel.
-5) Avoid previously disliked combinations.
-6) Prefer liked combo patterns when suitable.
-7) Prefer coherent, wearable looks.
-8) Treat style_tunnel as hard guidance for occasion fit.
-9) Do not pick items that clearly violate the tunnel intent.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRICT OUTPUT FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Respond ONLY with valid JSON. No prose. No markdown.
+Top-level key must be "outfits". Return up to ${lookCount} outfits.
 
-BASE STRUCTURE:
-- Separates: Top + Bottom + Footwear + optional Bag/Outerwear/Accessory
-- One-piece: Onepiece + Footwear + optional Bag/Outerwear/Accessory
+Each outfit object:
+{
+  "title": "2–4 word editorial title (e.g. 'Cool-Girl Office', 'Weekend Linen Look')",
+  "style_note": "1-sentence stylist summary of the complete look",
+  "why_it_works": "Explain WHY these pieces work together — proportion, palette, occasion fit",
+  "weather_note": "Why this outfit suits the current weather conditions",
+  "silhouette_note": "How the proportions balance (e.g. oversized top grounds wide-leg trousers)",
+  "color_note": "Why the palette is harmonious (e.g. tonal neutrals with one earthy accent)",
+  "items": [{ "idx": string }, ...]
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STYLIST RULES (non-negotiable)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1) ONLY use wardrobe_preview items. Never invent items.
+2) Every outfit needs footwear. No footwear = invalid look.
+3) Do NOT mix a dress/jumpsuit with separate tops or bottoms.
+4) Max 5 items per outfit. No repeated idx within one outfit.
+5) Prefer fewer, higher-quality outfits over many weak ones.
+6) Outfits must feel intentional and wearable — not random item pairings.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SILHOUETTE INTELLIGENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Think about proportion BEFORE selecting items:
+• Oversized top → pair with slim/straight bottoms (never wide-leg)
+• Wide-leg trousers → pair with tucked or fitted top
+• Boxy blazer → wear over slim pants or a sleek dress
+• Bodycon dress → no outer layer unless very structured (blazer not hoodie)
+• Avoid: oversized top + wide-leg + chunky outer = triple volume disaster
+• One-piece (dress/jumpsuit/saree) → footwear + optional bag/outer only
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COLOR INTELLIGENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Best: 1 statement color on a neutral base (white shirt + camel trouser + red bag)
+• Good: all-neutral monochrome (beige + cream + brown = chic tonal stack)
+• Acceptable: 2 complementary/analogous non-neutrals (cobalt + terracotta)
+• Avoid: 3+ loud colors together — it reads chaotic
+• Loud accessories should anchor to neutral base, not compete with colorful clothing
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WEATHER INTELLIGENCE (current: ${weather || "unknown"})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Hot (30°C+): linen/cotton, breathable fabrics, light colors, open-toe OK. No coats, sweaters, heavy knit.
+Warm (24–29°C): light layers OK. Avoid wool, fleece, velvet.
+Mild (16–23°C): light jacket/cardigan works well.
+Chilly (<16°C): layer up — blazer/jacket required. No mini skirts or sleeveless without a cover.
+Cold (<10°C): boots, heavy layers, no open-toe.
+Rainy: avoid suede/silk/chiffon, prefer boots, closed-toe shoes.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FOOTWEAR MATCHING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Heels/pumps → evening, dinner, date, festive, office
+• Sneakers → casual, brunch, travel, streetwear
+• Loafers/oxfords → smart casual, office, preppy, elevated casual
+• Boots (ankle/chelsea) → smart casual, edgy, autumn/winter
+• Sandals → resort, vacation, summer casual
+• Jutti/ethnic footwear → festive, ethnic wear only
+• No open-toe in rain or cold
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTFIT STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Separates: Top + Bottom + Footwear (+ optional Outer/Bag/Accessory) = min 3 items
+One-piece: Dress/Jumpsuit/Saree + Footwear (+ optional Outer/Bag) = min 2 items
 
 ANCHOR RULES:
 ${
   anchorItem
-    ? `- Anchor item is REQUIRED in every outfit.
-- If anchor is top: support with bottom + footwear.
-- If anchor is bottom: support with top + footwear.
-- If anchor is onepiece: do not add separate top/bottom.
-- If anchor is footwear: build full outfit around the shoes.
-- If anchor is outer: ensure a coherent base underneath.
-- If anchor is bag/accessory: choose a strong base outfit it elevates.`
-    : `- No anchor item for this request.`
+    ? `The anchor item is REQUIRED in every outfit (idx: ${String(anchorItem.idx || anchorItem.id || "")}).
+- Anchor is a ${detectSlotFromItem(anchorItem)} — build the rest of the outfit to complement it.
+- If anchor is top: add a bottom that balances its volume, then add footwear.
+- If anchor is bottom: add a top with the opposite silhouette energy, then footwear.
+- If anchor is onepiece: add only footwear + optional bag/outer (no top/bottom).
+- If anchor is footwear: build a full top/bottom or dress outfit around the shoe's vibe.
+- If anchor is outer: layer it over a coherent base — do not leave the outfit incomplete beneath.
+- If anchor is bag/accessory: choose a strong complete outfit it elevates.`
+    : `No anchor item — generate polished standalone outfits.`
 }
 
-COMPLETENESS REQUIREMENT (non-negotiable):
-- Every outfit MUST include at least 1 footwear item (shoe/sneaker/sandal/heel/boot/jutti).
-- Separates outfit: Top + Bottom + Footwear = minimum 3 items.
-- One-piece outfit (dress/jumpsuit/saree): Footwear = minimum 2 items.
-- An outfit with zero footwear items is INVALID — do not return it.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${tasteContext}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STYLE TUNNEL: ${resolveStyleTunnel({ occasion, vibe, gender: effectiveGender }).mode}
+OCCASION: ${occasion || "general"}
+VIBE: ${vibe || "flexible"}
+GENDER: ${effectiveGender}
+
+COMPLETENESS (hard rules):
+- Minimum 3 items for separates, 2 items for one-piece.
+- Every outfit MUST include footwear. Zero footwear = invalid, do not return it.
 - Never repeat the same idx twice in one outfit.
-- Max 5 items per outfit.
-- Only use gender-appropriate items. Gender for this request: ${effectiveGender}.
 
 FASHION KNOWLEDGE BASE:
 ${rulesText || "• (No additional rules available)"}
@@ -4792,15 +4895,29 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       lookCount: 3,
     });
 
-    const outfits = (result.outfits || []).map((look) => ({
-      id: look.id,
-      title: look.title,
-      direction: "anchor_styled",
-      occasion_fit: occasion || "Styled for your context",
-      why_it_works: look.style_note || "Styled around your selected piece.",
-      pieces: mapLookItemsToStylePiecePieces(look.items || [], anchorHydrated),
-      styling_tips: [],
-    }));
+    const outfits = (result.outfits || []).map((look) => {
+      const scoringCtx = { weather: result.debug?.weather || "", occasion, vibe };
+      let scoreBreakdown = null;
+      try {
+        scoreBreakdown = calculateOutfitScore(look.items || [], scoringCtx);
+        console.log(`📊 Look "${look.title}" score: ${scoreBreakdown.total}`, scoreBreakdown.breakdown);
+      } catch (_) {}
+
+      return {
+        id: look.id,
+        title: look.title,
+        direction: "anchor_styled",
+        occasion_fit: occasion || "Styled for your context",
+        why_it_works: look.why_it_works || look.style_note || "Styled around your selected piece.",
+        weather_note: look.weather_note || "",
+        silhouette_note: look.silhouette_note || "",
+        color_note: look.color_note || "",
+        style_note: look.style_note || "",
+        score: scoreBreakdown?.total ?? null,
+        pieces: mapLookItemsToStylePiecePieces(look.items || [], anchorHydrated),
+        styling_tips: [],
+      };
+    });
 
     return res.json({
       success: true,
@@ -5027,12 +5144,25 @@ app.post("/suggest-outfit", limiterSuggestOutfit, async (req, res) => {
       lookCount: 3,
     });
 
-    const looksArr = (result.outfits || []).map((look) => ({
-      title: look.title,
-      style_note: look.style_note || "",
-      items: look.items || [],
-      validation: {},
-    }));
+    const looksArr = (result.outfits || []).map((look) => {
+      let scoreBreakdown = null;
+      try {
+        scoreBreakdown = calculateOutfitScore(look.items || [], { occasion, vibe });
+        console.log(`📊 Look "${look.title}" score: ${scoreBreakdown.total}`, scoreBreakdown.breakdown);
+      } catch (_) {}
+
+      return {
+        title: look.title,
+        style_note: look.style_note || "",
+        why_it_works: look.why_it_works || look.style_note || "",
+        weather_note: look.weather_note || "",
+        silhouette_note: look.silhouette_note || "",
+        color_note: look.color_note || "",
+        score: scoreBreakdown?.total ?? null,
+        items: look.items || [],
+        validation: {},
+      };
+    });
 
     return res.json({
       outfits: looksArr,
