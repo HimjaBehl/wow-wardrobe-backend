@@ -18,7 +18,7 @@
   import OpenAI from "openai";
   import { updateTrends } from "./lib/updateTrends.js";
   import { calculateOutfitScore } from "./lib/outfitScoring.js";
-  import { buildUserTasteProfile } from "./lib/tasteProfile.js";
+  import { buildUserTasteProfile, detectOutfitAesthetic } from "./lib/tasteProfile.js";
   import { filterAndRankOutfits, validateOutfitStructure, fullOutfitScore } from "./lib/outfitFilter.js";
   import { classifyAnchorItem } from "./lib/anchorIntelligence.js";
 
@@ -4532,6 +4532,194 @@ function sanitizeTinaOutfitsPayload(parsed) {
   return { outfits };
 }
 
+// ── Taste Identity Block Builder ─────────────────────────────────────────────
+// Converts the tasteProfile into a rich, GPT-consumable system-prompt section.
+// Generates: USER STYLE IDENTITY + DO NOT STYLE AGAINST USER DNA + STYLE MEMORY
+// INFLUENCE + CONTROLLED EXPLORATION + AESTHETIC COHERENCE + WEATHER+TASTE
+// Emits debug logs: [TasteIdentity] [GenerationBias] [ExplorationMode] [WeatherTasteAlignment]
+function buildTasteIdentityBlock(tasteProfile, weather, occasion) {
+  if (!tasteProfile) return "";
+
+  const wp   = tasteProfile.weightedProfile  || {};
+  const tw   = tasteProfile.tasteWeights     || {};
+  const rp   = tasteProfile.repeatedPatterns || {};
+  const conf = tw.confidence || 0;
+
+  const topOf = (obj) =>
+    Object.entries(obj || {}).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+
+  const domAesthetics  = topOf(wp.aesthetics);
+  const domSilhouettes = topOf(wp.silhouettes);
+  const domFootwear    = topOf(wp.footwear);
+  const domColors      = topOf(wp.colors);
+  const dislikeEntries = Object.entries(wp.dislikes || {}).sort((a, b) => b[1] - a[1]);
+  const dislikeKeys    = dislikeEntries.map(([k]) => k);
+
+  const styleIdentity    = tasteProfile.styleIdentity    || "Style explorer";
+  const layeringComfort  = tasteProfile.layeringComfort  || tasteProfile.layeringPreference || "";
+  const preferredFormality = tasteProfile.preferredFormality || "";
+
+  const wantsNoLayering = /minimal|prefer clean/i.test(layeringComfort);
+  const idStr = (domAesthetics.join(" ") + " " + styleIdentity).toLowerCase();
+  const isMinimal    = /minimal|elevated|monochrome/.test(idStr);
+  const isStreetwise = /streetwear|sporty/.test(idStr);
+  const isBoho       = /boho|romantic/.test(idStr);
+
+  const w = (weather || "").toLowerCase();
+  const tempMatch = w.match(/(-?\d+)\s*°?\s*c/i);
+  const tempC = tempMatch ? Number(tempMatch[1]) : null;
+  const isHot  = tempC !== null && tempC >= 30;
+  const isWarm = tempC !== null && tempC >= 24 && tempC < 30;
+
+  // ── Debug logs ────────────────────────────────────────────────────────────
+  console.log(`[TasteIdentity]  identity:"${styleIdentity}" conf:${conf} | aesthetic:${domAesthetics[0] || "?"} silhouette:${domSilhouettes[0] || "?"} footwear:${domFootwear[0] || "?"} noLayering:${wantsNoLayering}`);
+  console.log(`[GenerationBias] toward:${[domAesthetics[0], domSilhouettes[0], domFootwear[0]].filter(Boolean).join("/")||"broad"} | away from:${dislikeKeys.slice(0, 3).join(", ") || "none"}`);
+  if ((isHot || isWarm) && wantsNoLayering) {
+    console.log(`[WeatherTasteAlignment] ${tempC}°C (${isHot ? "HOT" : "WARM"}) + no-layering preference → enforcing clean single-layer in prompt`);
+  }
+  if (conf > 0.4) {
+    console.log(`[ExplorationMode] Controlled exploration ACTIVE — 1 experimental element per outfit (identity: "${styleIdentity}")`);
+  }
+
+  // Low-confidence fallback: minimal block
+  if (conf < 0.2) {
+    return [
+      `USER TASTE PROFILE (developing — ${tw.totalSignals || 0} signals so far):`,
+      `- Style identity: ${styleIdentity}`,
+      `- Summary: ${tasteProfile.summaryLine || "suggest broadly and help the user discover their style"}`,
+      `→ Taste still developing — vary aesthetics, help them discover their style.`,
+    ].join("\n");
+  }
+
+  const L = []; // lines accumulator
+
+  // ── Core identity block ───────────────────────────────────────────────────
+  L.push(`USER STYLE IDENTITY  (${Math.round(conf * 100)}% confidence | ${tw.totalSignals || 0} signals: ${tw.likedCount || 0} liked · ${tw.dislikedCount || 0} disliked · ${tw.savedCount || 0} saved plans)`);
+  L.push(`Style identity: "${styleIdentity}"`);
+  if (domAesthetics.length)    L.push(`Dominant aesthetic: ${domAesthetics.slice(0, 2).join(" + ")}`);
+  if (domSilhouettes.length)   L.push(`Preferred silhouette: ${domSilhouettes.slice(0, 2).join(", ")}`);
+  if (domColors.length)        L.push(`Preferred color palette: ${domColors.slice(0, 2).join(", ")}`);
+  if (domFootwear.length)      L.push(`Preferred footwear: ${domFootwear.slice(0, 2).join(", ")}`);
+  if (layeringComfort)         L.push(`Layering comfort: ${layeringComfort}`);
+  if (preferredFormality)      L.push(`Preferred formality: ${preferredFormality}`);
+  if (tasteProfile.preferredCategories?.length)
+    L.push(`Preferred categories: ${tasteProfile.preferredCategories.slice(0, 4).join(", ")}`);
+  if (tasteProfile.preferredColors?.length)
+    L.push(`Preferred colors (item-level): ${tasteProfile.preferredColors.slice(0, 4).join(", ")}`);
+
+  // ── Repeated outfit formulas ──────────────────────────────────────────────
+  if (rp.summary && rp.summary !== "no patterns yet") {
+    L.push(`\nRepeated outfit formulas (what user naturally returns to):`);
+    L.push(`• ${rp.summary}`);
+    if (rp.aesthetics?.length)  L.push(`• Aesthetic formula: ${rp.aesthetics.slice(0, 2).join(", ")}`);
+    if (rp.silhouettes?.length) L.push(`• Silhouette formula: ${rp.silhouettes[0]}`);
+    if (rp.footwear?.length)    L.push(`• Go-to footwear: ${rp.footwear[0]}`);
+  }
+
+  // ── Dislikes ──────────────────────────────────────────────────────────────
+  const allDislikes = [...dislikeEntries.slice(0, 5)];
+  if (tasteProfile.dislikedColors?.length)
+    allDislikes.push(...tasteProfile.dislikedColors.map((c) => [`color:${c}`, 0.8]));
+  if (tasteProfile.dislikedCategories?.length)
+    allDislikes.push(...tasteProfile.dislikedCategories.map((c) => [`category:${c}`, 0.7]));
+  if (allDislikes.length) {
+    L.push(`\nDisliked combinations/signals:`);
+    allDislikes.slice(0, 6).forEach(([k, v]) => L.push(`• ${k} (signal: ${v})`));
+  }
+
+  // ── DO NOT STYLE AGAINST USER DNA ────────────────────────────────────────
+  L.push(`\n━━━ DO NOT STYLE AGAINST USER DNA ⚠️ HARD CONSTRAINT ━━━`);
+  L.push(`This user has a clear style identity. Violating it produces outfits they will reject.`);
+  if (isMinimal) {
+    L.push(`• DO NOT generate maximalist, colorful, or heavily accessorised looks — this user prefers clean neutrals`);
+    L.push(`• DO NOT pile on competing focal points — one clear hero piece per outfit`);
+  }
+  if (isStreetwise) {
+    L.push(`• DO NOT force formal or evening-wear aesthetics — this user leans streetwear/sporty`);
+  }
+  if (isBoho) {
+    L.push(`• DO NOT generate structured-minimal looks — this user leans boho/romantic`);
+  }
+  if (wantsNoLayering) {
+    L.push(`• DO NOT add heavy layering or bulky outerwear — this user prefers minimal, clean silhouettes`);
+  }
+  if (dislikeKeys.some((k) => /bulky|wide.*oversized|oversized.*wide/i.test(k))) {
+    L.push(`• DO NOT pair oversized top with wide-leg bottom — historically disliked combination`);
+  }
+  if (!domColors.includes("colorful") && !domColors.includes("bright")) {
+    L.push(`• DO NOT use loud color contrast — this user's palette is ${domColors[0] || "neutral-dominant"}`);
+  }
+  if (domFootwear.length) {
+    L.push(`• Footwear must align with their identity: ${domFootwear.slice(0, 2).join(" or ")} — avoid aesthetic mismatches`);
+  }
+  L.push(`• NEVER generate a look that sits entirely outside this user's style identity without strong occasion justification`);
+
+  // ── STYLE MEMORY INFLUENCE ────────────────────────────────────────────────
+  L.push(`\n━━━ STYLE MEMORY INFLUENCE — GENERATE WITHIN TASTE FIRST ━━━`);
+  L.push(`Step 1: Select pieces that fit this user's established identity ("${styleIdentity}")`);
+  L.push(`Step 2: Ensure overall outfit energy matches their DNA before adding occasion/trend elements`);
+  L.push(`Step 3: Occasion-appropriate choices should feel like a NATURAL EXTENSION of their identity, not a departure`);
+  L.push(`Step 4: Each outfit should feel like it was styled BY someone who deeply knows this person's taste`);
+  L.push(`Step 5: If occasion demands something outside their comfort zone, find the closest on-brand version`);
+
+  // ── CONTROLLED EXPLORATION ────────────────────────────────────────────────
+  if (conf > 0.3) {
+    L.push(`\n━━━ CONTROLLED EXPLORATION (one experiment per outfit max) ━━━`);
+    L.push(`You may introduce ONE unexpected element per outfit — the remaining pieces must stay firmly within their taste profile.`);
+    if (isMinimal) {
+      L.push(`✓ GOOD: neutral monochrome outfit + one muted statement sneaker = controlled experiment`);
+      L.push(`✗ BAD: completely different aesthetic (maximalist, colorful, heavily layered)`);
+    } else if (isStreetwise) {
+      L.push(`✓ GOOD: streetwear outfit + one clean elevated shoe = gentle elevation`);
+      L.push(`✗ BAD: full formal/elegant outfit — wrong energy entirely`);
+    } else if (isBoho) {
+      L.push(`✓ GOOD: boho base + one structured modern piece = editorial tension`);
+      L.push(`✗ BAD: all-structured look with no boho element`);
+    } else {
+      L.push(`✓ GOOD: on-brand core outfit + one fresh unexpected element`);
+      L.push(`✗ BAD: experimenting with their most-disliked combinations`);
+    }
+    L.push(`DO NOT experiment with the combinations listed in Disliked combinations above.`);
+  }
+
+  // ── AESTHETIC COHERENCE ───────────────────────────────────────────────────
+  L.push(`\n━━━ AESTHETIC COHERENCE RULES ━━━`);
+  L.push(`• NEVER: sporty hoodie + ethnic footwear (energy clash)`);
+  L.push(`• NEVER: oversized jacket + wide-leg trousers (triple volume — always wrong)`);
+  L.push(`• NEVER: romantic midi skirt + chunky sport sneaker (aesthetic mismatch)`);
+  L.push(`• NEVER: formal blazer + gym shorts (formality clash)`);
+  L.push(`• NEVER: activewear (sports bra, compression) + formal or ethnic footwear`);
+  L.push(`• NEVER: heavy evening gown + casual sneakers (unless clearly editorial/ironic)`);
+
+  // ── WEATHER + TASTE ALIGNMENT ─────────────────────────────────────────────
+  if (tempC !== null) {
+    L.push(`\n━━━ WEATHER + TASTE ALIGNMENT (${tempC}°C) ━━━`);
+    if (isHot && wantsNoLayering) {
+      L.push(`• ${tempC}°C heat + low-layering preference → single-layer looks ONLY, lightweight fabrics essential`);
+      L.push(`• For this user in heat: ${isMinimal ? "linen/cotton basics, clean relaxed tailoring, neutral palette" : isStreetwise ? "breathable cotton sets, no heavy fabrics, clean sneakers" : "breathable single-layer looks"}`);
+    } else if (isWarm && wantsNoLayering) {
+      L.push(`• ${tempC}°C warmth + low-layering preference → NO jackets or heavy outers, keep it light and clean`);
+    } else if (isHot) {
+      L.push(`• ${tempC}°C heat → breathable fabrics only, NO heavy layers regardless of style identity`);
+    }
+    if (isMinimal && (isHot || isWarm)) {
+      L.push(`• Minimal user in warm weather: clean linen or cotton pieces, relaxed tailoring, neutral palette — effortless, not fussy`);
+    }
+    if (isStreetwise && (isHot || isWarm)) {
+      L.push(`• Sporty user in heat: breathable cotton sets or shorts — stay true to streetwear energy without the heat trap`);
+    }
+  }
+
+  // ── EXPLANATION QUALITY ───────────────────────────────────────────────────
+  L.push(`\n━━━ EXPLANATION QUALITY (why_it_works field) ━━━`);
+  L.push(`why_it_works MUST reference this user's style identity. Generic phrases like "This outfit matches well" are REJECTED.`);
+  L.push(`Required format: [palette/silhouette choice] + [identity alignment] + [occasion/weather logic]`);
+  L.push(`Good example: "The tonal neutral palette and oversized-top-slim-bottom proportion stay true to your ${styleIdentity} identity while lightweight linen keeps it appropriate for the heat."`);
+  L.push(`Always address: (1) identity alignment (2) proportion logic (3) occasion fit (4) weather sense if relevant`);
+
+  return L.join("\n");
+}
+
 async function runTinaStylist({
   uid = "",
   occasion = "",
@@ -4591,27 +4779,9 @@ async function runTinaStylist({
     dlog(`🎯 Anchor: "${anchorItem.name}" → type:${anchorAnalysis.type}`);
   }
 
-  // Build taste context string for the prompt
-  const tasteContext = tasteProfile
-    ? [
-        `USER TASTE PROFILE:`,
-        `- Style identity: ${tasteProfile.styleIdentity}${tasteProfile.styleIdentityConfidence > 0.3 ? ` (${Math.round(tasteProfile.styleIdentityConfidence * 100)}% confidence)` : ""}`,
-        `- Summary: ${tasteProfile.summaryLine}`,
-        `- Preferred colors: ${tasteProfile.preferredColors.join(", ") || "not yet established"}`,
-        `- Preferred categories: ${tasteProfile.preferredCategories.join(", ") || "varied"}`,
-        `- Silhouette tendency: ${tasteProfile.silhouetteTendency}`,
-        `- Layering: ${tasteProfile.layeringPreference}`,
-        `- Aesthetic hints: ${tasteProfile.aestheticHints.join(", ") || "none yet"}`,
-        `- Avoid colors: ${tasteProfile.dislikedColors.join(", ") || "none"}`,
-        `- Avoid categories: ${tasteProfile.dislikedCategories.join(", ") || "none"}`,
-        tasteProfile.tasteWeights?.confidence > 0.4
-          ? `- Taste signals: ${tasteProfile.tasteWeights.totalSignals} combos rated (${Math.round(tasteProfile.tasteWeights.confidence * 100)}% confidence)`
-          : `- Taste signals: still building (${tasteProfile.tasteWeights?.totalSignals || 0} combos rated)`,
-        tasteProfile.styleIdentityConfidence > 0.3
-          ? `→ Lean into the "${tasteProfile.styleIdentity}" identity. Don't fight it — elevate it within the occasion.`
-          : `→ Taste still developing — suggest broadly and help the user discover their style.`,
-      ].join("\n")
-    : "";
+  // Build rich taste identity block for the system prompt
+  // Emits [TasteIdentity] [GenerationBias] [ExplorationMode] [WeatherTasteAlignment] debug logs
+  const tasteIdentityBlock = buildTasteIdentityBlock(tasteProfile, weather, occasion);
 
   const systemMsg = {
     role: "system",
@@ -4631,8 +4801,8 @@ Make each outfit VISUALLY DISTINCT: different silhouette, different footwear typ
 Each outfit object:
 {
   "title": "2–4 word editorial title (e.g. 'Cool-Girl Office', 'Weekend Linen Look')",
-  "style_note": "1-sentence stylist summary of the complete look",
-  "why_it_works": "Explain WHY these pieces work together — proportion, palette, occasion fit",
+  "style_note": "1-sentence stylist summary of the complete look (name the aesthetic identity)",
+  "why_it_works": "Explain WHY in stylist voice — reference the user's style identity, proportion logic, palette reasoning, and occasion/weather fit. Must feel personal, not generic.",
   "weather_note": "Why this outfit suits the current weather conditions",
   "silhouette_note": "How the proportions balance (e.g. oversized top grounds wide-leg trousers)",
   "color_note": "Why the palette is harmonious (e.g. tonal neutrals with one earthy accent)",
@@ -4738,7 +4908,7 @@ If the hero is embellished: no other item may have embellishment, print, or loud
 }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${tasteContext}
+${tasteIdentityBlock}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STYLE TUNNEL: ${resolveStyleTunnel({ occasion, vibe, gender: effectiveGender }).mode}
 OCCASION: ${occasion || "general"}
@@ -4786,6 +4956,8 @@ Return only JSON.`,
     likedCombos,
     dislikedCombos,
     last_served_combo: lastServedCombo,
+    // Pass the clean weighted profile so GPT can reference it directly in generation
+    user_taste_profile: tasteProfile?.weightedProfile || null,
     wardrobe_preview: wardrobePreview,
     style_tunnel: resolveStyleTunnel({
       occasion,
@@ -4797,6 +4969,9 @@ Return only JSON.`,
       "Reference items strictly by idx.",
       `Return up to ${candidateCount} outfits. Make each one visually distinct.`,
       "Vary silhouettes, footwear types, and layering strategies across outfits.",
+      tasteProfile?.weightedProfile
+        ? `Generate outfits that feel native to the user's style identity: "${tasteProfile.styleIdentity}". Start from their DNA, not from generic fashion.`
+        : "Generate broadly — user's taste is still developing.",
     ],
   };
 
@@ -4817,6 +4992,18 @@ Return only JSON.`,
     role: "user",
     content: JSON.stringify(userPayload, null, 2),
   };
+
+  // Log the full generation context before calling GPT
+  if (tasteProfile?.styleIdentity) {
+    const wp = tasteProfile.weightedProfile || {};
+    const topAesthetic = Object.entries(wp.aesthetics || {}).sort((a, b) => b[1] - a[1])[0];
+    const topSilhouette = Object.entries(wp.silhouettes || {}).sort((a, b) => b[1] - a[1])[0];
+    console.log(`[TasteIdentity]  Calling GPT as "${tasteProfile.styleIdentity}" (conf:${tasteProfile.styleIdentityConfidence ?? 0}) | ${candidateCount} candidates requested`);
+    if (topAesthetic)  console.log(`[GenerationBias] Primary aesthetic bias: ${topAesthetic[0]} (${topAesthetic[1]})`);
+    if (topSilhouette) console.log(`[GenerationBias] Primary silhouette bias: ${topSilhouette[0]} (${topSilhouette[1]})`);
+    const dislikeStr = Object.keys(wp.dislikes || {}).slice(0, 3).join(", ");
+    if (dislikeStr)    console.log(`[GenerationBias] Active dislikes in prompt: ${dislikeStr}`);
+  }
 
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -4886,6 +5073,25 @@ Return only JSON.`,
     tasteProfile:   tasteProfile  || null,
     gender:     effectiveGender,
   };
+
+  // [IdentityConflict] — log any outfit whose aesthetic deviates from user identity
+  if (tasteProfile?.weightedProfile && outfits.length) {
+    const wpAesthetics = tasteProfile.weightedProfile.aesthetics || {};
+    const strongDislikes = tasteProfile.weightedProfile.dislikes  || {};
+    outfits.forEach((look) => {
+      const detectedAesthetic = detectOutfitAesthetic(look.items || []);
+      const w = wpAesthetics[detectedAesthetic] ?? 0.5;
+      if (w < 0.35) {
+        console.log(`[IdentityConflict] "${look.title}" → ${detectedAesthetic} aesthetic (w:${w}) conflicts with user identity "${tasteProfile.styleIdentity}" — will be penalised`);
+      }
+      Object.keys(strongDislikes).forEach((d) => {
+        const itemBlob = (look.items || []).map((it) => `${it.name || ""} ${it.category || ""}`).join(" ").toLowerCase();
+        if (/bulky/i.test(d) && /oversized.*(jacket|coat)|wide.leg.*oversized/.test(itemBlob)) {
+          console.log(`[IdentityConflict] "${look.title}" → contains disliked pattern "${d}" (strength:${strongDislikes[d]})`);
+        }
+      });
+    });
+  }
 
   // Run filter + ranking engine — scores all candidates, enforces hard rules,
   // diversifies silhouettes/footwear, returns best `lookCount` outfits
