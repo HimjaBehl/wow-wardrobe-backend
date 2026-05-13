@@ -4095,7 +4095,23 @@
     } catch (e) {
       console.warn("⚠️ styleContext combos fetch failed:", e.message);
     }
-  
+
+    // Saved outfit plans — intentional scheduling = strongest preference signal
+    let savedPlans = [];
+    try {
+      const plansSnap = await db
+        .collection("outfit_plans")
+        .where("uid", "==", uid)
+        .orderBy("updated_at", "desc")
+        .limit(50)
+        .get();
+      savedPlans = plansSnap.docs
+        .map((d) => d.data())
+        .filter((d) => d.outfit?.items?.length > 0);
+    } catch (e) {
+      console.warn("⚠️ outfit_plans fetch failed:", e.message);
+    }
+
     // short style summary (re-uses your helper)
     const summary = await buildUserStyleSummary(uid).catch(() => "");
   
@@ -4137,9 +4153,15 @@
       bodyShape: (mem.bodyShape || "").toLowerCase(),
       complexion: (mem.complexion || "").toLowerCase(),
       dislikes: Array.isArray(mem.dislikes) ? mem.dislikes : [],
+      // Optional pref fields forwarded to buildUserTasteProfile
+      styleGoal:           mem.styleGoal           || "",
+      occasionPreference:  mem.occasionPreference   || "",
+      formality:           mem.formality            || "",
+      layeringPreference:  mem.layeringPreference   || "",
       learning_weights: learning,
       likedCombos,
       dislikedCombos,
+      savedPlans,
       feedbackMemory,
       styleSummary,
       last_served_combo: mem.last_served_combo || null,
@@ -4320,17 +4342,27 @@ async function buildTinaRequestContext({
         fbSets = null;
       }
 
-      // Build rich taste profile from liked/disliked item signals + full combo vectors
+      // Build rich taste profile from liked/disliked item signals + full combo vectors + saved plans
       try {
         const likedItems    = (userCtx.likedCombos    || []).flatMap((c) => c.items || []);
         const dislikedItems = (userCtx.dislikedCombos || []).flatMap((c) => c.items || []);
+        const richPrefs = {
+          ...prefs,
+          styleGoal:          userCtx.styleGoal          || "",
+          occasionPreference:  userCtx.occasionPreference || "",
+          formality:           userCtx.formality          || "",
+          layeringPreference:  userCtx.layeringPreference || "",
+        };
         tasteProfile = buildUserTasteProfile(
-          likedItems, dislikedItems,
-          userCtx.feedbackMemory  || [], prefs,
-          userCtx.likedCombos     || [],   // full combos for taste-weight building
-          userCtx.dislikedCombos  || []    // full combos for taste-weight building
+          likedItems,
+          dislikedItems,
+          userCtx.feedbackMemory  || [],
+          richPrefs,
+          userCtx.likedCombos     || [],
+          userCtx.dislikedCombos  || [],
+          userCtx.savedPlans      || []    // outfit_plans — intentional scheduling signals
         );
-        dlog(`👤 Taste: ${tasteProfile.styleIdentity} (conf:${tasteProfile.styleIdentityConfidence}) | signals:${tasteProfile.tasteWeights?.totalSignals || 0}`);
+        dlog(`👤 Taste: ${tasteProfile.styleIdentity} (conf:${tasteProfile.styleIdentityConfidence}) | signals:${tasteProfile.tasteWeights?.totalSignals || 0} (saved:${tasteProfile.tasteWeights?.savedCount || 0})`);
       } catch (e) {
         console.warn("⚠️ buildUserTasteProfile failed:", e?.message || e);
       }
