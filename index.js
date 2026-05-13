@@ -4617,10 +4617,19 @@ COLOR INTELLIGENCE
 • Loud accessories should anchor to neutral base, not compete with colorful clothing
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WEATHER INTELLIGENCE (current: ${weather || "unknown"})
+WEATHER INTELLIGENCE ⚠️ HARD CONSTRAINT #1 (current: ${weather || "unknown"})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Hot (30°C+): linen/cotton, breathable fabrics, light colors, open-toe OK. No coats, sweaters, heavy knit.
-Warm (24–29°C): light layers OK. Avoid wool, fleece, velvet.
+WEATHER BEATS AESTHETICS. A beautiful outfit that's thermally wrong is a failure.
+Never prioritize a "great look" over what is actually wearable in the conditions.
+
+🔴 ABSOLUTE PROHIBITIONS — never suggest these regardless of style points:
+• Hoodie + jacket together at 24°C+ (double-layer = heat trap — NEVER do this)
+• Hoodie or sweatshirt at 30°C+
+• Puffer coat / heavy padded coat at 26°C+
+• Wool, fleece, or sherpa at 28°C+
+
+Hot (30°C+): linen/cotton only, breathable fabrics, light colors, open-toe OK. Zero layering.
+Warm (24–29°C): NO hoodie, NO sweatshirt, NO denim jacket unless extremely light. Single layer max.
 Mild (16–23°C): light jacket/cardigan works well.
 Chilly (<16°C): layer up — blazer/jacket required. No mini skirts or sleeveless without a cover.
 Cold (<10°C): boots, heavy layers, no open-toe.
