@@ -72,7 +72,15 @@
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
-  
+
+  // ── In-memory caches ─────────────────────────────────────────────────────────
+  const _staplesCache     = new Map();           // key "gender:version" → { ts, items }
+  const _fashionRulesCache = { ts: 0, text: "" };
+  const _weatherCache     = new Map();           // key city → { ts, weather }
+  const STAPLES_TTL_MS     = 10 * 60 * 1000;    // 10 min — staples are global, rarely change
+  const RULES_TTL_MS       = 15 * 60 * 1000;    // 15 min
+  const WEATHER_TTL_MS     =  5 * 60 * 1000;    //  5 min
+
   import { hydrateWardrobeItem } from "./lib/hydrateWardrobeItem.js";
   
   import { normalizeCategory } from "./lib/normalizeCategory.js";
@@ -479,19 +487,22 @@
     "https://api.openweathermap.org/data/2.5/weather?units=metric";
   
   async function getWeather(city = "Delhi") {
+    const cached = _weatherCache.get(city);
+    if (cached && Date.now() - cached.ts < WEATHER_TTL_MS) return cached.weather;
     try {
       const url = `${OPENWEATHER_URL}&q=${encodeURIComponent(
         city,
       )}&appid=${process.env.OPENWEATHER_API_KEY}`;
-  
+
       const { data } = await axios.get(url);
-      // e.g. "light rain", 31 → "Light rain, 31 °C"
-      return `${data.weather?.[0]?.description || "clear sky"}, ${Math.round(
+      const weather = `${data.weather?.[0]?.description || "clear sky"}, ${Math.round(
         data.main.temp,
       )}°C`;
+      _weatherCache.set(city, { ts: Date.now(), weather });
+      return weather;
     } catch (err) {
       console.warn("⚠️ Weather fetch failed:", err.message);
-      return null; // silently continue without weather
+      return null;
     }
   }
   // ────────────────────────────────────────────────────────────────
@@ -1630,17 +1641,26 @@
     gender = "female",
     version = "v2",
   } = {}) {
+    const key = `${gender}:${version}`;
+    const cached = _staplesCache.get(key);
+    if (cached && Date.now() - cached.ts < STAPLES_TTL_MS) {
+      console.log(`📦 fetchStaplesForStyling: cache hit (${cached.items.length} items, key=${key})`);
+      return cached.items;
+    }
+
     const col = buildStapleCollectionName(gender, version);
     console.log("📦 fetchStaplesForStyling: querying collection:", col);
+    console.time("sp:staples-fetch");
     const snap = await db.collection(col).get();
+    console.timeEnd("sp:staples-fetch");
     console.log("📦 fetchStaplesForStyling: found", snap.size, "docs in", col);
-  
-    return snap.docs.map((doc) => {
+
+    const items = snap.docs.map((doc) => {
       const data = doc.data() || {};
       const name = data.name || doc.id;
       const category = data.category || "Staple";
       const color = data.color || "Default";
-  
+
       return {
         ...hydrateWardrobeItem({
           uid: "staples-global",
@@ -1664,6 +1684,9 @@
         in_closet: false,
       };
     });
+
+    _staplesCache.set(key, { ts: Date.now(), items });
+    return items;
   }
   
   async function fetchWardrobeForStyling(uid) {
@@ -1671,7 +1694,9 @@
       "👕 fetchWardrobeForStyling: querying wardrobe for uid:",
       JSON.stringify(uid),
     );
+    console.time("sp:wardrobe-fetch");
     const snap = await db.collection("wardrobe").where("uid", "==", uid).get();
+    console.timeEnd("sp:wardrobe-fetch");
     console.log(
       "👕 fetchWardrobeForStyling: found",
       snap.size,
@@ -4311,6 +4336,7 @@ async function buildTinaRequestContext({
 
   if (uid) {
     try {
+      console.time("sp:user-context");
       const userCtx = await getUserStyleContext(uid);
 
       microFeedback = userCtx.micro_feedback || [];
@@ -4375,43 +4401,56 @@ async function buildTinaRequestContext({
       if (avg < 0.4) tinaLevel = "Level 1 (Intern)";
       else if (avg < 0.7) tinaLevel = "Level 2 (Junior Stylist)";
       else tinaLevel = "Level 3 (Confident Stylist)";
+      console.timeEnd("sp:user-context");
     } catch (err) {
       console.warn("⚠️ Could not fetch Tina request context:", err.message);
+      console.timeEnd("sp:user-context");
     }
   }
 
   try {
-    const rulesSnap = await db.collection("fashion_rules").get();
-    let fashionRules = rulesSnap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // Cache fashion rules — global, rarely change, no need to re-fetch every request
+    if (Date.now() - _fashionRulesCache.ts < RULES_TTL_MS) {
+      rulesText = _fashionRulesCache.text;
+      console.log("[FashionRules] cache hit");
+    } else {
+      console.time("sp:rules-fetch");
+      const rulesSnap = await db.collection("fashion_rules").get();
+      console.timeEnd("sp:rules-fetch");
+      let fashionRules = rulesSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
 
-    fashionRules = fashionRules.filter((rule) => {
-      if (
-        prefs.complexion &&
-        rule.rule_id?.includes?.(prefs.complexion.toLowerCase())
-      ) {
-        return true;
-      }
-      if (
-        prefs.bodyShape &&
-        rule.rule_id?.includes?.(prefs.bodyShape.toLowerCase())
-      ) {
-        return true;
-      }
-      if (rule.category === "general") return true;
-      return false;
-    });
+      fashionRules = fashionRules.filter((rule) => {
+        if (
+          prefs.complexion &&
+          rule.rule_id?.includes?.(prefs.complexion.toLowerCase())
+        ) {
+          return true;
+        }
+        if (
+          prefs.bodyShape &&
+          rule.rule_id?.includes?.(prefs.bodyShape.toLowerCase())
+        ) {
+          return true;
+        }
+        if (rule.category === "general") return true;
+        return false;
+      });
 
-    rulesText = fashionRules
-      .map((r) => {
-        const p = r.principle ? `• ${r.principle}` : "• Rule";
-        const rule = r.rule ? ` — ${r.rule}` : "";
-        const ex = r.example ? ` (ex: ${r.example})` : "";
-        return `${p}${rule}${ex}`;
-      })
-      .join("\n");
+      rulesText = fashionRules
+        .map((r) => {
+          const p = r.principle ? `• ${r.principle}` : "• Rule";
+          const rule = r.rule ? ` — ${r.rule}` : "";
+          const ex = r.example ? ` (ex: ${r.example})` : "";
+          return `${p}${rule}${ex}`;
+        })
+        .join("\n");
+
+      _fashionRulesCache.ts   = Date.now();
+      _fashionRulesCache.text = rulesText;
+    }
   } catch (err) {
     console.warn("⚠️ Failed to fetch fashion rules:", err.message);
   }
@@ -4491,7 +4530,10 @@ async function buildTinaWardrobePreview({
       ]
     : combined;
 
-  const wardrobePreview = compactItemsForPrompt(deduped, 100);
+  // Pre-ranking already ran (scoreItemForTunnel sort above).
+  // 35 top-scored items give the model plenty of choices without bloating the prompt.
+  const wardrobePreview = compactItemsForPrompt(deduped, 35);
+  console.log(`[WardrobePreview] ${wardrobePreview.length} items sent to GPT (wardrobe:${wardrobeItems.length} staples:${stapleItems.length})`);
 
   return {
     wardrobeItems,
@@ -4733,6 +4775,7 @@ async function runTinaStylist({
   explicitGender = "",
   lookCount = 3,
 }) {
+  console.time("sp:build-context");
   const ctx = await buildTinaRequestContext({
     uid,
     occasion,
@@ -4740,6 +4783,7 @@ async function runTinaStylist({
     city,
     explicitGender,
   });
+  console.timeEnd("sp:build-context");
 
   const {
     prefs,
@@ -4758,6 +4802,7 @@ async function runTinaStylist({
     tasteProfile,
   } = ctx;
 
+  console.time("sp:wardrobe-preview");
   const { wardrobeItems, stapleItems, wardrobePreview } =
     await buildTinaWardrobePreview({
       uid,
@@ -4769,9 +4814,11 @@ async function runTinaStylist({
       effectiveGender,
       anchorItem,
     });
+  console.timeEnd("sp:wardrobe-preview");
 
-  // Ask GPT for more candidates than the user will see — the filter engine picks the best
-  const candidateCount = lookCount * 2 + 2;
+  // Generate lookCount+1 candidates — filter engine picks the best lookCount.
+  // Reduced from lookCount*2+2 to cut output token usage by ~40%.
+  const candidateCount = lookCount + 1;
 
   // Pre-classify anchor type — used in system prompt and scoring pipeline
   const anchorAnalysis = anchorItem ? classifyAnchorItem(anchorItem) : null;
@@ -5016,10 +5063,13 @@ Return only JSON.`,
 
   const userMsg = {
     role: "user",
-    content: JSON.stringify(userPayload, null, 2),
+    content: JSON.stringify(userPayload), // compact — no pretty-printing saves ~500 tokens
   };
 
   // Log the full generation context before calling GPT
+  const sysMsgTokensEst = Math.round(systemMsg.content.length / 4);
+  const usrMsgTokensEst = Math.round(userMsg.content.length / 4);
+  console.log(`[PromptSize] system~${sysMsgTokensEst}tok user~${usrMsgTokensEst}tok total~${sysMsgTokensEst+usrMsgTokensEst}tok | wardrobe_preview:${wardrobePreview.length} items`);
   console.log(`[IntentHierarchy] GPT call: intent="${vibe || "any"}/${occasion || "any"}" > weather="${weather || "?"}" > taste="${tasteProfile?.styleIdentity || "developing"}" > anchor="${anchorItem?.name || "none"}" | ${candidateCount} candidates`);
   if (anchorItem) {
     console.log(`[AnchorSupport]   "${anchorItem.name}" (${detectSlotFromItem(anchorItem)}) is a CONSTRAINT, not the hero — outfit story leads`);
@@ -5035,13 +5085,16 @@ Return only JSON.`,
     if (dislikeStr)    console.log(`[GenerationBias] Active dislikes in prompt: ${dislikeStr}`);
   }
 
+  console.time("sp:openai");
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [systemMsg, userMsg],
-    temperature: 0.35, // slight increase for more varied candidates
+    temperature: 0.35,
     response_format: { type: "json_object" },
-    max_tokens: 2800,  // enough for 8 outfits with rich notes
+    max_tokens: 1600, // 4 candidates with compact notes — was 2800
   });
+  console.timeEnd("sp:openai");
+  console.log(`[OpenAI] usage: prompt=${resp.usage?.prompt_tokens} completion=${resp.usage?.completion_tokens} total=${resp.usage?.total_tokens}`);
 
   const raw = resp.choices?.[0]?.message?.content || "{}";
 
@@ -5125,7 +5178,9 @@ Return only JSON.`,
 
   // Run filter + ranking engine — scores all candidates, enforces hard rules,
   // diversifies silhouettes/footwear, returns best `lookCount` outfits
+  console.time("sp:filter-rank");
   let finalOutfits = filterAndRankOutfits(outfits, scoringCtx, { count: lookCount });
+  console.timeEnd("sp:filter-rank");
 
   // Emergency fallback: if the filter engine rejected everything, use anchor-only or first candidate
   if (!finalOutfits.length) {
@@ -5225,6 +5280,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       is_anchor: true,
     };
 
+    console.time("sp:total");
     const result = await runTinaStylist({
       uid,
       occasion,
@@ -5238,6 +5294,7 @@ app.post("/style-piece", limiterSuggestOutfit, async (req, res) => {
       explicitGender: gender,
       lookCount: 3,
     });
+    console.timeEnd("sp:total");
 
     const outfits = (result.outfits || []).map((look) => {
       const scoringCtx = { weather: result.debug?.weather || "", occasion, vibe };
